@@ -64,7 +64,6 @@ class MFASystem(PydanticBaseModel):
     as a dictionary mapping the names of the MFA system stocks to the stocks themselves.
     """
 
-
     @classmethod
     def from_data_reader(cls, definition: MFADefinition, data_reader: DataReader):
         """Define and set up the MFA system and load all required data.
@@ -160,7 +159,7 @@ class MFASystem(PydanticBaseModel):
             "The compute method must be implemented in a subclass of MFASystem if it is to be used."
         )
 
-    def get_new_array(self, dim_letters: tuple=None, **kwargs) -> NamedDimArray:
+    def get_new_array(self, dim_letters: tuple = None, **kwargs) -> NamedDimArray:
         """get a new NamedDimArray object.
 
         :param dim_letters: tuple of dimension letters to include in the new NamedDimArray. If None, all dimensions are included.

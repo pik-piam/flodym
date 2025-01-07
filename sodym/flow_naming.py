@@ -16,6 +16,5 @@ def process_names_no_spaces(from_process: Process, to_process: Process) -> str:
 
 
 def process_ids(from_process: Process, to_process: Process) -> str:
-    """Return the name of a flow as a string containing the id of the process it starts from and the id of the process it ends in, e.g. F1_2.
-    """
+    """Return the name of a flow as a string containing the id of the process it starts from and the id of the process it ends in, e.g. F1_2."""
     return f"F{from_process.id}_{to_process.id}"

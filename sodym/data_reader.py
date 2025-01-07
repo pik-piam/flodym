@@ -45,8 +45,7 @@ class DataReader:
 
 
 class DimensionReader(ABC):
-    """Template for creating a dimension reader, showing required methods and data formats needed
-    """
+    """Template for creating a dimension reader, showing required methods and data formats needed"""
 
     read_dimensions = DataReader.read_dimensions
 
@@ -117,8 +116,7 @@ class ExcelDimensionReader(DimensionReader):
 
 
 class ParameterReader(ABC):
-    """Template for creating a parameter reader, showing required methods and data formats needed
-    """
+    """Template for creating a parameter reader, showing required methods and data formats needed"""
 
     @abstractmethod
     def read_parameter_values(self, parameter_name: str, dims: DimensionSet) -> Parameter:

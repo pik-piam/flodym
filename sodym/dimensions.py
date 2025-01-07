@@ -182,8 +182,7 @@ class DimensionSet(PydanticBaseModel):
 
     @property
     def ndim(self):
-        """the number of dimensions in the set
-        """
+        """the number of dimensions in the set"""
         return len(self.dim_list)
 
     def get_subset(self, dims: tuple = None) -> "DimensionSet":
