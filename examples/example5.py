@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.4
+#       jupytext_version: 1.16.6
 #   kernelspec:
 #     display_name: .venv
 #     language: python
@@ -192,13 +192,19 @@ class CustomDataReader(DataReader):
 
     def read_dimension(self, dimension_definition: DimensionDefinition) -> Dimension:
         if (dim_name := dimension_definition.name) == "region":
-            data = pd.read_excel(join(self.data_directory, "example5_vehicle_lifetime.xlsx"), "Data")
-            other_data = pd.read_excel(join(self.data_directory, "example5_vehicle_stock.xlsx"), "Data")
+            data = pd.read_excel(
+                join(self.data_directory, "example5_vehicle_lifetime.xlsx"), "Data"
+            )
+            other_data = pd.read_excel(
+                join(self.data_directory, "example5_vehicle_stock.xlsx"), "Data"
+            )
             data = (set(data[dim_name].unique())).intersection(set(other_data[dim_name].unique()))
             data = list(data)
             data.sort()
         elif (dim_name := dimension_definition.name) in ["waste", "material"]:
-            data = pd.read_excel(join(self.data_directory, "example5_eol_recovery_rate.xlsx"), "Data")
+            data = pd.read_excel(
+                join(self.data_directory, "example5_eol_recovery_rate.xlsx"), "Data"
+            )
             data.columns = [x.lower() for x in data.columns]
             data = list(data[dim_name].unique())
             data.sort()
