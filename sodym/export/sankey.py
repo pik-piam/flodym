@@ -61,10 +61,10 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
         return self
 
     def plot(self):
-        self.get_nodes_and_links()
-        return self.get_fig()
+        self._get_nodes_and_links()
+        return self._get_fig()
 
-    def get_nodes_and_links(self):
+    def _get_nodes_and_links(self):
 
         self.processes = [
             p for p in self.mfa.processes.values() if p.name not in self.exclude_processes
@@ -74,11 +74,11 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
             p.id for p in self.mfa.processes.values() if p.name in self.exclude_processes
         ]
 
-        self.get_link_list()
+        self._get_link_list()
         self.links = self.link_list.to_dict()
-        self.nodes = self.get_nodes_dict()
+        self.nodes = self._get_nodes_dict()
 
-    def get_link_list(self):
+    def _get_link_list(self):
         self.link_list = LinkList()
         for f in self.mfa.flows.values():
             if (
@@ -87,9 +87,9 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
                 or (f.to_process_id in self.exclude_process_ids)
             ):
                 continue
-            self.add_flow(f)
+            self._add_flow(f)
 
-    def add_flow(self, f: Flow):
+    def _add_flow(self, f: Flow):
         source = self.ids_in_sankey[f.from_process.id]
         target = self.ids_in_sankey[f.to_process.id]
         label = self.display_name(f.name)
@@ -100,7 +100,7 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
         if self.split_flows_by is not None and self.split_flows_by in f.dims.names:
             splitting_letter_tuple = (self.mfa.dims[self.split_flows_by].letter,)
             values = f_slice.sum_values_to(splitting_letter_tuple)
-            for v, c in zip(values, self.colors):
+            for v, c in zip(values, self._colors):
                 self.link_list.append(label=label, source=source, target=target, color=c, value=v)
         else:
             self.link_list.append(
@@ -111,14 +111,14 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
                 value=f_slice.sum_values(),
             )
 
-    def get_nodes_dict(self):
+    def _get_nodes_dict(self):
         return {
             "label": [self.display_name(p.name) for p in self.processes],
             "color": [self.node_color for p in self.processes],  # 'rgb(50, 50, 50)'
             "pad": 10,
         }
 
-    def get_fig(self):
+    def _get_fig(self):
         fig = go.Figure(
             go.Sankey(
                 arrangement="snap",
@@ -129,14 +129,14 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
         return fig
 
     @property
-    def n_colors(self):
+    def _n_colors(self):
         if self.split_flows_by is None:
             return 1
         else:
             return self.mfa.dims[self.split_flows_by].len
 
     @property
-    def colors(self):
+    def _colors(self):
         if self.color_scheme == "blueish":
             n_max = 10
 
@@ -158,12 +158,12 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
         else:
             raise ValueError("invalid color scheme")
 
-        if self.n_colors > n_max:
+        if self._n_colors > n_max:
             raise ValueError(
-                f"Too many colors ({self.n_colors}) requested for color scheme {self.color_scheme}"
+                f"Too many colors ({self._n_colors}) requested for color scheme {self.color_scheme}"
             )
 
-        return colors(self.n_colors)
+        return colors(self._n_colors)
 
 
 class Link(PydanticBaseModel):

@@ -8,13 +8,25 @@ from ..named_dim_arrays import NamedDimArray
 from .helper import to_valid_file_name
 
 
-def export_mfa_to_pickle(mfa, export_path: str):
+def export_mfa_to_pickle(mfa: MFASystem, export_path: str):
+    """Write an MFA system to a pickle file.
+
+    Args:
+        mfa (MFASystem): The MFA system to be exported.
+        export_path (str): The path to the file where the MFA system should be saved.
+    """
     dict_out = convert_to_dict(mfa)
     pickle.dump(dict_out, open(export_path, "wb"))
     logging.info(f"Data saved to {export_path}")
 
 
 def export_mfa_flows_to_csv(mfa: MFASystem, export_directory: str):
+    """export flows of an MFA system to csv files.
+
+    Args:
+        mfa (MFASystem): The MFA system from which the flows should be exported.
+        export_directory (str): The directory where the csv files should be saved.
+    """
     if not os.path.exists(export_directory):
         os.makedirs(export_directory)
     for flow_name, flow in mfa.flows.items():
@@ -24,6 +36,13 @@ def export_mfa_flows_to_csv(mfa: MFASystem, export_directory: str):
 
 
 def export_mfa_stocks_to_csv(mfa: MFASystem, export_directory: str, with_in_and_out: bool = False):
+    """export stocks of an MFA system to csv files.
+
+    Args:
+        mfa (MFASystem): The MFA system from which the stocks should be exported.
+        export_directory (str): The directory where the csv files should be saved.
+        with_in_and_out (bool, optional): If True, the inflow and outflow of the stocks are also exported. Defaults to False.
+    """
     if not os.path.exists(export_directory):
         os.makedirs(export_directory)
     for stock_name, stock in mfa.stocks.items():
@@ -41,6 +60,15 @@ def export_mfa_stocks_to_csv(mfa: MFASystem, export_directory: str, with_in_and_
 
 
 def convert_to_dict(mfa: MFASystem, type: str = "numpy") -> dict:
+    """Convert an MFA system to a dictionary which is readable without sodym.
+
+    Args:
+        mfa (MFASystem): The MFA system to be converted.
+        type (str, optional): The type of the values in the flows and stocks. Options are 'numpy' and 'pandas'. Defaults to "numpy".
+
+    Returns:
+        dict: The MFA system as a dictionary. Contains the items 'dimension_names', 'dimension_items', 'processes', 'flows', 'flow_dimensions', 'flow_processes', 'stocks', 'stock_dimensions', 'stock_processes'.
+    """
     convert_func = _get_convert_func(type)
     return _convert_to_dict_by_func(mfa, convert_func)
 

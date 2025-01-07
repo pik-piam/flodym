@@ -13,7 +13,17 @@ def make_empty_flows(
     dims: DimensionSet,
     naming: Callable[[Process, Process], str] = process_names_with_arrow,
 ) -> dict[str, Flow]:
-    """Initialize all defined flows with zero values."""
+    """Initialize all defined flows with zero values.
+
+    Args:
+        processes: Dictionary of processes, with process names as keys.
+        flow_definitions: List of flow definitions.
+        dims: DimensionSet object containing all dimensions.
+        naming: Function to generate names for flows. Default is `process_names_with_arrow`.
+
+    Returns:
+        Dictionary of flows, with flow names as keys.
+    """
     flows = {}
     for flow_definition in flow_definitions:
         try:

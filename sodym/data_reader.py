@@ -45,6 +45,8 @@ class DataReader:
 
 
 class DimensionReader(ABC):
+    """Template for creating a dimension reader, showing required methods and data formats needed
+    """
 
     read_dimensions = DataReader.read_dimensions
 
@@ -54,7 +56,7 @@ class DimensionReader(ABC):
 
 
 class CSVDimensionReader(DimensionReader):
-    """Expects a single row or single columns csv file with no header containing the dimension items.
+    """Read dimensions from a CSV file. Expects a single row or single columns csv file with no header containing the dimension items.
 
     Args:
         dimension_files (dict): {dimension_name: file_path, ...}
@@ -80,7 +82,7 @@ class CSVDimensionReader(DimensionReader):
 
 
 class ExcelDimensionReader(DimensionReader):
-    """Expects a single row or single columns excel sheet with no header containing the dimension items.
+    """Read dimensions from Excel file(s). Expects a single row or single columns excel sheet with no header containing the dimension items.
 
     Args:
         dimension_files (dict): {dimension_name: file_path, ...}
@@ -115,6 +117,9 @@ class ExcelDimensionReader(DimensionReader):
 
 
 class ParameterReader(ABC):
+    """Template for creating a parameter reader, showing required methods and data formats needed
+    """
+
     @abstractmethod
     def read_parameter_values(self, parameter_name: str, dims: DimensionSet) -> Parameter:
         pass
@@ -182,6 +187,10 @@ class ExcelParameterReader(ParameterReader):
 
 
 class CompoundDataReader(DataReader):
+    """Combines a DimensionReader and a ParameterReader to create a DataReader,
+    reading both dimensions and parameters.
+    """
+
     def __init__(
         self,
         dimension_reader: DimensionReader,

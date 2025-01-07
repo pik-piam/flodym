@@ -13,14 +13,14 @@ from typing import Optional, Union
 
 from .processes import Process
 from .dimensions import DimensionSet, Dimension
-from .df_to_nda import DataFrameToNDADataConverter
+from ._df_to_nda import DataFrameToNDADataConverter
 
 
-def is_iterable(arg):
+def _is_iterable(arg):
     return isinstance(arg, Iterable) and not isinstance(arg, (str, Dimension))
 
 
-def is_non_subset_dim(arg, other_dim):
+def _is_non_subset_dim(arg, other_dim):
     if not isinstance(arg, Dimension):
         return False
     else:
@@ -69,10 +69,10 @@ class NamedDimArray(PydanticBaseModel):
     def validate_values(self):
         if self.values is None:
             self.values = np.zeros(self.dims.shape())
-        self.check_value_format()
+        self._check_value_format()
         return self
 
-    def check_value_format(self):
+    def _check_value_format(self):
         if not isinstance(self.values, (np.ndarray, np.generic)):
             raise ValueError("Values must be a numpy array or numpy generic.")
         if self.dims.ndim > 0 and not isinstance(self.values, np.ndarray):
@@ -126,7 +126,7 @@ class NamedDimArray(PydanticBaseModel):
         nda.set_values_from_df(df)
         return nda
 
-    def sub_array_handler(self, definition) -> "SubArrayHandler":
+    def _sub_array_handler(self, definition) -> "SubArrayHandler":
         return SubArrayHandler(self, definition)
 
     @property
@@ -135,7 +135,7 @@ class NamedDimArray(PydanticBaseModel):
 
     def set_values(self, values: np.ndarray):
         self.values = values
-        self.check_value_format()
+        self._check_value_format()
 
     def sum_values(self):
         return np.sum(self.values)
@@ -273,7 +273,7 @@ class NamedDimArray(PydanticBaseModel):
         """Defines what is returned when the object with square brackets stands on the right-hand side of an assignment,
         e.g. foo = foo = bar[{'e': 'C'}] Here, it is solely used for slicing, the the input tot the square brackets must
         be a dictionary defining the slice."""
-        return self.sub_array_handler(keys).to_nda()
+        return self._sub_array_handler(keys).to_nda()
 
     def __setitem__(self, keys, item):
         """Defines what is returned when the object with square brackets stands on the left-hand side of an assignment,
@@ -284,7 +284,7 @@ class NamedDimArray(PydanticBaseModel):
         If you want to set the values of a NamedDimArray object directly to a numpy array, use the syntax
         'foo.values[...] = bar'."""
         assert isinstance(item, NamedDimArray), "Item on RHS of assignment must be a NamedDimArray"
-        slice_obj = self.sub_array_handler(keys)
+        slice_obj = self._sub_array_handler(keys)
         self.values[slice_obj.ids] = item.sum_values_to(slice_obj.dim_letters)
         return
 
@@ -367,7 +367,7 @@ class SubArrayHandler:
     def __init__(self, named_dim_array: NamedDimArray, definition):
         self.nda = named_dim_array
         self._get_def_dict(definition)
-        self.invalid_nda = any(is_iterable(v) for v in self.def_dict.values())
+        self.invalid_nda = any(_is_iterable(v) for v in self.def_dict.values())
         self._init_dims_out()
         self._init_ids()
 
@@ -423,7 +423,7 @@ class SubArrayHandler:
         for letter, value in self.def_dict.items():
             if isinstance(value, Dimension):
                 self.dims_out.replace(letter, value, inplace=True)
-            elif not is_iterable(value):
+            elif not _is_iterable(value):
                 self.dims_out.drop(letter, inplace=True)
 
     @property
@@ -465,7 +465,7 @@ class SubArrayHandler:
                 raise ValueError(
                     "Dimension item given in array index must be a subset of the dimension it replaces"
                 )
-        elif is_iterable(item_or_items):
+        elif _is_iterable(item_or_items):
             items_ids = [self._get_single_item_id(dim_letter, item) for item in item_or_items]
         else:
             items_ids = self._get_single_item_id(dim_letter, item_or_items)  # single item

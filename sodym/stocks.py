@@ -28,7 +28,7 @@ class Stock(PydanticBaseModel):
     inflow: Optional[StockArray] = None
     outflow: Optional[StockArray] = None
     name: str
-    process: Process
+    process: Optional[Process] = None
 
     @abstractmethod
     def compute(self):
@@ -36,10 +36,12 @@ class Stock(PydanticBaseModel):
 
     @property
     def shape(self) -> tuple:
+        """Shape of the stock, inflow, outflow arrays, defined by the dimensions."""
         return self.stock.dims.shape()
 
     @property
     def process_id(self) -> int:
+        """ID of the process the stock is associated with."""
         return self.process.id
 
     def to_stock_type(self, desired_stock_type: type, **kwargs):
@@ -84,22 +86,23 @@ class DynamicStockModel(Stock):
     """
 
     survival_model: SurvivalModel
+    """Survival model, which contains the lifetime distribution function."""
 
     @property
-    def n_t(self) -> int:
+    def _n_t(self) -> int:
         return list(self.shape)[0]
 
     @property
-    def shape_cohort(self) -> tuple:
-        return (self.n_t,) + self.shape
+    def _shape_cohort(self) -> tuple:
+        return (self._n_t,) + self.shape
 
     @property
-    def shape_no_t(self) -> tuple:
+    def _shape_no_t(self) -> tuple:
         return tuple(list(self.shape)[1:])
 
     @property
-    def t_diag_indices(self) -> tuple:
-        return np.diag_indices(self.n_t) + (slice(None),) * len(self.shape_no_t)
+    def _t_diag_indices(self) -> tuple:
+        return np.diag_indices(self._n_t) + (slice(None),) * len(self._shape_no_t)
 
 
 class InflowDrivenDSM(DynamicStockModel):
@@ -108,6 +111,7 @@ class InflowDrivenDSM(DynamicStockModel):
     """
 
     inflow: StockArray
+    """inflow array, with dimensions inflow time and other dimensions."""
 
     @property
     def shape(self) -> tuple:
@@ -139,10 +143,10 @@ class InflowDrivenDSM(DynamicStockModel):
 
     def compute_outflow_by_cohort(self, stock_by_cohort) -> np.ndarray:
         """Compute outflow by cohort from changes in the stock by cohort and the known inflow."""
-        outflow_by_cohort = np.zeros(self.shape_cohort)
+        outflow_by_cohort = np.zeros(self._shape_cohort)
         outflow_by_cohort[1:, :, ...] = -np.diff(stock_by_cohort, axis=0)
         # allow for outflow in year 0 already
-        outflow_by_cohort[self.t_diag_indices] = self.inflow.values - np.moveaxis(
+        outflow_by_cohort[self._t_diag_indices] = self.inflow.values - np.moveaxis(
             stock_by_cohort.diagonal(0, 0, 1), -1, 0
         )
         return outflow_by_cohort
@@ -154,6 +158,7 @@ class StockDrivenDSM(DynamicStockModel):
     """
 
     stock: StockArray
+    """The amount on the stock in a given time step, with dimensions time and other dimensions."""
 
     def compute(self):
         """Determine inflows and outflows and store values in the class instance."""
@@ -171,8 +176,8 @@ class StockDrivenDSM(DynamicStockModel):
     def compute_inflow_and_outflow(self, do_correct_negative_inflow=False) -> tuple[np.ndarray]:
         """With given total stock and lifetime distribution,
         the method builds the stock by cohort and the inflow."""
-        stock_by_cohort = np.zeros(self.shape_cohort)
-        outflow_by_cohort = np.zeros(self.shape_cohort)
+        stock_by_cohort = np.zeros(self._shape_cohort)
+        outflow_by_cohort = np.zeros(self._shape_cohort)
         inflow = np.zeros(self.shape)
         sf = self.survival_model.sf
         # construct the sf of a product of cohort tc remaining in the stock in year t
@@ -182,7 +187,7 @@ class StockDrivenDSM(DynamicStockModel):
         stock_by_cohort[:, 0, ...] = inflow[0, ...] * sf[:, 0, ...]
         outflow_by_cohort[0, 0, ...] = inflow[0, ...] - stock_by_cohort[0, 0, ...]
         # all other years:
-        for m in range(1, self.n_t):  # for all years m, starting in second year
+        for m in range(1, self._n_t):  # for all years m, starting in second year
             # 1) Compute outflow from previous age-cohorts up to m-1
             # outflow table is filled row-wise, for each year m.
             outflow_by_cohort[m, 0:m, ...] = (

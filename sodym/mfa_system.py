@@ -46,10 +46,24 @@ class MFASystem(PydanticBaseModel):
     model_config = ConfigDict(protected_namespaces=(), extra="allow")
 
     dims: DimensionSet
+    """All dimensions that appear in the MFA system."""
     parameters: Dict[str, Parameter]
+    """The parameters of the MFA system,
+    as a dictionary mapping the names of the MFA system parameters to the parameters themselves.
+    """
     processes: Dict[str, Process]
+    """The processes of the MFA system, i.e. the nodes of the MFA system graph,
+    as a dictionary mapping the names of the MFA system processes to the processes themselves.
+    """
     flows: Dict[str, Flow]
+    """The flows of the MFA system, i.e. the edges of the MFA system graph,
+    as a dictionary mapping the names of the MFA system flows to the flows themselves.
+    """
     stocks: Optional[Dict[str, Stock]] = {}
+    """The stocks of the MFA system,
+    as a dictionary mapping the names of the MFA system stocks to the stocks themselves.
+    """
+
 
     @classmethod
     def from_data_reader(cls, definition: MFADefinition, data_reader: DataReader):
@@ -139,16 +153,23 @@ class MFASystem(PydanticBaseModel):
         return cls.from_data_reader(definition, data_reader)
 
     def compute(self):
-        """Perform all computations for the MFA system."""
+        """Perform all computations for the MFA system.
+        This method must be implemented in a subclass of MFASystem.
+        """
         raise NotImplementedError(
             "The compute method must be implemented in a subclass of MFASystem if it is to be used."
         )
 
-    def get_new_array(self, **kwargs) -> NamedDimArray:
-        dims = self.dims.get_subset(kwargs["dim_letters"]) if "dim_letters" in kwargs else self.dims
+    def get_new_array(self, dim_letters: tuple=None, **kwargs) -> NamedDimArray:
+        """get a new NamedDimArray object.
+
+        :param dim_letters: tuple of dimension letters to include in the new NamedDimArray. If None, all dimensions are included.
+        :param kwargs: keyword arguments to pass to the NamedDimArray constructor.
+        """
+        dims = self.dims.get_subset(dim_letters)
         return NamedDimArray(dims=dims, **kwargs)
 
-    def get_mass_contributions(self):
+    def _get_mass_contributions(self):
         """List all contributions to the mass balance of each process:
         - all flows entering are positive
         - all flows leaving are negative
@@ -174,32 +195,32 @@ class MFASystem(PydanticBaseModel):
 
         return contributions
 
-    def get_mass_balance(self, contributions: dict = {}):
+    def _get_mass_balance(self, contributions: dict = {}):
         """Calculate the mass balance for each process, by summing the contributions.
         The sum returns a :py:class:`sodym.NamedDimArray`,
         with the dimensions common to all contributions.
         """
         if not contributions:
-            contributions = self.get_mass_contributions()
+            contributions = self._get_mass_contributions()
         return {p_name: sum(parts) for p_name, parts in contributions.items()}
 
-    def get_mass_totals(self, contributions: dict = {}):
+    def _get_mass_totals(self, contributions: dict = {}):
         """Calculate the total mass of a process by summing the absolute values of all
         the contributions.
         """
         if not contributions:
-            contributions = self.get_mass_contributions()
+            contributions = self._get_mass_contributions()
         return {
             p_name: sum([abs(part) for part in parts]) for p_name, parts in contributions.items()
         }
 
-    def get_relative_mass_balance(self, epsilon=1e-9):
+    def _get_relative_mass_balance(self, epsilon=1e-9):
         """Determines a relative mass balance for each process of the MFA system,
         by dividing the mass balances by the mass totals.
         """
-        mass_contributions = self.get_mass_contributions()
-        balances = self.get_mass_balance(contributions=mass_contributions)
-        totals = self.get_mass_totals(contributions=mass_contributions)
+        mass_contributions = self._get_mass_contributions()
+        balances = self._get_mass_balance(contributions=mass_contributions)
+        totals = self._get_mass_totals(contributions=mass_contributions)
 
         relative_balance = {
             p_name: (balances[p_name] / (totals[p_name] + epsilon)).values
@@ -212,7 +233,7 @@ class MFASystem(PydanticBaseModel):
         Throw an error if it isn't."""
 
         # returns array with dim [t, process, e]
-        relative_balance = self.get_relative_mass_balance()  # assume no error if total sum is 0
+        relative_balance = self._get_relative_mass_balance()  # assume no error if total sum is 0
         id_failed = {p_name: np.any(rb > tolerance) for p_name, rb in relative_balance.items()}
         messages_failed = [
             f"{p_name} ({np.max(relative_balance[p_name])*100:.2f}% error)"

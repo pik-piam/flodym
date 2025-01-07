@@ -73,9 +73,9 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
         return self
 
     def plot(self, save_path: str = None, do_show: bool = False):
-        self.fill_fig()
-        subplots_array, subplots_x_array = self.prepare_arrays()
-        self.plot_all_subplots(subplots_array, subplots_x_array)
+        self._fill_fig()
+        subplots_array, subplots_x_array = self._prepare_arrays()
+        self._plot_all_subplots(subplots_array, subplots_x_array)
         self.plot_legend()
         if self.title is not None:
             self.set_title()
@@ -85,14 +85,14 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
             self.show()
         return self.fig
 
-    def prepare_arrays(self) -> tuple[dict[str, NamedDimArray], dict[str, NamedDimArray]]:
-        self.get_x_array_like_value_array()
-        subplots_array = self.dict_of_slices(self.array, self.subplot_dim).values()
-        subplots_x_array = self.dict_of_slices(self.x_array, self.subplot_dim).values()
+    def _prepare_arrays(self) -> tuple[dict[str, NamedDimArray], dict[str, NamedDimArray]]:
+        self._get_x_array_like_value_array()
+        subplots_array = self._dict_of_slices(self.array, self.subplot_dim).values()
+        subplots_x_array = self._dict_of_slices(self.x_array, self.subplot_dim).values()
         return subplots_array, subplots_x_array
 
     @staticmethod
-    def dict_of_slices(array: NamedDimArray, dim_name_to_slice) -> dict[str, NamedDimArray]:
+    def _dict_of_slices(array: NamedDimArray, dim_name_to_slice) -> dict[str, NamedDimArray]:
         if dim_name_to_slice is not None:
             slice_letter = array.dims[dim_name_to_slice].letter
             return array.split(slice_letter)
@@ -100,21 +100,21 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
             return {None: array}
 
     @property
-    def dims_after_slice(self):
+    def _dims_after_slice(self):
         original_dims = self.array.dims.letters
         dims_removed = [d for d, v in self.slice_dict.items() if not isinstance(v, (list, tuple))]
         return [d for d in original_dims if d not in dims_removed]
 
-    def plot_all_subplots(self, subplotlist_array, subplotlist_x_array):
+    def _plot_all_subplots(self, subplotlist_array, subplotlist_x_array):
         for i_subplot, (array_subplot, x_array_subplot) in enumerate(
             zip(subplotlist_array, subplotlist_x_array)
         ):
-            self.plot_subplot(i_subplot=i_subplot, array=array_subplot, x_array=x_array_subplot)
-            self.label_subplot(i_subplot=i_subplot)
+            self._plot_subplot(i_subplot=i_subplot, array=array_subplot, x_array=x_array_subplot)
+            self._label_subplot(i_subplot=i_subplot)
 
-    def fill_fig(self):
+    def _fill_fig(self):
         if self.fig is not None:  # already filled from input argument
-            self.nx, self.ny = self.get_nx_ny()
+            self.nx, self.ny = self._get_nx_ny()
             self.subplot_titles = None
             return
         if self.subplot_dim is None:
@@ -130,7 +130,7 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
             ]
         self.fig = self.get_fig()
 
-    def get_x_array_like_value_array(self):
+    def _get_x_array_like_value_array(self):
         if self.x_array is None:
             x_dim_obj = self.array.dims[self.intra_line_dim]
             x_dimset = DimensionSet(dim_list=[x_dim_obj])
@@ -139,9 +139,9 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
             )
         self.x_array = self.x_array.cast_to(self.array.dims)
 
-    def plot_subplot(self, i_subplot: int, array: NamedDimArray, x_array: NamedDimArray):
-        linedict_array = self.dict_of_slices(array, self.linecolor_dim)
-        linedict_x_array = self.dict_of_slices(x_array, self.linecolor_dim)
+    def _plot_subplot(self, i_subplot: int, array: NamedDimArray, x_array: NamedDimArray):
+        linedict_array = self._dict_of_slices(array, self.linecolor_dim)
+        linedict_x_array = self._dict_of_slices(x_array, self.linecolor_dim)
         for i_line, (array_line, x_array_line, name_line) in enumerate(
             zip(linedict_array.values(), linedict_x_array.values(), linedict_array.keys())
         ):
@@ -152,7 +152,7 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
             )
             self.add_line(i_subplot, x_array_line.values, array_line.values, label, i_line)
 
-    def label_subplot(self, i_subplot: int):
+    def _label_subplot(self, i_subplot: int):
         if self.subplot_titles is not None:
             self.set_subplot_title(i_subplot, self.subplot_titles[i_subplot])
         xlabel = self.xlabel if self.xlabel is not None else self.display_name(self.x_array.name)
@@ -162,7 +162,7 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
         if ylabel != "unnamed":
             self.set_ylabel(i_subplot, ylabel)
 
-    def index2d(self, i_subplot):
+    def _index2d(self, i_subplot):
         return i_subplot // self.nx, i_subplot % self.nx
 
     @abstractmethod
@@ -174,7 +174,7 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
         raise NotImplementedError
 
     @abstractmethod
-    def get_nx_ny(self):
+    def _get_nx_ny(self):
         raise NotImplementedError
 
     @abstractmethod
@@ -209,6 +209,9 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
 class PyplotArrayPlotter(ArrayPlotter):
 
     fig: plt.Figure = None
+    """A previously created pyplot figure object, for adding lines to an existing figure.
+    If None, a new figure is created.
+    """
 
     def save(self, save_path: str = None):
         self.fig.savefig(save_path)
@@ -220,7 +223,7 @@ class PyplotArrayPlotter(ArrayPlotter):
         fig, _ = plt.subplots(self.nx, self.ny)
         return fig
 
-    def get_nx_ny(self):
+    def _get_nx_ny(self):
         return self.ax.shape
 
     def set_xlabel(self, i_subplot, label):
@@ -250,6 +253,9 @@ class PyplotArrayPlotter(ArrayPlotter):
 class PlotlyArrayPlotter(ArrayPlotter):
 
     fig: go.Figure = None
+    """A previously created plotly figure object, for adding lines to an existing figure.
+    If None, a new figure is created.
+    """
 
     def save(self, save_path: str = None):
         self.fig.write_image(save_path)
@@ -261,25 +267,25 @@ class PlotlyArrayPlotter(ArrayPlotter):
         fig = make_subplots(self.nx, self.ny, subplot_titles=self.subplot_titles)
         return fig
 
-    def fill_fig(self):
-        super().fill_fig()
+    def _fill_fig(self):
+        super()._fill_fig()
         self.n_previous_lines = getattr(self.fig, "_n_lines_sodym", 0)
         n_current_lines = (
             len(self.array.dims[self.linecolor_dim].items) if self.linecolor_dim is not None else 1
         )
         self.fig._n_lines_sodym = self.n_previous_lines + n_current_lines
 
-    def get_nx_ny(self):
+    def _get_nx_ny(self):
         grid_ref = self.fig._validate_get_grid_ref()
         nrows = len(grid_ref)
         ncols = len(grid_ref[0])
         return ncols, nrows
 
     def row(self, i_subplot):
-        return self.index2d(i_subplot)[0] + 1
+        return self._index2d(i_subplot)[0] + 1
 
     def col(self, i_subplot):
-        return self.index2d(i_subplot)[1] + 1
+        return self._index2d(i_subplot)[1] + 1
 
     def set_xlabel(self, i_subplot, label):
         self.fig.update_xaxes(title_text=label, row=self.row(i_subplot), col=self.col(i_subplot))

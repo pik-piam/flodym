@@ -28,6 +28,8 @@ extensions = [
 exclude_patterns = []
 
 autodoc_pydantic_model_show_json = False
+autodoc_pydantic_field_list_validators = False
+autodoc_typehints = "description"
 
 suppress_warnings = ["config.cache"]
 
