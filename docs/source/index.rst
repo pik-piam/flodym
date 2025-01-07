@@ -3,37 +3,35 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-SODYM documentation
-=================================
 .. include:: ../../README.md
    :parser: myst_parser.sphinx_
+   :end-before: <!-- stop parsing here on readthedocs -->
 
-MFA model and components
-------------------------
 .. toctree::
-   :maxdepth: 1
+   :hidden:
+   :caption: Getting Started
 
-   sodym.mfa_system
-   sodym.mfa_definition
-   sodym.data_reader
-   sodym.dimension
-   sodym.named_dim_arrays
-   sodym.flow_helper
+   getting_started
 
-Stocks
-~~~~~~
 .. toctree::
-   :maxdepth: 1
+   :hidden:
+   :caption: Examples
 
-   sodym.stocks
-   sodym.stock_helper
-   sodym.survival_functions
+   examples
+   example1
+   example2
+   example3
+   example5
 
-Data writing and plotting
--------------------------
 .. toctree::
-   :maxdepth: 1
+   :hidden:
+   :caption: API Reference
 
-   sodym.export.data_writer
-   sodym.export.array_plotter
-   sodym.export.sankey
+   api.mfa_system
+   api.definitions
+   api.data_readers
+   api.dimensions
+   api.named_dim_arrays
+   api.processes
+   api.export_and_plotting
+   api.top_level_functions

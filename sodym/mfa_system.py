@@ -1,3 +1,8 @@
+"""Home to a base class for MFA systems.
+
+Specific MFA models can be built that inherit from this class.
+"""
+
 import logging
 from typing import Dict, Optional
 
@@ -6,9 +11,9 @@ from pydantic import BaseModel as PydanticBaseModel, ConfigDict
 
 from .mfa_definition import MFADefinition
 from .dimensions import DimensionSet
-from .named_dim_arrays import Flow, Process, Parameter, NamedDimArray
+from .named_dim_arrays import Flow, Parameter, NamedDimArray
 from .stocks import Stock
-from .process_helper import make_processes
+from .processes import Process, make_processes
 from .stock_helper import make_empty_stocks
 from .flow_helper import make_empty_flows
 from .data_reader import (
@@ -27,25 +32,15 @@ class MFASystem(PydanticBaseModel):
     For the concrete definition of the system, a subclass of MFASystem must be implemented.
 
     **Example**
-
     Define your MFA System:
 
-    >>> from sodym import MFASystem
-    >>> class CustomMFA(MFASystem):
-    >>>     def compute(self):
-    >>>         # do some computations on the CustomMFA attributes: stocks and flows
+        >>> from sodym import MFASystem
+        >>> class CustomMFA(MFASystem):
+        >>>     def compute(self):
+        >>>         # do some computations on the CustomMFA attributes: stocks and flows
 
-    Initialize and run your MFA System model:
-
-    >>> from sodym import ExampleDataReader
-    >>> data_reader = ExampleDataReader(dimension_datasets={...}, ...)
-    >>> dimension_definitions = [DimensionDefinition(name='time', letter='t', dtype=int), ...]
-    >>> dims = data_reader.read_dimensions(dimension_definitions)
-    >>> mfa = MFASystem(dim=dims, ...)
-    >>> mfa.compute()
-
-    MFA flows, stocks and parameters are defined as instances of subclasses of :py:class:`sodym.named_dim_arrays.NamedDimArray`.
-    Dimensions are managed with the :py:class:`sodym.dimensions.Dimension` and :py:class:`sodym.dimensions.DimensionSet`.
+    MFA flows, stocks and parameters are defined as instances of subclasses of :py:class:`sodym.NamedDimArray`.
+    Dimensions are managed with the :py:class:`sodym.Dimension` and :py:class:`sodym.DimensionSet`.
     """
 
     model_config = ConfigDict(protected_namespaces=(), extra="allow")
@@ -85,9 +80,9 @@ class MFASystem(PydanticBaseModel):
         """Define and set up the MFA system and load all required data from CSV files.
         Initialises stocks and flows with all zero values.
 
-        See :py:class:`sodym.data_reader.CSVDimensionReader`,
-        :py:class:`sodym.data_reader.CSVParameterReader`, and
-         format.
+        See :py:class:`sodym.CSVDimensionReader` and
+        :py:class:`sodym.CSVParameterReader`, and :py:meth:`sodym.NamedDimArray.from_df` for expected
+        format.
 
         :param definition: The MFA definition object
         :param dimension_files: A dictionary mapping dimension names to CSV files
@@ -119,9 +114,9 @@ class MFASystem(PydanticBaseModel):
         Initialises stocks and flows with all zero values.
         Builds a CompoundDataReader from Excel readers, and calls the from_data_reader class method.
 
-        See :py:class:`sodym.data_reader.ExcelDimensionReader`,
-        :py:class:`sodym.data_reader.ExcelParameterReader`, and
-         data format.
+        See :py:class:`sodym.ExcelDimensionReader`,
+        :py:class:`sodym.ExcelParameterReader`, and
+        :py:meth:`sodym.NamedDimArray.from_df` for expected format.
 
         :param definition: The MFA definition object
         :param dimension_files: A dictionary mapping dimension names to Excel files
@@ -181,7 +176,7 @@ class MFASystem(PydanticBaseModel):
 
     def get_mass_balance(self, contributions: dict = {}):
         """Calculate the mass balance for each process, by summing the contributions.
-        The sum returns a :py:class:`sodym.named_dim_arrays.NamedDimArray`,
+        The sum returns a :py:class:`sodym.NamedDimArray`,
         with the dimensions common to all contributions.
         """
         if not contributions:

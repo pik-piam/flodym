@@ -14,10 +14,10 @@ class Dimension(PydanticBaseModel):
 
     **Example**
 
-        >>> from sodym import Dimension
-        >>> regions = Dimension(name='Region', letter='r', items=['Earth', 'Moon', 'Sun'])
+    >>> from sodym import Dimension
+    >>> regions = Dimension(name='Region', letter='r', items=['Earth', 'Moon', 'Sun'])
 
-    The list of items can be loaded using a :py:class:`sodym.data_reader.DataReader` object,
+    The list of items can be loaded using a :py:class:`sodym.DataReader` object,
     or set directly, for example if a subset of an existing dimension is formed.
     """
 
@@ -39,14 +39,14 @@ class Dimension(PydanticBaseModel):
 
     @classmethod
     def from_df(cls, df: pd.DataFrame, definition: DimensionDefinition) -> "Dimension":
-        """Expects
+        """Create Dimension object from definition and a pandas DataFrame for the items.
 
         Args:
             df (pd.DataFrame): A single-column or single-row data frame, which is transformed to the dimension items.
             definition (DimensionDefinition): The definition of the dimension.
 
         Returns:
-            Dimension: _description_
+            Dimension: The dimension object.
         """
         data = df.to_numpy()
         return cls.from_np(data, definition)
@@ -100,7 +100,7 @@ class DimensionSet(PydanticBaseModel):
         >>> time = Dimension(name='Time', letter='t', items=[1990, 2000, 2010, 2020, 2030])
         >>> dimensions = DimensionSet([regions, time])
 
-    It is expected that DimensionSet instances are created via the :py:class:`sodym.data_reader.DataReader`.
+    It is expected that DimensionSet instances are created via the :py:class:`sodym.DataReader`.
 
         >>> from sodym import DataReader, DimensionDefinition, Dimension
         >>> class MyDataReader(DataReader):

@@ -1,11 +1,12 @@
 # sodym
+
 The sodym package provides key functionality for material flow analysis, including
 - the class `MFASystem` acting as a template (parent class) for users to create their own material flow models
 - the class `NamedDimArray` handling mathematical operations between multi-dimensional arrays
 - different classes like `DynamicStockModel` representing stocks accumulation, in- and outflows based on age cohort tracking and lifetime distributions. Those can be integrated in the `MFASystem`.
 - different options for data input and export, as well as visualization
 
-## Thanks
+# Thanks
 
 sodym is an adaptation of:
 
@@ -16,7 +17,7 @@ https://github.com/IndEcol/ODYM<br>
 
 The development of sodym was conducted within the TRANSIENCE project, grant number 101137606, funded by the European Commission within the Horizon Europe Research and Innovation Programme.
 
-## Installation
+# Installation
 
 sodym dependencies are managed with [pip](https://pypi.org/project/pip/).
 
@@ -30,11 +31,7 @@ dependencies, including those for running the tests, making the documentation, a
 
 Note that it is advisable to do this within a virtual environment.
 
-## Examples
-
-The notebooks in the [examples](examples) folder provide usage examples of the code.
-
-## Why choose sodym?
+# Why choose sodym?
 
 MFA models mainly consist on mathematical operations on different multi-dimensional arrays.
 
@@ -60,3 +57,10 @@ This gives a sodym-based MFA models the following properties:
 - **Versatility:** We offer different levels of sodym use: Users can choose to use the standard methods implemented for data read-in, system setup and visualization, or only use only some of the data types like `NamedDimArray`, and custom methods for the rest.
 - **Robustness:** Through the use of [Pydantic](https://docs.pydantic.dev/latest/), the setup of the system and data read-in are type-checked, highlighting errors early-on.
 - **Performance:** The use of numpy ndarrays ensures low model runtimes compared with dimension matching through pandas dataframes.
+
+ <!-- stop parsing here on readthedocs -->
+# Documentation
+
+See our readthedocs page for documentation!
+
+The notebooks in the [examples](examples) folder provide usage examples of the code.

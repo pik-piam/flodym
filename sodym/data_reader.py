@@ -1,7 +1,8 @@
+"""Home to some data readers."""
+
 from abc import ABC, abstractmethod
 import pandas as pd
 from typing import List, Dict
-import yaml
 
 from .named_dim_arrays import Parameter
 from .mfa_definition import DimensionDefinition, ParameterDefinition
@@ -14,20 +15,25 @@ class DataReader:
     """
 
     def read_dimensions(self, dimension_definitions: List[DimensionDefinition]) -> DimensionSet:
+        """Method to read data for multiple dimensions, by looping over `read_dimension`."""
         dimensions = [self.read_dimension(definition) for definition in dimension_definitions]
         return DimensionSet(dim_list=dimensions)
 
     @abstractmethod
     def read_dimension(self, dimension_definition: DimensionDefinition) -> Dimension:
+        """Required method to read data for a single dimension,
+        corresponding to the dimension definition."""
         pass
 
     @abstractmethod
     def read_parameter_values(self, parameter_name: str, dims: DimensionSet) -> Parameter:
+        """Required method to read data for a particular parameter."""
         pass
 
     def read_parameters(
         self, parameter_definitions: List[ParameterDefinition], dims: DimensionSet
     ) -> Dict[str, Parameter]:
+        """Method to read data for a list of parameters, by looping over `read_parameter_values`."""
         parameters = {}
         for parameter_definition in parameter_definitions:
             dim_subset = dims.get_subset(parameter_definition.dim_letters)
@@ -52,7 +58,7 @@ class CSVDimensionReader(DimensionReader):
 
     Args:
         dimension_files (dict): {dimension_name: file_path, ...}
-        **read_csv_kwargs: Additional keyword arguments passed to pandas.read_csv. The default is {"header": None}. Not encouraged to use, since it may not lead to the intended DataFrame format. Sticking to recommended csv file format is preferred.
+        read_csv_kwargs: Additional keyword arguments passed to pandas.read_csv. The default is {"header": None}. Not encouraged to use, since it may not lead to the intended DataFrame format. Sticking to recommended csv file format is preferred.
     """
 
     def __init__(
@@ -79,7 +85,7 @@ class ExcelDimensionReader(DimensionReader):
     Args:
         dimension_files (dict): {dimension_name: file_path, ...}
         dimension_sheets (dict): {dimension_name: sheet_name, ...}
-        **read_excel_kwargs: Additional keyword arguments passed to pandas.read_excel. The default is {"header": None}. Not encouraged to use, since it may not lead to the intended DataFrame format. Sticking to recommended excel file format is preferred.
+        ead_excel_kwargs: Additional keyword arguments passed to pandas.read_excel. The default is {"header": None}. Not encouraged to use, since it may not lead to the intended DataFrame format. Sticking to recommended excel file format is preferred.
     """
 
     def __init__(
@@ -117,11 +123,13 @@ class ParameterReader(ABC):
 
 
 class CSVParameterReader(ParameterReader):
-    """For expected format, see :py:class:`sodym.df_to_nda.DataFrameToNDADataConverter`
+    """Reads a csv file to a pandas data frame and calls :py:meth:`sodym.Parameter.from_df`.
+    Expects comma separation and no header, apart from optional column names.
+    For further detail on expected format, see :py:meth:`sodym.NamedDimArray.from_df`.
 
     Args:
         parameter_files (dict): {parameter_name: file_path, ...}
-        **read_csv_kwargs: Additional keyword arguments passed to pandas.read_csv. Not encouraged to use, since it may not lead to the intended DataFrame format. Sticking to recommended csv file format is preferred
+        read_csv_kwargs: Additional keyword arguments passed to pandas.read_csv. Not encouraged to use, since it may not lead to the intended DataFrame format. Sticking to recommended csv file format is preferred
     """
 
     def __init__(
@@ -141,12 +149,14 @@ class CSVParameterReader(ParameterReader):
 
 
 class ExcelParameterReader(ParameterReader):
-    """For expected format, see :py:class:`sodym.df_to_nda.DataFrameToNDADataConverter`
+    """Reads an excel file to a pandas data frame and calls :py:meth:`sodym.Parameter.from_df`.
+    Expects contiguous data starting in the upper left cell A1.
+    For further detail on expected format, see :py:meth:`sodym.NamedDimArray.from_df`.
 
     Args:
         parameter_files (dict): {parameter_name: file_path, ...}
         parameter_sheets (dict): {parameter_name: sheet_name, ...}
-        **read_excel_kwargs: Additional keyword arguments passed to pandas.read_excel. Not encouraged to use, since it may not lead to the intended DataFrame format. Sticking to recommended excel file format is preferred
+        read_excel_kwargs: Additional keyword arguments passed to pandas.read_excel. Not encouraged to use, since it may not lead to the intended DataFrame format. Sticking to recommended excel file format is preferred
     """
 
     def __init__(

@@ -1,9 +1,11 @@
+"""Home to various survival models, for use in dynamic stock modelling."""
+
 from abc import abstractmethod
 import numpy as np
 import scipy.stats
 
-from sodym.dimensions import DimensionSet
-from sodym.named_dim_arrays import NamedDimArray
+from .dimensions import DimensionSet
+from .named_dim_arrays import NamedDimArray
 
 
 class SurvivalModel:

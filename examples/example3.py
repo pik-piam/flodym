@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.6
+#       jupytext_version: 1.16.4
 #   kernelspec:
 #     display_name: .venv
 #     language: python
@@ -29,19 +29,20 @@
 # The model equations are as follows:
 #
 # First, we compute the outflow o_c(t,c) of each historic inflow/age-cohort i(c) in year t as
-# $ o\_c(t,c) = i(c) \cdot sf(t,c) $
+# $o\_c(t,c) = i(c) \cdot sf(t,c)$
 # where sf is the survival function of the age cohort, which is 1-cdf, see the [wikipedia page on the survival function](https://en.wikipedia.org/wiki/Survival_function).
 # The total outflow o(t) in a given year is then
-# $ o(t) = \sum_{c\leq t} o\_c(t,c) $
+# $o(t) = \sum_{c\leq t} o\_c(t,c)$
 # The mass balance leads to the stock change $dS$:
-# $ dS(t) = i(t) - o(t)$
+# $dS(t) = i(t) - o(t)$
 # And the stock finally is computed as
-# $ S(t) = \sum_{t'\leq t} ds(t') $
+# $S(t) = \sum_{t'\leq t} ds(t')$
 
 # %% [markdown]
 # ## 1. Load sodym and useful packages
 
 # %%
+import os
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -52,10 +53,10 @@ from sodym import (
     Dimension,
     DimensionSet,
     Parameter,
-    Process,
     StockArray,
 )
 from sodym.data_reader import DataReader
+from sodym.processes import Process
 from sodym.survival_functions import NormalSurvival
 from sodym.stocks import InflowDrivenDSM
 
@@ -107,12 +108,12 @@ class LittleDataReader(DataReader):
             items=data,
         )
 
-    def read_parameter_values(self, parameter: str, dims: DimensionSet) -> Parameter:
-        if parameter == "tau":
+    def read_parameter_values(self, parameter_name: str, dims: DimensionSet) -> Parameter:
+        if parameter_name == "tau":
             data = np.array(list(country_lifetimes.values()))
-        elif parameter == "sigma":
+        elif parameter_name == "sigma":
             data = np.array([0.3 * lifetime for lifetime in country_lifetimes.values()])
-        elif parameter == "inflow":
+        elif parameter_name == "inflow":
             multiindex = self.steel_consumption.set_index(["t", "r"])
             data = multiindex.unstack().values[:, :]
         return Parameter(dims=dims, values=data)
@@ -131,7 +132,7 @@ country_lifetimes = {
 }
 data_reader = LittleDataReader(
     country_lifetimes=country_lifetimes,
-    steel_consumption_file="example3_steel_consumption.xlsx",
+    steel_consumption_file=os.path.join("input_data", "example3_steel_consumption.xlsx"),
 )
 dimensions = data_reader.read_dimensions(dimension_definitions)
 parameters = data_reader.read_parameters(parameter_definitions, dimensions)
@@ -166,7 +167,7 @@ dynamic_stock.compute()
 stock_df = dynamic_stock.stock.to_df(dim_to_columns="Region")
 
 fig = px.line(stock_df, title="In-use stocks of steel")
-fig.show()
+fig.show(renderer="notebook")
 
 # %% [markdown]
 # We then plot the ratio of outflow over inflow, which is a measure of the stationarity of a stock, and can be interpreted as one indicator for a circular economy.
@@ -178,7 +179,7 @@ with np.errstate(divide="ignore"):
     ratio_df = (outflow / inflow).to_df(dim_to_columns="Region")
 
 fig = px.line(ratio_df, title="Ratio outflow:inflow")
-fig.show()
+fig.show(renderer="notebook")
 
 # %% [markdown]
 # We see that for the rich countries France and Canada the share has been steadily growing since WW2. Upheavals such as wars and major economic crises can also be seen, in particular for Hungary.

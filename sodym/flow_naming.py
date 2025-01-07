@@ -1,4 +1,4 @@
-from .named_dim_arrays import Process
+from .processes import Process
 
 
 def process_names_with_arrow(from_process: Process, to_process: Process) -> str:

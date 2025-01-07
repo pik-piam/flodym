@@ -5,6 +5,7 @@
 dist/
 docs/build
 docs/source/_autosummary
+docs/source/pictures
 poetry.lock
 uv.lock
 sodym.egg-info

@@ -1,3 +1,9 @@
+"""Home to definition classes.
+
+These are used when defining the MFA system, and can be used to check the input data
+and put it into ojects with the desired properties.
+"""
+
 import numpy as np
 from pydantic import (
     BaseModel as PydanticBaseModel,
@@ -15,9 +21,9 @@ class DimensionDefinition(PydanticBaseModel):
 
     **Examples**
 
-    >>> from sodym import DimensionDefinition
-    >>> time_definition = DimensionDefinition(name='Time', letter='t', dtype=int)
-    >>> region_definition = DimensionDefinition(name='Region', letter='r', dtype=str)
+        >>> from sodym import DimensionDefinition
+        >>> time_definition = DimensionDefinition(name='Time', letter='t', dtype=int)
+        >>> region_definition = DimensionDefinition(name='Region', letter='r', dtype=str)
     """
 
     model_config = ConfigDict(protected_namespaces=())
@@ -30,6 +36,8 @@ class DimensionDefinition(PydanticBaseModel):
 
 
 class DefinitionWithDimLetters(PydanticBaseModel):
+    """Base class for any definition that contains dimesnsion letters."""
+
     model_config = ConfigDict(protected_namespaces=())
 
     dim_letters: tuple
@@ -47,9 +55,9 @@ class FlowDefinition(DefinitionWithDimLetters):
 
     **Examples**
 
-    >>> from sodym import FlowDefinition
-    >>> flow_one = FlowDefinition(from_process_name='fabrication', to_process_name='use', dim_letters=('r', 't'))
-    >>> flow_two = FlowDefinition(from_process_name='use', to_process_name='end_of_life', dim_letters=('r', 't'))
+        >>> from sodym import FlowDefinition
+        >>> flow_one = FlowDefinition(from_process_name='fabrication', to_process_name='use', dim_letters=('r', 't'))
+        >>> flow_two = FlowDefinition(from_process_name='use', to_process_name='end_of_life', dim_letters=('r', 't'))
 
     These are then used in the :py:class:MFADefinition, for creating a custom MFA System.
     """

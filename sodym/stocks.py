@@ -1,14 +1,20 @@
+"""Home to various `Stock` classes,
+including flow-driven stocks and dynamic (lifetime-based) stocks.
+"""
+
 from abc import abstractmethod
 import numpy as np
 from pydantic import BaseModel as PydanticBaseModel, ConfigDict
 from typing import Optional
+
+from .processes import Process
 from .survival_functions import SurvivalModel
-from .named_dim_arrays import StockArray, Process
+from .named_dim_arrays import StockArray
 
 
 class Stock(PydanticBaseModel):
     """Stock objects are components of an MFASystem, where materials can accumulate over time.
-    They consist of three :py:class:`sodym.named_dim_arrays.NamedDimArray` objects:
+    They consist of three :py:class:`sodym.NamedDimArray` objects:
     stock (the accumulation), inflow, outflow.
 
     The base class only allows to compute the stock from known inflow and outflow.

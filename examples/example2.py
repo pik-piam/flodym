@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.6
+#       jupytext_version: 1.16.4
 #   kernelspec:
 #     display_name: .venv
 #     language: python
@@ -27,14 +27,14 @@
 # <img src="pictures/SteelAlloyElementsWasteMgt.png" width="554" height="490" alt="Simple MFA system">
 #
 # The model equations are as follows:
-# * $F_{1\_3}(t,e) = \Gamma_1(e) \cdot F_{0\_1}(t,e) $ (shredder yield factor)
-# * $F_{1\_0}(t,e) = (1 - \Gamma_1(e)) \cdot F_{0\_1}(t,e) $ (mass balance)
+# * $F_{1\_3}(t,e) = \Gamma_1(e) \cdot F_{0\_1}(t,e)$ (shredder yield factor)
+# * $F_{1\_0}(t,e) = (1 - \Gamma_1(e)) \cdot F_{0\_1}(t,e)$ (mass balance)
 #
-# * $F_{2\_3}(t,e) = \Gamma_2(e) \cdot F_{0\_2}(t,e) $ (demolition yield factor)
-# * $F_{2\_4}(t,e) = (1 - \Gamma_2(e)) \cdot F_{0\_2}(t,e) $ (mass balance)
+# * $F_{2\_3}(t,e) = \Gamma_2(e) \cdot F_{0\_2}(t,e)$ (demolition yield factor)
+# * $F_{2\_4}(t,e) = (1 - \Gamma_2(e)) \cdot F_{0\_2}(t,e)$ (mass balance)
 #
-# * $F_{3\_0}(t,e) = \Gamma_3(e) \cdot (F_{1\_3}(t,e)+F_{2\_3}(t,e)) $ (remelting yield factor)
-# * $F_{3\_5}(t,e) = (1 - \Gamma_3(e)) \cdot (F_{1\_3}(t,e)+F_{2\_3}(t,e)) $ (mass balance)
+# * $F_{3\_0}(t,e) = \Gamma_3(e) \cdot (F_{1\_3}(t,e)+F_{2\_3}(t,e))$ (remelting yield factor)
+# * $F_{3\_5}(t,e) = (1 - \Gamma_3(e)) \cdot (F_{1\_3}(t,e)+F_{2\_3}(t,e))$ (mass balance)
 #
 # Here the index letters t denote the model time and e the chemical element.
 
@@ -42,27 +42,20 @@
 # ## 1. Load sodym and other useful packages
 
 # %%
+import os
 from copy import deepcopy
 import numpy as np
-import pandas as pd
 
-from sodym.data_reader import DataReader
 from sodym import (
+    MFADefinition,
     DimensionDefinition,
-    Dimension,
-    DimensionSet,
     ParameterDefinition,
-    Parameter,
-    Process,
     FlowDefinition,
     StockDefinition,
     MFASystem,
     NamedDimArray,
 )
-from sodym.flow_helper import make_empty_flows
-from sodym.stock_helper import make_empty_stocks
-from sodym.flow_naming import process_names_with_arrow
-from sodym.export.array_plotter import PlotlyArrayPlotter
+from sodym.export import PlotlyArrayPlotter
 
 # %% [markdown]
 # ## 2. Define the data requirements, flows, stocks and MFA system equations
@@ -94,7 +87,6 @@ process_names = [
     "landfills",
     "slag piles",
 ]
-processes = {name: Process(name=name, id=index) for index, name in enumerate(process_names)}
 
 # %%
 flow_definitions = [
@@ -144,6 +136,13 @@ stock_definitions = [
     ),
 ]
 
+mfa_definition = MFADefinition(
+    dimensions=dimension_definitions,
+    parameters=parameter_definitions,
+    processes=process_names,
+    flows=flow_definitions,
+    stocks=stock_definitions,
+)
 
 # %% [markdown]
 #
@@ -184,70 +183,19 @@ class SimpleMFA(MFASystem):
 
 
 # %% [markdown]
-# ## 3. Load data and initialise flows and stocks
-# Now that we have defined the MFA system and know what data we need, we can load the data.
-# Even though this is only a small system, we will load the data from excel files, as an example for more complex systems with larger datasets. To do this data loading, we define a DataReader class. Such a class can be reused with different datasets of the same format by passing attributes, e.g. data paths, in the init function.
-#
-# The methods `read_dimensions` and `read_parameters` are already defined in the parent DataReader class, and loop over the methods `read_dimension` and `read_parameter_values` that we specify for our usecase here.
-
-
-# %%
-class CustomDataReader(DataReader):
-    def __init__(self, path_to_time_parameters, path_to_element_parameters):
-        self.time_parameters = pd.read_excel(path_to_time_parameters, index_col=0)
-        self.element_parameters = pd.read_excel(path_to_element_parameters, index_col=0)
-
-    def read_dimension(self, dimension_definition: DimensionDefinition) -> Dimension:
-        if dimension_definition.letter == "t":
-            data = list(self.time_parameters.index)
-        elif dimension_definition.letter == "e":
-            data = list(self.element_parameters.index)
-        return Dimension(
-            name=dimension_definition.name,
-            letter=dimension_definition.letter,
-            items=data,
-        )
-
-    def read_parameter_values(self, parameter: str, dims: DimensionSet) -> Parameter:
-        if dims.letters == ("t",):
-            data = self.time_parameters[parameter].values
-        elif dims.letters == ("e",):
-            data = self.element_parameters[parameter].values
-        return Parameter(dims=dims, values=data)
-
-
-# %%
-data_reader = CustomDataReader(
-    path_to_time_parameters="example2_temporal_parameters.xlsx",
-    path_to_element_parameters="example2_material_parameters.xlsx",
-)
-dimensions = data_reader.read_dimensions(dimension_definitions)
-parameters = data_reader.read_parameters(parameter_definitions, dims=dimensions)
-
-# %%
-flows = make_empty_flows(
-    processes=processes,
-    flow_definitions=flow_definitions,
-    dims=dimensions,
-    naming=process_names_with_arrow,
-)
-
-# %%
-stocks = make_empty_stocks(
-    stock_definitions, dims=dimensions, processes=processes
-)  # flow-driven stock objects
-
-# %% [markdown]
 # ## 4. Put the pieces together
 # Create a SimpleMFA instance by passing the loaded dimension and parameter data, as well as the initialised flow and stock objects. Solve the system equations by running the `compute` method.
 
 # %%
-mfa_example = SimpleMFA(
-    dims=dimensions,
-    processes=processes,
-    parameters=parameters,
-    flows=flows,
-    stocks=stocks,
+dimension_file = os.path.join("input_data", "example2_dimensions.xlsx")
+parameter_file = os.path.join("input_data", "example2_parameters.xlsx")
+
+mfa_example = SimpleMFA.from_excel(
+    definition=mfa_definition,
+    dimension_files={d.name: dimension_file for d in dimension_definitions},
+    parameter_files={p.name: parameter_file for p in parameter_definitions},
+    dimension_sheets={d.name: d.name for d in dimension_definitions},
+    parameter_sheets={p.name: p.name for p in parameter_definitions},
 )
 mfa_example.compute()
 
@@ -272,8 +220,7 @@ fig = plotter.plot(do_show=True)
 
 
 # %%
-remelted_shares = NamedDimArray(dims=remelted.dims)
-remelted_shares[...] = remelted / remelted.sum_nda_over(("e",))
+remelted_shares = remelted.get_shares_over(("e",))
 
 plotter = PlotlyArrayPlotter(
     array=remelted_shares,
@@ -312,38 +259,18 @@ fig = plotter.plot(do_show=True)
 #
 
 # %%
-parameters_a = deepcopy(parameters)
-parameters_a["shredder yield"].set_values(np.array([0.92, 0.075, 0.92]))
-
-mfa_example_a = SimpleMFA(
-    dims=dimensions,
-    processes=processes,
-    parameters=parameters_a,
-    flows=deepcopy(flows),
-    stocks=deepcopy(stocks),
-)
+mfa_example_a = deepcopy(mfa_example)
+mfa_example_a.parameters["shredder yield"].set_values(np.array([0.92, 0.075, 0.92]))
 mfa_example_a.compute()
+shares_shredder = mfa_example_a.flows["remelting => sysenv"].get_shares_over(("e"))
 
 # %%
-parameters_b = deepcopy(parameters)
-parameters_b["eol buildings"][...] = 1.25 * parameters_b["eol buildings"]
-
-mfa_example_b = SimpleMFA(
-    dims=dimensions,
-    processes=processes,
-    parameters=parameters_b,
-    flows=deepcopy(flows),
-    stocks=deepcopy(stocks),
-)
+mfa_example_b = deepcopy(mfa_example)
+mfa_example_b.parameters["eol buildings"][...] *= 1.25
 mfa_example_b.compute()
+shares_demolition = mfa_example_b.flows["remelting => sysenv"].get_shares_over(("e"))
 
 # %%
-flow_a = mfa_example_a.flows["remelting => sysenv"]
-shares_shredder = flow_a / flow_a.sum_nda_over(("e"))
-
-flow_b = mfa_example_b.flows["remelting => sysenv"]
-shares_demolition = flow_b / flow_b.sum_nda_over(("e"))
-
 plotter = PlotlyArrayPlotter(
     array=remelted_shares,
     intra_line_dim="Time",

@@ -1,3 +1,5 @@
+"""Home to helper functions for working with `NamedDimArray`s."""
+
 from .named_dim_arrays import NamedDimArray
 from .dimensions import Dimension
 

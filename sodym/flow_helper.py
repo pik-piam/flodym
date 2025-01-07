@@ -1,6 +1,7 @@
 from typing import Callable
 
-from .named_dim_arrays import Process, Flow
+from .processes import Process
+from .named_dim_arrays import Flow
 from .dimensions import DimensionSet
 from .mfa_definition import FlowDefinition
 from .flow_naming import process_names_with_arrow

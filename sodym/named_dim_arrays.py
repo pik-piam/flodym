@@ -1,3 +1,8 @@
+"""The classes and methods defined here are building blocks for creating MFA systems.
+This includes the base `NamedDimArray` class and its helper the `SubArrayHandler`,
+as well as applications of the `NamedDimArray` for specific model components.
+"""
+
 from collections.abc import Iterable
 from copy import deepcopy
 from collections import defaultdict
@@ -6,6 +11,7 @@ import pandas as pd
 from pydantic import BaseModel as PydanticBaseModel, ConfigDict, model_validator
 from typing import Optional, Union
 
+from .processes import Process
 from .dimensions import DimensionSet, Dimension
 from .df_to_nda import DataFrameToNDADataConverter
 
@@ -50,7 +56,7 @@ class NamedDimArray(PydanticBaseModel):
     foo[keys] = bar or foo = bar[keys]. For details on the allowed values of 'keys', see the docstring of the
     SubArrayHandler class.
 
-    The dimensions of a NamedDimArray stored as a :py:class:`sodym.dimensions.DimensionSet` object in the 'dims' attribute.
+    The dimensions of a NamedDimArray stored as a :py:class:`sodym.DimensionSet` object in the 'dims' attribute.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, protected_namespaces=())
@@ -80,11 +86,16 @@ class NamedDimArray(PydanticBaseModel):
             )
 
     @classmethod
-    def from_dims_superset(cls, dims_superset: DimensionSet, dim_letters: tuple = None, **kwargs):
-        """
+    def from_dims_superset(
+        cls, dims_superset: DimensionSet, dim_letters: tuple = None, **kwargs
+    ) -> "NamedDimArray":
+        """Create a NamedDimArray object from a superset of dimensions, by specifying which
+        dimensions to take.
+
         Parameters:
             dims_superset: DimensionSet from which the objects dimensions are derived
             dim_letters: specify which dimensions to take from dims_superset
+            kwargs: additional keyword arguments passed to the NamedDimArray constructor
 
         Returns:
             cls instance
@@ -94,15 +105,32 @@ class NamedDimArray(PydanticBaseModel):
 
     @classmethod
     def from_df(cls, dims: DimensionSet, df: pd.DataFrame, **kwargs) -> "NamedDimArray":
+        """Create a NamedDimArray object from a DataFrame.
+
+        Parameters:
+            dims (DimensionSet): Dimensions of the NamedDimArray
+            df (DataFrame): pandas DataFrame containing the values of the NamedDimArray.
+                Dimensions of the named dim array can be given in DataFrame columns or the index.
+                The DataFrame can be in long or wide format, that is there can either be one value column,
+                or the value columns are named by items of one NDA dimension.
+                If dimension names are not given in the respective index or column, they are inferred from the
+                items of the dimensions of the NamedDimArray.
+                It is advisable to give the dimension names in the DataFrame, as this makes the error messages
+                more informative if there are typos in the items or if items are missing.
+                Ordering of rows and columns is arbitrary, but the items across each dimension must be given,
+                must be complete and exactly match those of the NamedDimArray.
+                Dimensions with only one item do not need to be given in the DataFrame.
+                Supersets of dimensions (i.e. additional values) will lead to an error.
+        """
         nda = cls(dims=dims, **kwargs)
         nda.set_values_from_df(df)
         return nda
 
-    def sub_array_handler(self, definition):
+    def sub_array_handler(self, definition) -> "SubArrayHandler":
         return SubArrayHandler(self, definition)
 
     @property
-    def shape(self):
+    def shape(self) -> tuple[int]:
         return self.dims.shape()
 
     def set_values(self, values: np.ndarray):
@@ -447,27 +475,6 @@ class SubArrayHandler:
         return self.nda.dims[dim_letter].items.index(item_name)
 
 
-class Process(PydanticBaseModel):
-    """Processes serve as nodes for the MFA system layout definition.
-    Flows are defined between two processes. Stocks are connected to a process.
-    Processes do not contain values themselves.
-
-    Processes get an ID by the order they are defined in the :py:attribute::`MFASystem.definition`.
-    The process with ID 0 necessarily contains everything outside the system boundary.
-    """
-
-    name: str
-    id: int
-
-    @model_validator(mode="after")
-    def check_id0(self):
-        if self.id == 0 and self.name != "sysenv":
-            raise ValueError(
-                "The process with ID 0 must be named 'sysenv', as it contains everything outside the system boundary."
-            )
-        return self
-
-
 class Flow(NamedDimArray):
     """The values of Flow objects are the main computed outcome of the MFA system.
     A Flow object connects two :py:class:`Process` objects.
@@ -477,13 +484,13 @@ class Flow(NamedDimArray):
 
     **Example**
 
-    >>> from sodym import DimensionSet, Flow, Process
-    >>> goods = Dimension(name='Good', letter='g', items=['Car', 'Bus', 'Bicycle'])
-    >>> time = Dimension(name='Time', letter='t', items=[1990, 2000, 2010, 2020, 2030])
-    >>> dimensions = DimensionSet([goods, time])
-    >>> fabrication = Process(name='fabrication', id=2)
-    >>> use = Process(name='use', id=3)
-    >>> flow = Flow(from_process='fabrication', to_process='use', dims=dimensions)
+        >>> from sodym import DimensionSet, Flow, Process
+        >>> goods = Dimension(name='Good', letter='g', items=['Car', 'Bus', 'Bicycle'])
+        >>> time = Dimension(name='Time', letter='t', items=[1990, 2000, 2010, 2020, 2030])
+        >>> dimensions = DimensionSet([goods, time])
+        >>> fabrication = Process(name='fabrication', id=2)
+        >>> use = Process(name='use', id=3)
+        >>> flow = Flow(from_process='fabrication', to_process='use', dims=dimensions)
 
     In the above example, we did not pass any values when initialising the Flow instance,
     and these would get filled with zeros.
@@ -508,15 +515,15 @@ class StockArray(NamedDimArray):
     """Stocks allow accumulation of material at a process, i.e. between two flows.
 
     StockArray inherits all its functionality from :py:class:`NamedDimArray`.
-    StockArray's are used in the :py:class:`sodym.stocks.Stock` for the inflow, outflow and stock.
+    StockArray's are used in the :py:class:`sodym.Stock` for the inflow, outflow and stock.
     """
 
     pass
 
 
 class Parameter(NamedDimArray):
-    """Parameter's can be used when defining the :py:meth:`sodym.mfa_system.MFASystem.compute` of a specific MFA system,
-    to quantify the links between specific :py:class:`sodym.stocks.Stock` and :py:class:`Flow` objects,
+    """Parameter's can be used when defining the :py:meth:`sodym.MFASystem.compute` of a specific MFA system,
+    to quantify the links between specific :py:class:`sodym.Stock` and :py:class:`Flow` objects,
     for example as the share of flows that go into one branch when the flow splits at a process.
 
     Parameter inherits all its functionality from :py:class:`NamedDimArray`.

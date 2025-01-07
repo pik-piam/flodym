@@ -25,16 +25,6 @@ class DataFrameToNDADataConverter:
     Usually not called by the user, but from within the NamedDimArray from_df and
     set_values_from_df methods.
 
-    Dimensions of the named dim array can be given in DataFrame columns or the index.
-    The DataFrame can be in long or wide format, i.e. there can either be one values column,
-    or the value columns are named by items of one NDA dimension.
-    If dimension names are not given in the respective index or column, they are inferred from the
-    items of the dimensions of the NamedDimArray.
-    Ordering of rows and columns is arbitrary, but the items across each dimension must be given,
-    must be complete and exactly match those of the NamedDimArray.
-    Dimensions with only one item do not need to be given in the DataFrame.
-    Supersets of dimensions (i.e. additional values) will lead to an error.
-
     In case of errors, turning on debug logging might help to understand the process.
     """
 

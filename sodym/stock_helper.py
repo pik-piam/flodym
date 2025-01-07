@@ -1,20 +1,32 @@
+"""Home to helper functions for the `Stock` class."""
+
 import logging
 from typing import Optional
+
+
+from .processes import Process
 from .survival_functions import (
+    SurvivalModel,
     FixedSurvival,
     FoldedNormalSurvival,
     NormalSurvival,
     LogNormalSurvival,
     WeibullSurvival,
 )
-from .named_dim_arrays import StockArray, Parameter, Process
+from .named_dim_arrays import StockArray, Parameter
 from .named_dim_array_helper import named_dim_array_stack
 from .dimensions import Dimension, DimensionSet
 from .mfa_definition import StockDefinition
 from .stocks import DynamicStockModel, InflowDrivenDSM, StockDrivenDSM, FlowDrivenStock, Stock
 
 
-def stock_stack(stocks: list[Stock], dimension: Dimension):
+def stock_stack(stocks: list[Stock], dimension: Dimension) -> FlowDrivenStock:
+    """Make a `FlowDrivenStock` object as a combination of `Stock` objects,
+    by combining them on a new dimension.
+    For example, we could have one stock for each material of interest, and
+    with this function we can combine them to a stock object that contains
+    information about all the materials.
+    """
     stacked_stock = named_dim_array_stack([stock.stock for stock in stocks], dimension=dimension)
     stacked_inflow = named_dim_array_stack([stock.inflow for stock in stocks], dimension=dimension)
     stacked_outflow = named_dim_array_stack(
@@ -29,7 +41,9 @@ def stock_stack(stocks: list[Stock], dimension: Dimension):
     )
 
 
-def make_empty_stock(stock_definition: StockDefinition, dims: DimensionSet, process: Process):
+def make_empty_stock(
+    stock_definition: StockDefinition, dims: DimensionSet, process: Process
+) -> FlowDrivenStock:
     """Initialises a FlowDrivenStock object with zero values for the stock, inflow and outflow.
     The stock, inflow and outflow have the specified dimensions,
     which ensures that when values are set later, the shape of the data is correct.
@@ -43,7 +57,7 @@ def make_empty_stock(stock_definition: StockDefinition, dims: DimensionSet, proc
 
 def make_empty_stocks(
     stock_definitions: list[StockDefinition], processes: dict[str, Process], dims: DimensionSet
-):
+) -> FlowDrivenStock:
     """Initialise empty FlowDrivenStock objects for each of the stocks listed in stock definitions."""
     empty_stocks = {}
     for stock_definition in stock_definitions:
@@ -99,7 +113,7 @@ def create_dynamic_stock(
         )
 
 
-def get_survival_model(ldf_type: str):
+def get_survival_model(ldf_type: str) -> SurvivalModel:
     """Provides a map whereby the user passes a string and a surival model (class, not instance)
     is returned."""
     survival_map = {
