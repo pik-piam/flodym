@@ -274,7 +274,7 @@ stock_diff
 #
 # We can see that the results from our inflow-driven dynamic stock model differ significantly from the data about vehicle stocks. One reason for this is the missing inflows for years before our model starts. In a next step, we extend the years back to 1990 and copy the inflow data (given by the `new_vehicle_registration` parameter) by region for each of these earlier years; assuming that the inflow stayed constant between 1990 and 2004.
 #
-# In addition to this and to answer our research questions, we will extend the timeseries out to 2050, with no more inflow afer 2017.
+# In addition to this and to answer our research questions, we will extend the timeseries out to 2050, with no more inflow after 2017.
 #
 # To make these changes in the model dimensions and parameters, we build on the `CustomDataReader` class defined above, extending the time dimension to earlier years, as well as extending the data for the `vehicle_new_registration` parameter, which is our only time-dependent parameter.
 

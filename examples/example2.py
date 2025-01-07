@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.6
+#       jupytext_version: 1.16.4
 #   kernelspec:
 #     display_name: .venv
 #     language: python
@@ -45,6 +45,7 @@
 import os
 from copy import deepcopy
 import numpy as np
+import plotly.io as pio
 
 from sodym import (
     MFADefinition,
@@ -53,14 +54,17 @@ from sodym import (
     FlowDefinition,
     StockDefinition,
     MFASystem,
-    NamedDimArray,
 )
 from sodym.export import PlotlyArrayPlotter
+
+# needed only for correct rendering on the readthedocs homepage
+pio.renderers.default = "browser"
 
 # %% [markdown]
 # ## 2. Define the data requirements, flows, stocks and MFA system equations
 #
-# We define the dimensions that are relevant for our system and the model parameters, processes, stocks and flows. We further define a class with our system equations in the compute method.
+# We define the dimensions that are relevant for our system and the model parameters, processes, stocks and flows.
+# We put it all together in an MFADefinition object.
 
 # %%
 dimension_definitions = [
@@ -136,6 +140,7 @@ stock_definitions = [
     ),
 ]
 
+# %%
 mfa_definition = MFADefinition(
     dimensions=dimension_definitions,
     parameters=parameter_definitions,
@@ -145,7 +150,7 @@ mfa_definition = MFADefinition(
 )
 
 # %% [markdown]
-#
+# We define a MFASystem subclass with our system equations in the compute method.
 # We just need to define the compute method with our system equations, as all the other things we need are inherited from the MFASystem class.  The flow names are generated from the processes each flow connects, in this case with the naming function `process_names_with_arrow`, which is passed to the flow initialization below.
 
 
@@ -183,8 +188,10 @@ class SimpleMFA(MFASystem):
 
 
 # %% [markdown]
-# ## 4. Put the pieces together
-# Create a SimpleMFA instance by passing the loaded dimension and parameter data, as well as the initialised flow and stock objects. Solve the system equations by running the `compute` method.
+# ## 4. Initialize the MFA system, load data and compute
+# We now have all the necessary information.
+# We load the data (dimension items and parameter values) from excel files and initialize the MFA system in one step.
+# We then execute the compute method to calculate the system.
 
 # %%
 dimension_file = os.path.join("input_data", "example2_dimensions.xlsx")
