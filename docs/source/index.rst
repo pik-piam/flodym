@@ -15,6 +15,20 @@
 
 .. toctree::
    :hidden:
+   :caption: HOWTOs
+
+   howto0.nblink
+   howto1.nblink
+   howto2.nblink
+   howto3.nblink
+   howto4.nblink
+   howto5.nblink
+   howto6.nblink
+   howto7.nblink
+   howto8.nblink
+
+.. toctree::
+   :hidden:
    :caption: Examples
 
    examples
@@ -34,4 +48,3 @@
    api.named_dim_arrays
    api.processes
    api.export_and_plotting
-   api.top_level_functions
