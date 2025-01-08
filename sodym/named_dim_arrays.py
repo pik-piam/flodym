@@ -20,13 +20,6 @@ def _is_iterable(arg):
     return isinstance(arg, Iterable) and not isinstance(arg, (str, Dimension))
 
 
-def _is_non_subset_dim(arg, other_dim):
-    if not isinstance(arg, Dimension):
-        return False
-    else:
-        return not arg.is_subset(other_dim)
-
-
 class NamedDimArray(PydanticBaseModel):
     """Parent class for an array with pre-defined dimensions, which are addressed by name. Operations between
     different multi-dimensional arrays can than be performed conveniently, as the dimensions are automatically matched.
@@ -62,8 +55,11 @@ class NamedDimArray(PydanticBaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True, protected_namespaces=())
 
     dims: DimensionSet
+    """Dimensions of the NamedDimArray."""
     values: Optional[Union[np.ndarray, np.generic]] = None
+    """Values of the NamedDimArray. Must have the same shape as the dimensions of the NamedDimArray. If None, an array of zeros is created."""
     name: Optional[str] = "unnamed"
+    """Name of the NamedDimArray."""
 
     @model_validator(mode="after")
     def validate_values(self):
@@ -121,6 +117,9 @@ class NamedDimArray(PydanticBaseModel):
                 must be complete and exactly match those of the NamedDimArray.
                 Dimensions with only one item do not need to be given in the DataFrame.
                 Supersets of dimensions (i.e. additional values) will lead to an error.
+
+        Returns:
+            NamedDimArray: NamedDimArray object with the values from the DataFrame
         """
         nda = cls(dims=dims, **kwargs)
         nda.set_values_from_df(df)
@@ -131,20 +130,46 @@ class NamedDimArray(PydanticBaseModel):
 
     @property
     def shape(self) -> tuple[int]:
+        """The shape of the array, determined by the dimensions."""
         return self.dims.shape()
 
     def set_values(self, values: np.ndarray):
+        """Set the values of the NamedDimArray and check if the shape is correct.
+
+        For safety reasons, using scalars or broadcasting smaller arrays is not allowed,
+        i.e. the shape of the values must match the shape of the NamedDimArray.
+
+        As a less safe but more flexible alternative, you can use e.g. nda.values[...] = 3.5 to set the values directly.
+        """
         self.values = values
         self._check_value_format()
 
     def sum_values(self):
+        """Return the sum of all values in the NamedDimArray."""
         return np.sum(self.values)
 
     def sum_values_over(self, sum_over_dims: tuple = ()):
+        """Return the sum of the NamedDimArray over a given tuple of dimensions.
+
+        Args:
+            sum_over_dims (tuple, optional): Tuple of dimension letters to sum over. If not given, no summation is performed and the values array is returned.
+
+        Returns:
+            np.ndarray: The partially summed values of the NamedDimArray.
+        """
+        sum_over_dims = self._tuple_to_letters(sum_over_dims)
         result_dims = (o for o in self.dims.letters if o not in sum_over_dims)
         return np.einsum(f"{self.dims.string}->{''.join(result_dims)}", self.values)
 
     def cast_values_to(self, target_dims: DimensionSet):
+        """Cast the values of the NamedDimArray to a new set of dimensions.
+
+        Args:
+            target_dims (DimensionSet): New dimensions to cast the values to. Must be given as a DimensionSet object, as the new dimensions are otherwise not known to the NamedDimArray object.
+
+        Returns:
+            np.ndarray: The values of the NamedDimArray cast to the new dimensions.
+        """
         assert all([d in target_dims.letters for d in self.dims.letters]), (
             "Target of cast must contain all "
             f"dimensions of the object! Source dims '{self.dims.string}' are not all contained in target dims "
@@ -164,14 +189,37 @@ class NamedDimArray(PydanticBaseModel):
         return values
 
     def cast_to(self, target_dims: DimensionSet):
+        """Cast the NamedDimArray to a new set of dimensions.
+
+        Args:
+            target_dims (DimensionSet): New dimensions to cast the NamedDimArray to. Must be given as a DimensionSet object, as the new dimensions are otherwise not known to the NamedDimArray object.
+
+        Returns:
+            NamedDimArray: The NamedDimArray cast to the new dimensions.
+        """
         return NamedDimArray(
             dims=target_dims, values=self.cast_values_to(target_dims), name=self.name
         )
 
     def sum_values_to(self, result_dims: tuple[str] = ()):
+        """Return the values of the NamedDimArray partially summed, such that only the dimensions given in the result_dims tuple are left.
+
+        Args:
+            result_dims (tuple, optional): Tuple of dimension letters to sum over. If not given, the sum over all dimensions is returned.
+        """
+        result_dims = self._tuple_to_letters(result_dims)
         return np.einsum(f"{self.dims.string}->{''.join(result_dims)}", self.values)
 
     def sum_nda_to(self, result_dims: tuple = ()):
+        """Return the NamedDimArray summed, such that only the dimensions given in the result_dims tuple are left.
+
+        Args:
+            result_dims (tuple, optional): Tuple of the dimensions to sum to. If not given, the sum over all dimensions is returned.
+
+        Returns:
+            NamedDimArray: NamedDimArray object with the summed values and the reduced dimensions.
+        """
+        result_dims = self._tuple_to_letters(result_dims)
         return NamedDimArray(
             dims=self.dims.get_subset(result_dims),
             values=self.sum_values_to(result_dims),
@@ -179,6 +227,15 @@ class NamedDimArray(PydanticBaseModel):
         )
 
     def sum_nda_over(self, sum_over_dims: tuple = ()):
+        """Return the NamedDimArray summed over a given tuple of dimensions.
+
+        Args:
+            sum_over_dims (tuple, optional): Tuple of dimension letters to sum over. If not given, no summation is performed and the NamedDimArray object is returned.
+
+        Returns:
+            NamedDimArray: NamedDimArray object with the summed values and the reduced dimensions.
+        """
+        sum_over_dims = self._tuple_to_letters(sum_over_dims)
         result_dims = tuple([d for d in self.dims.letters if d not in sum_over_dims])
         return NamedDimArray(
             dims=self.dims.get_subset(result_dims),
@@ -186,7 +243,44 @@ class NamedDimArray(PydanticBaseModel):
             name=self.name,
         )
 
-    def _prepare_other(self, other):
+    def _tuple_to_letters(self, dim_tuple: tuple) -> tuple:
+        """Ensure that an input dimension tuple is converted to a tuple of dimension letters,
+        if e.g. names or Dimension objects are given instead.
+
+        Args:
+            dim_tuple (tuple): Tuple of dimensions, which can be given as letters, names or Dimension objects.
+
+        Returns:
+            tuple: Tuple of dimension letters.
+        """
+        return tuple(self._get_dim_letter(item) for item in dim_tuple)
+
+    def _get_dim_letter(self, dim: Union[str, Dimension]) -> str:
+        """Get the letter of a dimension, given either the letter or the name of the dimension, or the Dimension object.
+
+        Args:
+            dim (Union[str, Dimension]): Dimension letter, name or object.
+
+        Returns:
+            str: Dimension letter.
+        """
+        if isinstance(dim, Dimension):
+            return dim.letter
+        elif isinstance(dim, str) and dim in self.dims:
+            return self.dims[dim].letter
+        else:
+            raise KeyError(f"Dimension {dim} not found in NamedDimArray dims.")
+
+    def _prepare_other(self, other: Union["NamedDimArray", int, float]) -> "NamedDimArray":
+        """If a math operation between a NamedDimArray and an int or float is performed, the int or float is converted to a NamedDimArray object.
+        The following operations are then performed between the two NamedDimArray objects.
+
+        Args:
+            other (Union[NamedDimArray, int, float]): The other object to perform the operation with.
+
+        Returns:
+            NamedDimArray: The other object converted to a NamedDimArray object.
+        """
         assert isinstance(other, (NamedDimArray, int, float)), (
             "Can only perform operations between two " "NamedDimArrays or NamedDimArray and scalar."
         )
@@ -289,12 +383,23 @@ class NamedDimArray(PydanticBaseModel):
         return
 
     def to_df(self, index: bool = True, dim_to_columns: str = None) -> pd.DataFrame:
+        """Export the NamedDimArray to a pandas DataFrame.
+
+        Args:
+            index (bool, optional): Whether to include the dimension items as a Multi-Index (True) or as columns of the DataFrame (False). Defaults to True.
+            dim_to_columns (str, optional): Name of the dimension the items of which are to form the columns of the DataFrame. If not given, the DataFrame is returned in long format with a single 'value' column.
+
+        Returns:
+            pd.DataFrame: DataFrame representation of the NamedDimArray.
+        """
         multiindex = pd.MultiIndex.from_product([d.items for d in self.dims], names=self.dims.names)
         df = pd.DataFrame({"value": self.values.flatten()})
         df = df.set_index(multiindex)
         if dim_to_columns is not None:
-            if dim_to_columns not in self.dims.names:
-                raise ValueError(f"Dimension name {dim_to_columns} not found in nda.dims.names")
+            if dim_to_columns not in self.dims:
+                raise ValueError(f"Dimension name {dim_to_columns} not found in nda.dims")
+            # transform to name, if given as letter
+            dim_to_columns = self.dims[dim_to_columns].name
             df.reset_index(inplace=True)
             index_names = [n for n in self.dims.names if n != dim_to_columns]
             df = df.pivot(index=index_names, columns=dim_to_columns, values="value")
@@ -303,6 +408,22 @@ class NamedDimArray(PydanticBaseModel):
         return df
 
     def set_values_from_df(self, df_in: pd.DataFrame):
+        """Set the values of the NamedDimArray from a pandas DataFrame.
+
+        Parameters:
+            df (DataFrame): pandas DataFrame containing the values of the NamedDimArray.
+                Dimensions of the named dim array can be given in DataFrame columns or the index.
+                The DataFrame can be in long or wide format, that is there can either be one value column,
+                or the value columns are named by items of one NDA dimension.
+                If dimension names are not given in the respective index or column, they are inferred from the
+                items of the dimensions of the NamedDimArray.
+                It is advisable to give the dimension names in the DataFrame, as this makes the error messages
+                more informative if there are typos in the items or if items are missing.
+                Ordering of rows and columns is arbitrary, but the items across each dimension must be given,
+                must be complete and exactly match those of the NamedDimArray.
+                Dimensions with only one item do not need to be given in the DataFrame.
+                Supersets of dimensions (i.e. additional values) will lead to an error.
+        """
         self.set_values(DataFrameToNDADataConverter(df_in, self).nda_values)
 
     def split(self, dim_letter: str) -> dict:
@@ -379,32 +500,32 @@ class SubArrayHandler:
         elif isinstance(definition, tuple):
             self.def_dict = self._to_dict_tuple(definition)
         else:
-            self.def_dict = self._to_dict_single_item(definition)
+            self.def_dict = {self._get_key_single_item(definition): definition}
 
-    def _to_dict_single_item(self, item):
+    def _get_key_single_item(self, item):
         if isinstance(item, slice):
             raise ValueError(
                 "Numpy indexing of NamedDimArrays is not supported. Details are given in the NamedDimArray class "
                 "docstring."
             )
-        dict_out = None
+        key = None
         for d in self.nda.dims:
             if item in d.items:
-                if dict_out is not None:
+                if key is not None:
                     raise ValueError(
                         f"Ambiguous slicing: Item '{item}' is found in multiple dimensions. Please specify the "
                         "dimension by using a slicing dict instead."
                     )
-                dict_out = {d.letter: item}
-        if dict_out is None:
+                key = d.letter
+        if key is None:
             raise ValueError(f"Slicing item '{item}' not found in any dimension.")
-        return dict_out
+        return key
 
     def _to_dict_tuple(self, slice_def) -> dict:
         dict_out = defaultdict(list)
         for item in slice_def:
-            key, value = self._to_dict_single_item(item)
-            dict_out[key].append(value)
+            key = self._get_key_single_item(item)
+            dict_out[key].append(item)
         # if there is only one item along a dimension, convert list to single item
         return {k: v if len(v) > 1 else v[0] for k, v in dict_out.items()}
 
@@ -500,14 +621,18 @@ class Flow(NamedDimArray):
     model_config = ConfigDict(protected_namespaces=())
 
     from_process: Process
+    """Process from which the flow originates."""
     to_process: Process
+    """Process to which the flow goes."""
 
     @property
     def from_process_id(self):
+        """ID of the process from which the flow originates."""
         return self.from_process.id
 
     @property
     def to_process_id(self):
+        """ID of the process to which the flow goes."""
         return self.to_process.id
 
 

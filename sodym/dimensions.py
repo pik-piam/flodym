@@ -148,11 +148,17 @@ class DimensionSet(PydanticBaseModel):
     def __getitem__(self, key) -> Dimension:
         """Get a dimension by its name, letter or index with the [] operator.
 
+        Args:
+            key (str, int, tuple): The name, letter or index of the dimension to get; If a tuple is passed, a subset of the dimensions is returned as a new DimensionSet.
+
         Example:
         >>> dimensions['Region']
         >>> dimensions['r']
         >>> dimensions[0]
+        >>> dimensions['Region', 'Time']
         """
+        if isinstance(key, tuple):
+            return self.get_subset(key)
         if isinstance(key, str):
             return self._dict[key]
         elif isinstance(key, int):
@@ -162,6 +168,9 @@ class DimensionSet(PydanticBaseModel):
 
     def __iter__(self) -> Iterator[Dimension]:
         return iter(self.dim_list)
+
+    def __contains__(self, key: str) -> bool:
+        return key in self._dict
 
     def size(self, key: str):
         """get the number of items in a dimension

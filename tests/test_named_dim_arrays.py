@@ -77,9 +77,8 @@ def test_sum_nda_to():
     assert_array_almost_equal(summed_over.values, summed_named_dim_array.values)
 
     # example sum over dimension that doesn't exist
-    nothing_changes = space_animals.sum_nda_over(sum_over_dims=("s"))
-    assert_array_almost_equal(nothing_changes.values, space_animals.values)
-    assert nothing_changes.dims == space_animals.dims
+    with pytest.raises(KeyError):
+        space_animals.sum_nda_over(sum_over_dims=("s"))
 
 
 def test_get_shares_over():
