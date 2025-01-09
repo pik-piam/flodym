@@ -3,9 +3,9 @@
 #
 # As you just saw, `DimensionSet` and `NamedDimArray` objects work without the `MFASystem` class.
 #
-# However, working with it brings a few advantages: 
-# - Having all attributes in one namespace, including the "parent" dimension set. 
-# - Integrated data read-in functions (see according HOWTO) 
+# However, working with it brings a few advantages:
+# - Having all attributes in one namespace, including the "parent" dimension set.
+# - Integrated data read-in functions (see according HOWTO)
 # - Some more export and plotting functions (see according HOWTO)
 # - A mass-balance check
 #
@@ -13,7 +13,7 @@
 #
 # ### Write your own subclass
 #
-# sodym has implemented the MFASystem class as a parent class, of which you can write your own subclass. 
+# sodym has implemented the MFASystem class as a parent class, of which you can write your own subclass.
 # We recommend implementing your own `compute` function, where the array operations are performed.
 #
 # Of course, this requires knowledge about the flows, stocks and parameters you intend to put in, which are described later.
@@ -21,19 +21,24 @@
 # %%
 from sodym import MFASystem
 
+
 class MyMFASystem(MFASystem):
 
     def compute(self):
 
-        self.flows["sysenv => process_a"][...] = self.parameters['extraction']
+        self.flows["sysenv => process_a"][...] = self.parameters["extraction"]
         product_flow = self.flows["sysenv => process_a"] * self.parameters["product_shares"]
-        self.flows["process_a => process_b"][...] = product_flow * self.parameters["process_a_yield"]
-        self.flows["process_a => sysenv"][...] = product_flow * (1. - self.parameters["process_a_yield"])
+        self.flows["process_a => process_b"][...] = (
+            product_flow * self.parameters["process_a_yield"]
+        )
+        self.flows["process_a => sysenv"][...] = product_flow * (
+            1.0 - self.parameters["process_a_yield"]
+        )
         self.flows["process_b => sysenv"][...] = self.flows["process_a => process_b"]
 
 
 # %% [markdown]
-# Of course, you can add further methods! 
+# Of course, you can add further methods!
 #
 # For example, you can add sub-methods, which you then call from the `compute()` method.
 
@@ -41,13 +46,13 @@ class MyMFASystem(MFASystem):
 #
 # ## Initialize an MFA System
 #
-# There are many different ways to initialize and MFA system. 
+# There are many different ways to initialize and MFA system.
 #
-# In this HOWTO, we only show the most direct one, where we create all needed attributes ourselves and pass them to the system. 
+# In this HOWTO, we only show the most direct one, where we create all needed attributes ourselves and pass them to the system.
 #
 # Other ways are shown in the "data input" HOWTO. They are actually recommended over the one presented here, as they make full use of the flexibility with regards to dimensions and dimension items in sodym.
 #
-# Let's prepare the attributes we need. We start with the dimensions: 
+# Let's prepare the attributes we need. We start with the dimensions:
 
 # %%
 from sodym import DimensionSet, Dimension, Flow, Parameter, Process
@@ -78,7 +83,7 @@ processes = {
 
 # %% [markdown]
 # We now set up the flows dictionary.
-# Normally, we do not initialize flows with values. 
+# Normally, we do not initialize flows with values.
 # Instead, their values enter their system through parameters, from which they are transferred to the flows.
 # This makes data input easier, if data is read from files. If you're writing your own data input, you can deviate from this, it's not a requirement.
 #
@@ -90,7 +95,7 @@ processes = {
 flows = {
     "sysenv => process_a": Flow(
         name="sysenv => process_a",
-        dims=dims['r', 't'],
+        dims=dims["r", "t"],
         from_process=processes["sysenv"],
         to_process=processes["process_a"],
     ),
@@ -108,7 +113,7 @@ flows = {
     ),
     "process_b => sysenv": Flow(
         name="process_b => sysenv",
-        dims=dims['r', 't'],
+        dims=dims["r", "t"],
         from_process=processes["process_b"],
         to_process=processes["sysenv"],
     ),
@@ -121,9 +126,13 @@ flows = {
 import numpy as np
 
 parameters = {
-    "extraction": Parameter(name="extraction", dims=dims["r", "t"], values=3.*np.ones((3, 1))),
-    "product_shares": Parameter(name="product_shares", dims=dims[("p",)], values=np.array([0.6, 0.4])),
-    "process_a_yield": Parameter(name="process_a_yield", dims=dims[("p",)], values=np.array([.8, .9])),
+    "extraction": Parameter(name="extraction", dims=dims["r", "t"], values=3.0 * np.ones((3, 1))),
+    "product_shares": Parameter(
+        name="product_shares", dims=dims[("p",)], values=np.array([0.6, 0.4])
+    ),
+    "process_a_yield": Parameter(
+        name="process_a_yield", dims=dims[("p",)], values=np.array([0.8, 0.9])
+    ),
 }
 
 # %% [markdown]
@@ -167,9 +176,9 @@ my_mfa_system.check_mass_balance()
 # %% [markdown]
 # ## Generate attributes from Definition objects
 #
-# As you saw, some of the attributes were a bit cumbersome to create. 
+# As you saw, some of the attributes were a bit cumbersome to create.
 #
-# sodym has definition objects, which store exactly the information you need to create them, and methods that take these definitions to produce the dictionaries. 
+# sodym has definition objects, which store exactly the information you need to create them, and methods that take these definitions to produce the dictionaries.
 #
 # For processes, all that's needed for definition is a list of names
 
@@ -190,22 +199,14 @@ processes = make_processes(process_names)
 from sodym import FlowDefinition
 
 flow_definitions = [
+    FlowDefinition(from_process_name="sysenv", to_process_name="process_a", dim_letters=("r", "t")),
     FlowDefinition(
-        from_process_name="sysenv",
-        to_process_name="process_a",
-        dim_letters=("r", "t")),
+        from_process_name="process_a", to_process_name="process_b", dim_letters=("r", "p", "t")
+    ),
     FlowDefinition(
-        from_process_name="process_a",
-        to_process_name="process_b",
-        dim_letters=("r", "p", "t")),
-    FlowDefinition(
-        from_process_name="process_a",
-        to_process_name="sysenv",
-        dim_letters=("r", "p", "t")),
-    FlowDefinition(
-        from_process_name="process_b",
-        to_process_name="sysenv",
-        dim_letters=("r", "t")),
+        from_process_name="process_a", to_process_name="sysenv", dim_letters=("r", "p", "t")
+    ),
+    FlowDefinition(from_process_name="process_b", to_process_name="sysenv", dim_letters=("r", "t")),
 ]
 
 # %% [markdown]
@@ -219,7 +220,7 @@ flows = make_empty_flows(processes=processes, flow_definitions=flow_definitions,
 print("Flow names:\n ", "\n  ".join(flows))
 
 # %% [markdown]
-# As you can see, the flow names were automatically created from the process names. 
+# As you can see, the flow names were automatically created from the process names.
 # If you don't like this, you can either choose a different naming function, write your own (not shown), or override the names in the `FlowDefinition` with the `name_override` attribute:
 
 # %%
@@ -229,7 +230,7 @@ from sodym.flow_naming import (
     # the default
     process_names_with_arrow,
     # not shown here. Good to generate valid file and variable names.
-    process_names_no_spaces
+    process_names_no_spaces,
 )
 
 # other naming function
@@ -247,7 +248,7 @@ flow_definitions_b = [
         from_process_name="sysenv",
         to_process_name="process_a",
         dim_letters=("r", "t"),
-        name_override="my_custom_name"
+        name_override="my_custom_name",
     )
 ]
 flows_b = make_empty_flows(
