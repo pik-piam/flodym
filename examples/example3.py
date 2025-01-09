@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.4
+#       jupytext_version: 1.16.6
 #   kernelspec:
 #     display_name: .venv
 #     language: python
@@ -65,7 +65,7 @@ from sodym.stocks import InflowDrivenDSM
 #
 # First, we specify the dimensions that are relevant to our system. These will get passed to our data reader class and thereby we can ensure that the data we are reading has the correct shape.
 #
-# Even though this is only a small system, we will load data from an excel file, as an example for more complex systems with larger datasets. 
+# Even though this is only a small system, we will load data from an excel file, as an example for more complex systems with larger datasets.
 # In this example, we'd like to keep the data in the same format as it was, so we define a data reader class to read the data and put it into the desired python objects. Such a class can be reused with different datasets of the same format by passing attributes, e.g. the file path, in the init function.
 
 # %%

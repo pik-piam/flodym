@@ -3,15 +3,15 @@
 #
 # ## Initializing arrays
 #
-# `NamedDimArray` objects require a `DimensionSet` at initialization. Optionally, a name can be given. 
+# `NamedDimArray` objects require a `DimensionSet` at initialization. Optionally, a name can be given.
 # If the values are not given, the array is initialized with zeros.
 #
-# There are several subclasses of `NamedDimArray`, often with little or no changes in functionality: 
-# See the API reference of `Flow`, `Parameter`, and `StockArray`. 
+# There are several subclasses of `NamedDimArray`, often with little or no changes in functionality:
+# See the API reference of `Flow`, `Parameter`, and `StockArray`.
 #
 # `Flow` object have to be passed the two `Process` objects they connect at initialization.
 #
-# In this HOWTO, only the `NamedDimArray` base class is used. 
+# In this HOWTO, only the `NamedDimArray` base class is used.
 #
 # Further options to initialize arrays are discussed in the HOWTO on data input.
 #
@@ -120,7 +120,7 @@ print("SUm with scalar:")
 show_array(sum_with_scalar)
 
 # %% [markdown]
-# ### Using just the `values` array 
+# ### Using just the `values` array
 #
 # When a mathematical operation is not implemented, you can still work with the `values` array manually, which is a numpy array. We recommend using either the numpy ellipsis slice `[...]` or the `NamedDimArray.set_values()` method, which both ensure keeping the correct shape of the array.
 
@@ -262,18 +262,18 @@ show_array(flow_b)
 # %% [markdown]
 # ## Operation rules summary
 #
-# Let's summarize here the rules for dimension handling: 
+# Let's summarize here the rules for dimension handling:
 #
 # - Additions and subtractions yield the set intersection of the two participating arrays.
 # - Multiplications and divisions yield the set union of the participating arrays.
 # - When setting the values of an existing array, the array on the right-hand side of the assignment is summed down to the dimensions of the left-hand side. Missing dimensions on the right-hand side will lead to an error
 # - Scalars are converted to an array of equal dimensions before the operation is performed.
 #
-# ### Caveat 
+# ### Caveat
 #
-# We found these rules to yield the right behavior in almost all cases. 
+# We found these rules to yield the right behavior in almost all cases.
 #
-# There are exceptions: When adding two dimensionless parameters with different dimensions, it may be intended that the dimensions of both inputs are still used.  
+# There are exceptions: When adding two dimensionless parameters with different dimensions, it may be intended that the dimensions of both inputs are still used.
 #
-# A sodym extension is planned to account for this. In the meantime, we advise to use the `NamedDimArray.cast_to()` method on the arrays before performing the operation. 
+# A sodym extension is planned to account for this. In the meantime, we advise to use the `NamedDimArray.cast_to()` method on the arrays before performing the operation.
 #
