@@ -237,7 +237,7 @@ class MFASystem(PydanticBaseModel):
         messages_failed = [
             f"{p_name} ({np.max(relative_balance[p_name])*100:.2f}% error)"
             for p_name in self.processes.keys()
-            if id_failed[p_name] and p_name != "sysenv"
+            if id_failed[p_name]
         ]
         if any(id_failed.values()):
             raise RuntimeError(

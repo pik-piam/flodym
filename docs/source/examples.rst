@@ -1,4 +1,4 @@
-Examples
+About the examples
 ------------------------------
 
 These are full applications that demonstrate how to use the sodym library.
