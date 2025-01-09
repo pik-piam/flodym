@@ -1,5 +1,5 @@
 # %% [markdown]
-# # HOWTOs
+# # About the HOWTOs
 #
 # ## Scope
 #

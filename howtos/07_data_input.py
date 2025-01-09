@@ -1,5 +1,10 @@
 # %% [markdown]
 # # Data input
+#
+# ## From DataFrame
+#
+# TODO
+#
 # ## From file: CSV & Excel
 #
 # TODO

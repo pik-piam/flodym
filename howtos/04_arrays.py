@@ -3,21 +3,18 @@
 #
 # ## Initializing arrays
 #
-# ### Constructor
+# `NamedDimArray` objects require a `DimensionSet` at initialization. Optionally, a name can be given. 
+# If the values are not given, the array is initialized with zeros.
 #
-# TODO: Here (move code up from below)
-# - which subclasses?
-# - Process as a special case
+# There are several subclasses of `NamedDimArray`, often with little or no changes in functionality: 
+# See the API reference of `Flow`, `Parameter`, and `StockArray`. 
 #
+# `Flow` object have to be passed the two `Process` objects they connect at initialization.
 #
-# ### `from_df`
+# In this HOWTO, only the `NamedDimArray` base class is used. 
 #
-# TODO: move to data input
+# Further options to initialize arrays are discussed in the HOWTO on data input.
 #
-# ## Math operations
-#
-# NamedDimArrays have the basic mathematical operations implemented.
-# Let#s first create two arrays:
 
 # %%
 import numpy as np
@@ -36,6 +33,13 @@ flow_a = NamedDimArray(dims=dims["t", "p"], values=0.2 * np.ones((1, 2)))
 flow_b = NamedDimArray(dims=dims["r", "t"], values=0.1 * np.ones((3, 1)))
 parameter_a = NamedDimArray(dims=dims["r", "p"], values=0.5 * np.ones((3, 2)))
 
+
+# %% [markdown]
+#
+# ## Math operations
+#
+# NamedDimArrays have the basic mathematical operations implemented.
+# Let#s first create two arrays:
 
 # %% [markdown]
 # We write a small routine to print properties of the resulting array, and test it on the inputs:
@@ -104,6 +108,20 @@ print("reduced:")
 show_array(reduced)
 
 # %% [markdown]
+# ### With scalars
+#
+# Math operations can also be performed between a NamedDimArray and a scalar.
+# The scalar is then expanded into the shape of the array before the operation is performed:
+
+# %%
+sum_with_scalar = flow_a + 0.4
+
+print("SUm with scalar:")
+show_array(sum_with_scalar)
+
+# %% [markdown]
+# ### Using just the `values` array 
+#
 # When a mathematical operation is not implemented, you can still work with the `values` array manually, which is a numpy array. We recommend using either the numpy ellipsis slice `[...]` or the `NamedDimArray.set_values()` method, which both ensure keeping the correct shape of the array.
 
 # %%
@@ -116,7 +134,7 @@ print("flow_a:")
 show_array(flow_a)
 
 # %% [markdown]
-# ## Computing values of existing arrays, such as flows.
+# ## Computing values of existing arrays, such as flows
 #
 # In a sodym MFASystem, you have defined at initialization which arrays have which dimensionality.
 # You can use that information to conveniently sum the result of an operation to the shape you defined, potentially re-ordering dimensions.
@@ -207,6 +225,8 @@ print("slice_a4:")
 show_array(slice_a4)
 
 # %% [markdown]
+# As you can see, zero-dimensional NamedDimArrays are possible.
+#
 # Note that numpy indexing of the whole object like `flow_a[0, :]` is not supported, as sodym wouldn't know if in `flow_a[2020]`, `2020` is an index or an item of the dimension.
 #
 # Of course, you can slice the values array: `flow_a.values[:,0]`.
@@ -240,7 +260,20 @@ print("flow_b:")
 show_array(flow_b)
 
 # %% [markdown]
+# ## Operation rules summary
 #
-# ## export: `to_df()`
+# Let's summarize here the rules for dimension handling: 
 #
-# TODO: Move to data export
+# - Additions and subtractions yield the set intersection of the two participating arrays.
+# - Multiplications and divisions yield the set union of the participating arrays.
+# - When setting the values of an existing array, the array on the right-hand side of the assignment is summed down to the dimensions of the left-hand side. Missing dimensions on the right-hand side will lead to an error
+# - Scalars are converted to an array of equal dimensions before the operation is performed.
+#
+# ### Caveat 
+#
+# We found these rules to yield the right behavior in almost all cases. 
+#
+# There are exceptions: When adding two dimensionless parameters with different dimensions, it may be intended that the dimensions of both inputs are still used.  
+#
+# A sodym extension is planned to account for this. In the meantime, we advise to use the `NamedDimArray.cast_to()` method on the arrays before performing the operation. 
+#
