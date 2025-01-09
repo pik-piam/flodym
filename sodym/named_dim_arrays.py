@@ -78,7 +78,9 @@ class NamedDimArray(PydanticBaseModel):
 
         if self.values.shape != self.dims.shape():
             raise ValueError(
-                "Values passed to {self.__cls__.__name__} must have the same shape as the DimensionSet."
+                f"Values passed to {self.__class__.__name__} must have the same shape as the DimensionSet.\n"
+                f"Array shape: {self.dims.shape()}\n"
+                f"Values shape: {self.values.shape}\n"
             )
 
     @classmethod
