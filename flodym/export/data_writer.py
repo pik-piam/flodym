@@ -4,7 +4,7 @@ import pickle
 from typing import Callable
 
 from ..mfa_system import MFASystem
-from ..named_dim_arrays import FlodymArray
+from ..flodym_arrays import FlodymArray
 from .helper import to_valid_file_name
 
 

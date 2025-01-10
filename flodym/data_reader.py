@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 import pandas as pd
 from typing import List, Dict
 
-from .named_dim_arrays import Parameter
+from .flodym_arrays import Parameter
 from .mfa_definition import DimensionDefinition, ParameterDefinition
 from .dimensions import DimensionSet, Dimension
 

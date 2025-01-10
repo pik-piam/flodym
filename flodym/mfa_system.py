@@ -11,7 +11,7 @@ from pydantic import BaseModel as PydanticBaseModel, ConfigDict
 
 from .mfa_definition import MFADefinition
 from .dimensions import DimensionSet
-from .named_dim_arrays import Flow, Parameter, FlodymArray
+from .flodym_arrays import Flow, Parameter, FlodymArray
 from .stocks import Stock
 from .processes import Process, make_processes
 from .stock_helper import make_empty_stocks
@@ -65,7 +65,7 @@ class MFASystem(PydanticBaseModel):
     """
 
     @classmethod
-    def from_data_reader(cls, definition: MFADefinition, data_reader: DataReader):
+    def from_data_reader(cls, definition: MFADefinition, data_reader: DataReader) -> "MFASystem":
         """Define and set up the MFA system and load all required data.
         Initialises stocks and flows with all zero values."""
         dims = data_reader.read_dimensions(definition.dimensions)

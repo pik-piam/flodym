@@ -8,7 +8,7 @@ import itertools
 from .dimensions import Dimension
 
 if TYPE_CHECKING:
-    from .named_dim_arrays import FlodymArray
+    from .flodym_arrays import FlodymArray
 
 
 class NDADataFormat(PydanticBaseModel):

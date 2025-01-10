@@ -180,7 +180,7 @@ my_mfa_system.check_mass_balance()
 #
 # flodym has definition objects, which store exactly the information you need to create them, and methods that take these definitions to produce the dictionaries.
 #
-# For processes, all that's needed for definition is a list of names
+# For processes, all that's needed for definition is a list of names, so there's no dedicated definition object.
 
 # %%
 from flodym import make_processes

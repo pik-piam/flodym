@@ -7,7 +7,7 @@ from flodym.mfa_definition import (
 )
 from flodym.mfa_system import MFASystem as MFASystem
 from flodym.dimensions import DimensionSet as DimensionSet, Dimension as Dimension
-from flodym.named_dim_arrays import (
+from flodym.flodym_arrays import (
     FlodymArray as FlodymArray,
     Parameter as Parameter,
     StockArray as StockArray,
