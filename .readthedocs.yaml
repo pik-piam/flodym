@@ -19,7 +19,7 @@ build:
 
 # Build documentation in the "docs/" directory with Sphinx
 sphinx:
-  configuration: docs/conf.py
+  configuration: docs/source/conf.py
 
 # Optionally build your docs in additional formats such as PDF and ePub
 # formats:
@@ -30,5 +30,9 @@ sphinx:
 # to build your documentation
 # See https://docs.readthedocs.io/en/stable/guides/reproducible-builds.html
 python:
-   install:
-   - requirements: pyproject.toml
+  install:
+    - method: pip
+      path: .
+      extra_requirements:
+        - docs
+        - examples
