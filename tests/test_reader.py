@@ -1,14 +1,14 @@
 import numpy as np
 import pytest
 
-from sodym.data_reader import (
+from flodym.data_reader import (
     CSVDimensionReader,
     ExcelDimensionReader,
     CSVParameterReader,
     ExcelParameterReader,
 )
-from sodym.mfa_definition import DimensionDefinition, ParameterDefinition, MFADefinition
-from sodym.mfa_system import MFASystem
+from flodym.mfa_definition import DimensionDefinition, ParameterDefinition, MFADefinition
+from flodym.mfa_system import MFASystem
 
 
 csv_dimension_files = {

@@ -14,9 +14,9 @@
 
 # %% [markdown]
 # # Example 3. Dynamic Stock modelling
-# *ODYM example by Stefan Pauliuk, adapted for sodym*
+# *ODYM example by Stefan Pauliuk, adapted for flodym*
 #
-# sodym defines the class DynamicStockModel for handling the inflow-driven and stock driven model of in-use stocks, see methods section 3 of the [uni-freiburg industrial ecology course](http://www.teaching.industrialecology.uni-freiburg.de/). In this notebook, we show how the dynamic stock model is used in the sodym framework. Other methods of the dynamic_stock_modelling class can be used in a similar way.
+# flodym defines the class DynamicStockModel for handling the inflow-driven and stock driven model of in-use stocks, see methods section 3 of the [uni-freiburg industrial ecology course](http://www.teaching.industrialecology.uni-freiburg.de/). In this notebook, we show how the dynamic stock model is used in the flodym framework. Other methods of the dynamic_stock_modelling class can be used in a similar way.
 #
 # The research question is:
 # * How large are in-use stocks of steel in selected countries?
@@ -29,42 +29,44 @@
 # The model equations are as follows:
 #
 # First, we compute the outflow o_c(t,c) of each historic inflow/age-cohort i(c) in year t as
-# $ o\_c(t,c) = i(c) \cdot sf(t,c) $
+# $o\_c(t,c) = i(c) \cdot sf(t,c)$
 # where sf is the survival function of the age cohort, which is 1-cdf, see the [wikipedia page on the survival function](https://en.wikipedia.org/wiki/Survival_function).
 # The total outflow o(t) in a given year is then
-# $ o(t) = \sum_{c\leq t} o\_c(t,c) $
+# $o(t) = \sum_{c\leq t} o\_c(t,c)$
 # The mass balance leads to the stock change $dS$:
-# $ dS(t) = i(t) - o(t)$
+# $dS(t) = i(t) - o(t)$
 # And the stock finally is computed as
-# $ S(t) = \sum_{t'\leq t} ds(t') $
+# $S(t) = \sum_{t'\leq t} ds(t')$
 
 # %% [markdown]
-# ## 1. Load sodym and useful packages
+# ## 1. Load flodym and useful packages
 
 # %%
+import os
 import numpy as np
 import pandas as pd
 import plotly.express as px
 
-from sodym import (
+from flodym import (
     DimensionDefinition,
     ParameterDefinition,
     Dimension,
     DimensionSet,
     Parameter,
-    Process,
     StockArray,
 )
-from sodym.data_reader import DataReader
-from sodym.survival_functions import NormalSurvival
-from sodym.stocks import InflowDrivenDSM
+from flodym.data_reader import DataReader
+from flodym.processes import Process
+from flodym.survival_functions import NormalSurvival
+from flodym.stocks import InflowDrivenDSM
 
 # %% [markdown]
 # ## 2. Define system dimensions and load data
 #
 # First, we specify the dimensions that are relevant to our system. These will get passed to our data reader class and thereby we can ensure that the data we are reading has the correct shape.
 #
-# Even though this is only a small system, we will load data from an excel file, as an example for more complex systems with larger datasets. As mentioned above, we define a data reader class to do read the data and put it into the desired python objects. Such a class can be reused with different datasets of the same format by passing attributes, e.g. the file path, in the init function.
+# Even though this is only a small system, we will load data from an excel file, as an example for more complex systems with larger datasets.
+# In this example, we'd like to keep the data in the same format as it was, so we define a data reader class to read the data and put it into the desired python objects. Such a class can be reused with different datasets of the same format by passing attributes, e.g. the file path, in the init function.
 
 # %%
 dimension_definitions = [
@@ -107,12 +109,12 @@ class LittleDataReader(DataReader):
             items=data,
         )
 
-    def read_parameter_values(self, parameter: str, dims: DimensionSet) -> Parameter:
-        if parameter == "tau":
+    def read_parameter_values(self, parameter_name: str, dims: DimensionSet) -> Parameter:
+        if parameter_name == "tau":
             data = np.array(list(country_lifetimes.values()))
-        elif parameter == "sigma":
+        elif parameter_name == "sigma":
             data = np.array([0.3 * lifetime for lifetime in country_lifetimes.values()])
-        elif parameter == "inflow":
+        elif parameter_name == "inflow":
             multiindex = self.steel_consumption.set_index(["t", "r"])
             data = multiindex.unstack().values[:, :]
         return Parameter(dims=dims, values=data)
@@ -131,7 +133,7 @@ country_lifetimes = {
 }
 data_reader = LittleDataReader(
     country_lifetimes=country_lifetimes,
-    steel_consumption_file="example3_steel_consumption.xlsx",
+    steel_consumption_file=os.path.join("input_data", "example3_steel_consumption.xlsx"),
 )
 dimensions = data_reader.read_dimensions(dimension_definitions)
 parameters = data_reader.read_parameters(parameter_definitions, dimensions)
@@ -139,7 +141,7 @@ parameters = data_reader.read_parameters(parameter_definitions, dimensions)
 # %% [markdown]
 # ## 3. Perform dynamic stock modelling
 #
-# In this example, we do not need to build a whole MFA system, since we are only considering one dynamic stock. To make a dynamic stock in sodym, we first need to define a survival model; in this case we assume a normal distribution of lifetimes. Then, we can initiate the dynamic stock model. Here we choose an inflow driven stock model, because we have data that specifies the inflow and from this and the survival model we want to calculate the stock and the outflow.
+# In this example, we do not need to build a whole MFA system, since we are only considering one dynamic stock. To make a dynamic stock in flodym, we first need to define a survival model; in this case we assume a normal distribution of lifetimes. Then, we can initiate the dynamic stock model. Here we choose an inflow driven stock model, because we have data that specifies the inflow and from this and the survival model we want to calculate the stock and the outflow.
 
 # %%
 normal_survival_model = NormalSurvival(
@@ -166,7 +168,7 @@ dynamic_stock.compute()
 stock_df = dynamic_stock.stock.to_df(dim_to_columns="Region")
 
 fig = px.line(stock_df, title="In-use stocks of steel")
-fig.show()
+fig.show(renderer="notebook")
 
 # %% [markdown]
 # We then plot the ratio of outflow over inflow, which is a measure of the stationarity of a stock, and can be interpreted as one indicator for a circular economy.
@@ -178,7 +180,7 @@ with np.errstate(divide="ignore"):
     ratio_df = (outflow / inflow).to_df(dim_to_columns="Region")
 
 fig = px.line(ratio_df, title="Ratio outflow:inflow")
-fig.show()
+fig.show(renderer="notebook")
 
 # %% [markdown]
 # We see that for the rich countries France and Canada the share has been steadily growing since WW2. Upheavals such as wars and major economic crises can also be seen, in particular for Hungary.

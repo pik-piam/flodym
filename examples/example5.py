@@ -14,7 +14,7 @@
 
 # %% [markdown]
 # # Example 5. Estimating the material content of the global vehicle fleet
-# *ODYM example by Stefan Pauliuk, adapted for sodym*
+# *ODYM example by Stefan Pauliuk, adapted for flodym*
 #
 # This example shows a fully-fledged MFA system, designed to estimate the material composition of the global passenger vehicle fleet in 2017, covering 130 countries, 25 age-cohorts, and 25 materials.
 #
@@ -50,7 +50,7 @@
 # The remaining system variables are calculated by mass balance.
 
 # %% [markdown]
-# ## 1. Load sodym and other useful packages
+# ## 1. Load flodym and other useful packages
 
 # %%
 from os.path import join
@@ -59,22 +59,22 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 
-from sodym.data_reader import DataReader
-from sodym import (
+from flodym.data_reader import DataReader
+from flodym import (
     DimensionDefinition,
     Dimension,
     DimensionSet,
     ParameterDefinition,
     Parameter,
-    Process,
     FlowDefinition,
     StockDefinition,
     MFASystem,
 )
-from sodym.stocks import InflowDrivenDSM
-from sodym.survival_functions import NormalSurvival
-from sodym.flow_helper import make_empty_flows
-from sodym.stock_helper import make_empty_stocks
+from flodym.processes import Process
+from flodym.stocks import InflowDrivenDSM
+from flodym.survival_functions import NormalSurvival
+from flodym.flow_helper import make_empty_flows
+from flodym.stock_helper import make_empty_stocks
 
 # %% [markdown]
 # ## 2. Define the data requirements, flows, stocks and MFA system equations
@@ -192,13 +192,19 @@ class CustomDataReader(DataReader):
 
     def read_dimension(self, dimension_definition: DimensionDefinition) -> Dimension:
         if (dim_name := dimension_definition.name) == "region":
-            data = pd.read_excel(join(self.data_directory, "vehicle_lifetime.xlsx"), "Data")
-            other_data = pd.read_excel(join(self.data_directory, "vehicle_stock.xlsx"), "Data")
+            data = pd.read_excel(
+                join(self.data_directory, "example5_vehicle_lifetime.xlsx"), "Data"
+            )
+            other_data = pd.read_excel(
+                join(self.data_directory, "example5_vehicle_stock.xlsx"), "Data"
+            )
             data = (set(data[dim_name].unique())).intersection(set(other_data[dim_name].unique()))
             data = list(data)
             data.sort()
         elif (dim_name := dimension_definition.name) in ["waste", "material"]:
-            data = pd.read_excel(join(self.data_directory, "eol_recovery_rate.xlsx"), "Data")
+            data = pd.read_excel(
+                join(self.data_directory, "example5_eol_recovery_rate.xlsx"), "Data"
+            )
             data.columns = [x.lower() for x in data.columns]
             data = list(data[dim_name].unique())
             data.sort()
@@ -210,15 +216,15 @@ class CustomDataReader(DataReader):
             items=data,
         )
 
-    def read_parameter_values(self, parameter: str, dims: DimensionSet) -> Parameter:
+    def read_parameter_values(self, parameter_name: str, dims: DimensionSet) -> Parameter:
         data = pd.read_excel(
-            join(self.data_directory, (parameter.replace(" ", "_") + ".xlsx")), "Data"
+            join(self.data_directory, f"example5_{parameter_name.replace(" ", "_")}.xlsx"), "Data"
         )
         data = data.fillna(0)
         if "r" in dims.letters:  # remove unwanted regions
             data = data[data["region"].isin(dims["r"].items)]
 
-        if parameter == "vehicle new registration":
+        if parameter_name == "vehicle new registration":
             return self.vehicle_new_registration(data, dims)
 
         data.columns = [x.lower() for x in data.columns]
@@ -242,7 +248,7 @@ class CustomDataReader(DataReader):
 # We make an instance of our `CustomDataReader`, read in the data and use it to create an instance of our `VehicleMFA` class. Then we can run the calculations, and check what our estimate of vehicle stocks looks like compared to the data for 2015 in the `vehicle_stock.xlsx` file.
 
 # %%
-data_reader = CustomDataReader(data_directory="example5_data")
+data_reader = CustomDataReader(data_directory="input_data")
 dimensions = data_reader.read_dimensions(dimension_definitions)
 parameters = data_reader.read_parameters(parameter_definitions, dims=dimensions)
 
@@ -268,7 +274,7 @@ stock_diff
 #
 # We can see that the results from our inflow-driven dynamic stock model differ significantly from the data about vehicle stocks. One reason for this is the missing inflows for years before our model starts. In a next step, we extend the years back to 1990 and copy the inflow data (given by the `new_vehicle_registration` parameter) by region for each of these earlier years; assuming that the inflow stayed constant between 1990 and 2004.
 #
-# In addition to this and to answer our research questions, we will extend the timeseries out to 2050, with no more inflow afer 2017.
+# In addition to this and to answer our research questions, we will extend the timeseries out to 2050, with no more inflow after 2017.
 #
 # To make these changes in the model dimensions and parameters, we build on the `CustomDataReader` class defined above, extending the time dimension to earlier years, as well as extending the data for the `vehicle_new_registration` parameter, which is our only time-dependent parameter.
 
@@ -303,7 +309,7 @@ class AnotherCustomDataReader(CustomDataReader):
 
 
 # %%
-data_reader_2 = AnotherCustomDataReader(data_directory="example5_data")
+data_reader_2 = AnotherCustomDataReader(data_directory="input_data")
 dimensions_2 = data_reader_2.read_dimensions(dimension_definitions)
 parameters_2 = data_reader_2.read_parameters(parameter_definitions, dims=dimensions_2)
 
@@ -347,7 +353,7 @@ global_stock_by_material_type_in_2017 = global_stock_by_material_type[{"t": 2017
 
 stock_df = global_stock_by_material_type_in_2017.to_df(index=False)
 fig = px.bar(stock_df, x="material", y="value")
-fig.show()
+fig.show(renderer="notebook")
 
 # %%
 np.nan_to_num(vehicle_mfa_2.flows["scrap => sysenv"].values, copy=False)
@@ -355,8 +361,8 @@ scrap_outflow = vehicle_mfa_2.flows["scrap => sysenv"].sum_nda_over(sum_over_dim
 outflow_df = scrap_outflow.to_df(dim_to_columns="waste")
 outflow_df = outflow_df[outflow_df.index > 2017]
 fig = px.line(outflow_df, title="Scrap outflow")
-fig.show()
+fig.show(renderer="notebook")
 fig.update_yaxes(type="log")
-fig.show()
+fig.show(renderer="notebook")
 
 # %%

@@ -1,39 +1,50 @@
-.. SODYM Documentation documentation master file, created by
+.. flodym Documentation documentation master file, created by
    sphinx-quickstart on Wed Aug 14 08:41:40 2024.
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-SODYM documentation
-=================================
 .. include:: ../../README.md
    :parser: myst_parser.sphinx_
+   :end-before: <!-- stop parsing here on readthedocs -->
 
-MFA model and components
-------------------------
 .. toctree::
-   :maxdepth: 1
+   :hidden:
+   :caption: Getting Started
 
-   sodym.mfa_system
-   sodym.mfa_definition
-   sodym.data_reader
-   sodym.dimension
-   sodym.named_dim_arrays
-   sodym.flow_helper
+   getting_started
 
-Stocks
-~~~~~~
 .. toctree::
-   :maxdepth: 1
+   :hidden:
+   :caption: HOWTOs
 
-   sodym.stocks
-   sodym.stock_helper
-   sodym.survival_functions
+   howto0.nblink
+   howto1.nblink
+   howto2.nblink
+   howto3.nblink
+   howto4.nblink
+   howto5.nblink
+   howto6.nblink
+   howto7.nblink
+   howto8.nblink
 
-Data writing and plotting
--------------------------
 .. toctree::
-   :maxdepth: 1
+   :hidden:
+   :caption: Examples
 
-   sodym.export.data_writer
-   sodym.export.array_plotter
-   sodym.export.sankey
+   examples
+   example1
+   example2
+   example3
+   example5
+
+.. toctree::
+   :hidden:
+   :caption: API Reference
+
+   api.mfa_system
+   api.definitions
+   api.data_readers
+   api.dimensions
+   api.named_dim_arrays
+   api.processes
+   api.export_and_plotting

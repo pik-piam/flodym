@@ -14,7 +14,7 @@
 
 # %% [markdown]
 # # Example 1. System with two processes, two parameters, one material.
-# *ODYM example by Stefan Pauliuk, adapted for sodym*
+# *ODYM example by Stefan Pauliuk, adapted for flodym*
 #
 # A simple MFA system with one material, a time horizon of 30 years (1980-2010), two processes, and a time-dependent parameter is analysed.
 #
@@ -23,31 +23,31 @@
 # The model equations are as follows:
 # * $a(t) = D(t)$ (exogenous input flow)
 # * $d(t) = \alpha (t)\cdot b(t)$ (recovery efficiency parameter)
-# * $a(t) + d(t) = b(t) $ (mass balance process 1)
-# * $b(t) = c(t) + d(t) $ (mass balance process 2)
+# * $a(t) + d(t) = b(t)$ (mass balance process 1)
+# * $b(t) = c(t) + d(t)$ (mass balance process 2)
 #
 # From these equations the system solution follows:
-# * $c(t) = a(t) = D(t) $
-# * $b(t) = \frac{1}{1-\alpha (t)}\cdot D(t) $
-# * $c(t) = \frac{\alpha}{1-\alpha (t)}\cdot D(t) $
+# * $c(t) = a(t) = D(t)$
+# * $b(t) = \frac{1}{1-\alpha (t)}\cdot D(t)$
+# * $c(t) = \frac{\alpha}{1-\alpha (t)}\cdot D(t)$
 #
 
 # %% [markdown]
-# ## 1. Load sodym and other useful packages
+# ## 1. Load flodym and other useful packages
 
 # %%
 import numpy as np
 import plotly.express as px
 
-from sodym import (
+from flodym import (
     Dimension,
     DimensionSet,
-    Parameter,
     Process,
+    Parameter,
     FlowDefinition,
     MFASystem,
+    make_empty_flows,
 )
-from sodym.flow_helper import make_empty_flows
 
 # %% [markdown]
 # ## 2. Load data
@@ -82,7 +82,7 @@ processes = {
 # %% [markdown]
 # ## 3. Define flows and initialise them with zero values.
 # By defining them with the shape specified by the relevant dimensions, we can later ensure that when we update the values, these have the correct dimensions.
-# Note that flows are automatically asigned their names based on the names of the processes they are connecting.
+# Note that flows are automatically assigned their names based on the names of the processes they are connecting.
 
 # %%
 flow_definitions = [
@@ -135,23 +135,15 @@ mfa_example = SimpleMFA(
 mfa_example.compute()
 
 # %%
-flow_a = mfa_example.flows["sysenv => process 1"]
-fig = px.line(
-    x=flow_a.dims["t"].items,
-    y=flow_a["single material"].values,
-    title=flow_a.name,
-    labels={"x": "Year", "y": "Mt/yr"},
-)
-fig.show()
+flow_a = mfa_example.flows["sysenv => process 1"].to_df()
+flow_a = flow_a.reset_index(level="Elements", drop=True)
+fig = px.line(flow_a, title="sysenv => process 1")
+fig.show(renderer="notebook")
 
 # %%
-flow_b = mfa_example.flows["process 1 => process 2"]
-fig = px.line(
-    x=flow_b.dims["t"].items,
-    y=flow_b["single material"].values,
-    title=flow_b.name,
-    labels={"x": "Year", "y": "Mt/yr"},
-)
-fig.show()
+flow_b = mfa_example.flows["process 1 => process 2"].to_df()
+flow_b = flow_b.reset_index(level="Elements", drop=True)
+fig = px.line(flow_b, title="process 1 => process 2")
+fig.show(renderer="notebook")
 
 # %%
