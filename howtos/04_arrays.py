@@ -1,24 +1,24 @@
 # %% [markdown]
-# # Working with NamedDimArrays
+# # Working with FlodymArrays
 #
 # ## Initializing arrays
 #
-# `NamedDimArray` objects require a `DimensionSet` at initialization. Optionally, a name can be given.
+# `FlodymArray` objects require a `DimensionSet` at initialization. Optionally, a name can be given.
 # If the values are not given, the array is initialized with zeros.
 #
-# There are several subclasses of `NamedDimArray`, often with little or no changes in functionality:
+# There are several subclasses of `FlodymArray`, often with little or no changes in functionality:
 # See the API reference of `Flow`, `Parameter`, and `StockArray`.
 #
 # `Flow` object have to be passed the two `Process` objects they connect at initialization.
 #
-# In this HOWTO, only the `NamedDimArray` base class is used.
+# In this HOWTO, only the `FlodymArray` base class is used.
 #
 # Further options to initialize arrays are discussed in the HOWTO on data input.
 #
 
 # %%
 import numpy as np
-from sodym import Dimension, DimensionSet, NamedDimArray
+from flodym import Dimension, DimensionSet, FlodymArray
 
 # Create a dimension set
 dims = DimensionSet(
@@ -29,16 +29,16 @@ dims = DimensionSet(
     ]
 )
 
-flow_a = NamedDimArray(dims=dims["t", "p"], values=0.2 * np.ones((1, 2)))
-flow_b = NamedDimArray(dims=dims["r", "t"], values=0.1 * np.ones((3, 1)))
-parameter_a = NamedDimArray(dims=dims["r", "p"], values=0.5 * np.ones((3, 2)))
+flow_a = FlodymArray(dims=dims["t", "p"], values=0.2 * np.ones((1, 2)))
+flow_b = FlodymArray(dims=dims["r", "t"], values=0.1 * np.ones((3, 1)))
+parameter_a = FlodymArray(dims=dims["r", "p"], values=0.5 * np.ones((3, 2)))
 
 
 # %% [markdown]
 #
 # ## Math operations
 #
-# NamedDimArrays have the basic mathematical operations implemented.
+# FlodymArrays have the basic mathematical operations implemented.
 # Let#s first create two arrays:
 
 # %% [markdown]
@@ -46,7 +46,7 @@ parameter_a = NamedDimArray(dims=dims["r", "p"], values=0.5 * np.ones((3, 2)))
 
 
 # %%
-def show_array(arr: NamedDimArray):
+def show_array(arr: FlodymArray):
     print(f"  dimensions: {arr.dims.letters}")
     print(f"  shape: {arr.dims.shape()}")
     print(f"  name: {arr.name}")
@@ -110,7 +110,7 @@ show_array(reduced)
 # %% [markdown]
 # ### With scalars
 #
-# Math operations can also be performed between a NamedDimArray and a scalar.
+# Math operations can also be performed between a FlodymArray and a scalar.
 # The scalar is then expanded into the shape of the array before the operation is performed:
 
 # %%
@@ -122,7 +122,7 @@ show_array(sum_with_scalar)
 # %% [markdown]
 # ### Using just the `values` array
 #
-# When a mathematical operation is not implemented, you can still work with the `values` array manually, which is a numpy array. We recommend using either the numpy ellipsis slice `[...]` or the `NamedDimArray.set_values()` method, which both ensure keeping the correct shape of the array.
+# When a mathematical operation is not implemented, you can still work with the `values` array manually, which is a numpy array. We recommend using either the numpy ellipsis slice `[...]` or the `FlodymArray.set_values()` method, which both ensure keeping the correct shape of the array.
 
 # %%
 flow_a.values[...] = 0.3
@@ -136,14 +136,14 @@ show_array(flow_a)
 # %% [markdown]
 # ## Computing values of existing arrays, such as flows
 #
-# In a sodym MFASystem, you have defined at initialization which arrays have which dimensionality.
+# In a flodym MFASystem, you have defined at initialization which arrays have which dimensionality.
 # You can use that information to conveniently sum the result of an operation to the shape you defined, potentially re-ordering dimensions.
 #
 # This is done using the so-called ellipsis slice `[...]`:
 
 # %%
 # define and initialize values with zero
-predefined_flow = NamedDimArray(name="predefined", dims=dims["r", "p"])
+predefined_flow = FlodymArray(name="predefined", dims=dims["r", "p"])
 print("predefined_flow:")
 show_array(predefined_flow)
 
@@ -159,7 +159,7 @@ print("predefined_flow:")
 show_array(predefined_flow)
 
 # %% [markdown]
-# In a sodym MFASystem, this is a bit tricky, but quite important, as the flows are stored as a dictionary.
+# In a flodym MFASystem, this is a bit tricky, but quite important, as the flows are stored as a dictionary.
 # (For simplicity, we only re-create these dictionaries, not the whole MFASystem)
 
 # %%
@@ -173,7 +173,7 @@ parameters = {
 }
 
 # %% [markdown]
-# The correct way to perform an operation here, is using the ellipsis slice on the left side of an assignment, as this only affects the values of the `NamedDimArray` object:
+# The correct way to perform an operation here, is using the ellipsis slice on the left side of an assignment, as this only affects the values of the `FlodymArray` object:
 
 # %%
 flows["predefined_flow"][...] = flows["flow_a"] * parameters["parameter_a"]
@@ -225,12 +225,12 @@ print("slice_a4:")
 show_array(slice_a4)
 
 # %% [markdown]
-# As you can see, zero-dimensional NamedDimArrays are possible.
+# As you can see, zero-dimensional FlodymArrays are possible.
 #
-# Note that numpy indexing of the whole object like `flow_a[0, :]` is not supported, as sodym wouldn't know if in `flow_a[2020]`, `2020` is an index or an item of the dimension.
+# Note that numpy indexing of the whole object like `flow_a[0, :]` is not supported, as flodym wouldn't know if in `flow_a[2020]`, `2020` is an index or an item of the dimension.
 #
 # Of course, you can slice the values array: `flow_a.values[:,0]`.
-# But we recommend not to do it. One major design goal of sodym is too keep the code flexible to changes in the dimensions, and `flow_a.values[:,0]` is quite inflexible with respect to the order and number of dimensions in the array, and to the order and number of items in the dimensions.
+# But we recommend not to do it. One major design goal of flodym is too keep the code flexible to changes in the dimensions, and `flow_a.values[:,0]` is quite inflexible with respect to the order and number of dimensions in the array, and to the order and number of items in the dimensions.
 
 # %% [markdown]
 # The slices we looked at just take one item along a dimension and drop that dimension in the process.
@@ -275,5 +275,5 @@ show_array(flow_b)
 #
 # There are exceptions: When adding two dimensionless parameters with different dimensions, it may be intended that the dimensions of both inputs are still used.
 #
-# A sodym extension is planned to account for this. In the meantime, we advise to use the `NamedDimArray.cast_to()` method on the arrays before performing the operation.
+# A flodym extension is planned to account for this. In the meantime, we advise to use the `FlodymArray.cast_to()` method on the arrays before performing the operation.
 #

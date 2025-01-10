@@ -1,8 +1,8 @@
 # %% [markdown]
 # # A `pydantic` Primer
 #
-# Most classes in sodym are based on the `pydantic` library, which provides safety in data handling.
-# More specifically, most classes in sodym are `pydanctic.BaseModel`s.
+# Most classes in flodym are based on the `pydantic` library, which provides safety in data handling.
+# More specifically, most classes in flodym are `pydanctic.BaseModel`s.
 #
 # Their main property is that the arguments passed to the class initialization are replaced by so-called fields.
 # While a normal class would be defined and initialized like this:
@@ -62,7 +62,7 @@ except AttributeError as e:
 #
 # But on the other hand, it can be more convenient to have some operations done on initialization.
 #
-# Therefore, sodym sometimes offers class methods to create objects from different arguments, like for the example above:
+# Therefore, flodym sometimes offers class methods to create objects from different arguments, like for the example above:
 
 
 # %%

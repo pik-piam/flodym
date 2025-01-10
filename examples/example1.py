@@ -14,7 +14,7 @@
 
 # %% [markdown]
 # # Example 1. System with two processes, two parameters, one material.
-# *ODYM example by Stefan Pauliuk, adapted for sodym*
+# *ODYM example by Stefan Pauliuk, adapted for flodym*
 #
 # A simple MFA system with one material, a time horizon of 30 years (1980-2010), two processes, and a time-dependent parameter is analysed.
 #
@@ -33,13 +33,13 @@
 #
 
 # %% [markdown]
-# ## 1. Load sodym and other useful packages
+# ## 1. Load flodym and other useful packages
 
 # %%
 import numpy as np
 import plotly.express as px
 
-from sodym import (
+from flodym import (
     Dimension,
     DimensionSet,
     Process,

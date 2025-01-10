@@ -1,20 +1,20 @@
-NamedDimArrays
+FlodymArrays
 ------------------------------
 
-.. autopydantic_model:: sodym::NamedDimArray
+.. autopydantic_model:: flodym::FlodymArray
    :inherited-members: BaseModel
 
-.. autopydantic_model:: sodym::Flow
+.. autopydantic_model:: flodym::Flow
    :inherited-members: BaseModel
 
-.. autopydantic_model:: sodym::StockArray
+.. autopydantic_model:: flodym::StockArray
    :inherited-members: BaseModel
 
-.. autopydantic_model:: sodym::Parameter
+.. autopydantic_model:: flodym::Parameter
    :inherited-members: BaseModel
 
-.. autofunction:: sodym.flow_naming.process_names_with_arrow
+.. autofunction:: flodym.flow_naming.process_names_with_arrow
 
-.. autofunction:: sodym.flow_naming.process_names_no_spaces
+.. autofunction:: flodym.flow_naming.process_names_no_spaces
 
-.. autofunction:: sodym.flow_naming.process_ids
+.. autofunction:: flodym.flow_naming.process_ids

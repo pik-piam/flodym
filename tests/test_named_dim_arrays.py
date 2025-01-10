@@ -3,7 +3,7 @@ from numpy.testing import assert_almost_equal, assert_array_almost_equal, assert
 from pydantic_core import ValidationError
 import pytest
 
-from sodym import NamedDimArray, DimensionSet, Dimension
+from flodym import FlodymArray, DimensionSet, Dimension
 
 
 places = Dimension(name="place", letter="p", items=["Earth", "Sun", "Moon", "Venus"])
@@ -16,29 +16,29 @@ base_dim_list = [places, time]
 
 dims = DimensionSet(dim_list=base_dim_list)
 values = np.random.rand(4, 3)
-numbers = NamedDimArray(name="two", dims=dims, values=values)
+numbers = FlodymArray(name="two", dims=dims, values=values)
 
 dims_incl_animals = DimensionSet(dim_list=base_dim_list + [animals])
 animal_values = np.random.rand(4, 3, 2)
-space_animals = NamedDimArray(name="space_animals", dims=dims_incl_animals, values=animal_values)
+space_animals = FlodymArray(name="space_animals", dims=dims_incl_animals, values=animal_values)
 
 
 def test_named_dim_array_validations():
     dims = DimensionSet(dim_list=[local_places, time])
 
     # example with values with the correct shape
-    NamedDimArray(name="numbers", dims=dims, values=np.array([[1, 2, 3]]))
+    FlodymArray(name="numbers", dims=dims, values=np.array([[1, 2, 3]]))
 
     # example with dimensions reversed
     with pytest.raises(ValidationError):
-        NamedDimArray(name="numbers", dims=dims, values=np.array([[1], [2], [3]]))
+        FlodymArray(name="numbers", dims=dims, values=np.array([[1], [2], [3]]))
 
     # example with too many values
     with pytest.raises(ValidationError):
-        NamedDimArray(name="numbers", dims=dims, values=np.array([[1, 2, 3, 4]]))
+        FlodymArray(name="numbers", dims=dims, values=np.array([[1, 2, 3, 4]]))
 
     # example with no values passed -> filled with zeros
-    zero_values = NamedDimArray(name="numbers", dims=dims)
+    zero_values = FlodymArray(name="numbers", dims=dims)
     assert zero_values.values.shape == (1, 3)
     assert np.all([zero_values.values == 0])
 
@@ -145,7 +145,7 @@ def test_maths():
 
 def test_get_item():
     cats_on_the_moon = space_animals["Moon"]["cat"]
-    assert isinstance(cats_on_the_moon, NamedDimArray)
+    assert isinstance(cats_on_the_moon, FlodymArray)
     assert_array_almost_equal(cats_on_the_moon.values, space_animals.values[2, :, 0])
     # note that this does not work for the time dimension (not strings)
     # and also assumes that no item appears in more than one dimension
@@ -166,12 +166,12 @@ def test_sub_array_handler():
 
 def test_dimension_subsets():
     historic_dims_incl_animals = DimensionSet(dim_list=[places, historic_time, animals])
-    historic_space_animals = NamedDimArray(dims=historic_dims_incl_animals)
+    historic_space_animals = FlodymArray(dims=historic_dims_incl_animals)
     historic_space_animals[...] = space_animals[{"t": historic_time}]
 
     assert np.min(historic_space_animals.values) > 0.0
 
-    space_animals_copy = NamedDimArray(dims=dims_incl_animals)
+    space_animals_copy = FlodymArray(dims=dims_incl_animals)
     space_animals_copy[{"t": historic_time}] = 1.0 * historic_space_animals
     space_animals_copy[{"t": 2010}] = 1.0 * space_animals[{"t": 2010}]
 

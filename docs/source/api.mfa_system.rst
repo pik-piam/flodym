@@ -1,9 +1,9 @@
 MFA System
 ------------------------------
 
-.. autopydantic_model:: sodym::MFASystem
+.. autopydantic_model:: flodym::MFASystem
    :inherited-members: BaseModel
 
-.. autofunction:: sodym.make_empty_flows
+.. autofunction:: flodym.make_empty_flows
 
-.. autofunction:: sodym.make_empty_stocks
+.. autofunction:: flodym.make_empty_stocks

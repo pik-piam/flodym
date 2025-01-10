@@ -14,7 +14,7 @@
 
 # %% [markdown]
 # # Example 5. Estimating the material content of the global vehicle fleet
-# *ODYM example by Stefan Pauliuk, adapted for sodym*
+# *ODYM example by Stefan Pauliuk, adapted for flodym*
 #
 # This example shows a fully-fledged MFA system, designed to estimate the material composition of the global passenger vehicle fleet in 2017, covering 130 countries, 25 age-cohorts, and 25 materials.
 #
@@ -50,7 +50,7 @@
 # The remaining system variables are calculated by mass balance.
 
 # %% [markdown]
-# ## 1. Load sodym and other useful packages
+# ## 1. Load flodym and other useful packages
 
 # %%
 from os.path import join
@@ -59,8 +59,8 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 
-from sodym.data_reader import DataReader
-from sodym import (
+from flodym.data_reader import DataReader
+from flodym import (
     DimensionDefinition,
     Dimension,
     DimensionSet,
@@ -70,11 +70,11 @@ from sodym import (
     StockDefinition,
     MFASystem,
 )
-from sodym.processes import Process
-from sodym.stocks import InflowDrivenDSM
-from sodym.survival_functions import NormalSurvival
-from sodym.flow_helper import make_empty_flows
-from sodym.stock_helper import make_empty_stocks
+from flodym.processes import Process
+from flodym.stocks import InflowDrivenDSM
+from flodym.survival_functions import NormalSurvival
+from flodym.flow_helper import make_empty_flows
+from flodym.stock_helper import make_empty_stocks
 
 # %% [markdown]
 # ## 2. Define the data requirements, flows, stocks and MFA system equations

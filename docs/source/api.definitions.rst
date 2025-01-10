@@ -1,17 +1,17 @@
 Definition Objects
 ------------------------------
 
-.. autopydantic_model:: sodym::MFADefinition
+.. autopydantic_model:: flodym::MFADefinition
    :inherited-members: BaseModel
 
-.. autopydantic_model:: sodym::FlowDefinition
+.. autopydantic_model:: flodym::FlowDefinition
    :inherited-members: BaseModel
 
-.. autopydantic_model:: sodym::StockDefinition
+.. autopydantic_model:: flodym::StockDefinition
    :inherited-members: BaseModel
 
-.. autopydantic_model:: sodym::ParameterDefinition
+.. autopydantic_model:: flodym::ParameterDefinition
    :inherited-members: BaseModel
 
-.. autopydantic_model:: sodym::DimensionDefinition
+.. autopydantic_model:: flodym::DimensionDefinition
    :inherited-members: BaseModel

@@ -3,7 +3,7 @@
 #
 # ## Dimensions
 #
-# [Dimension](api.dimensions.html#sodym.Dimension) objects are what sodym datasets are differentiated by.
+# [Dimension](api.dimensions.html#flodym.Dimension) objects are what flodym datasets are differentiated by.
 #
 # They are defined by a name, index letter, and their items.
 # The index letters must have length one, i.e. only be one letter.
@@ -12,7 +12,7 @@
 # When loading items from file, it can be useful to check that for example years are integers and not converted to strings.
 
 # %%
-from sodym import Dimension
+from flodym import Dimension
 
 regions = Dimension(name="Region", letter="r", items=["EU", "US", "MEX"])
 
@@ -37,7 +37,7 @@ historic_time = Dimension(name="Historic Time", letter="h", items=["2010", "2020
 # Multiple dimensions are grouped in a DimensionSet object:
 
 # %%
-from sodym import DimensionSet
+from flodym import DimensionSet
 
 dims = DimensionSet(
     dim_list=[
@@ -50,7 +50,7 @@ dims = DimensionSet(
 # %% [markdown]
 # The MFASystem class has a dims attribute, which is a DimensionSet object containing all dimensions ever used in the system.
 #
-# Each NamedDimArray object also has a dims object, with a subset of dimensions that this array is defined over.
+# Each FlodymArray object also has a dims object, with a subset of dimensions that this array is defined over.
 #
 # Subsets and single dimensions can be extracted by indexing:
 

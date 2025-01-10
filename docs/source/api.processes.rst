@@ -1,7 +1,7 @@
 Processes
 ------------------------------
 
-.. autopydantic_model:: sodym::Process
+.. autopydantic_model:: flodym::Process
    :inherited-members: BaseModel
 
-.. autofunction:: sodym.make_processes
+.. autofunction:: flodym.make_processes

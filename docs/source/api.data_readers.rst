@@ -1,18 +1,18 @@
 Data Readers
 ------------------------------
 
-.. autoclass:: sodym::DataReader
+.. autoclass:: flodym::DataReader
 
-.. autoclass:: sodym::CompoundDataReader
+.. autoclass:: flodym::CompoundDataReader
 
-.. autoclass:: sodym::DimensionReader
+.. autoclass:: flodym::DimensionReader
 
-.. autoclass:: sodym::ParameterReader
+.. autoclass:: flodym::ParameterReader
 
-.. autoclass:: sodym::CSVDimensionReader
+.. autoclass:: flodym::CSVDimensionReader
 
-.. autoclass:: sodym::CSVParameterReader
+.. autoclass:: flodym::CSVParameterReader
 
-.. autoclass:: sodym::ExcelDimensionReader
+.. autoclass:: flodym::ExcelDimensionReader
 
-.. autoclass:: sodym::ExcelParameterReader
+.. autoclass:: flodym::ExcelParameterReader

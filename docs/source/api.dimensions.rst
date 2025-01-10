@@ -1,8 +1,8 @@
 Dimension and DimensionSet
 ------------------------------
 
-.. autopydantic_model:: sodym::Dimension
+.. autopydantic_model:: flodym::Dimension
    :inherited-members: BaseModel
 
-.. autopydantic_model:: sodym::DimensionSet
+.. autopydantic_model:: flodym::DimensionSet
    :inherited-members: BaseModel

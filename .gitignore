@@ -9,4 +9,6 @@ docs/source/pictures
 howtos/output_data
 poetry.lock
 uv.lock
-sodym.egg-info
+flodym.egg-info
+build
+.pytest_cache

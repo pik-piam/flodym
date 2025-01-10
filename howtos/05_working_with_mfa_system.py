@@ -1,7 +1,7 @@
 # %% [markdown]
 # # Work with an MFA System
 #
-# As you just saw, `DimensionSet` and `NamedDimArray` objects work without the `MFASystem` class.
+# As you just saw, `DimensionSet` and `FlodymArray` objects work without the `MFASystem` class.
 #
 # However, working with it brings a few advantages:
 # - Having all attributes in one namespace, including the "parent" dimension set.
@@ -13,13 +13,13 @@
 #
 # ### Write your own subclass
 #
-# sodym has implemented the MFASystem class as a parent class, of which you can write your own subclass.
+# flodym has implemented the MFASystem class as a parent class, of which you can write your own subclass.
 # We recommend implementing your own `compute` function, where the array operations are performed.
 #
 # Of course, this requires knowledge about the flows, stocks and parameters you intend to put in, which are described later.
 
 # %%
-from sodym import MFASystem
+from flodym import MFASystem
 
 
 class MyMFASystem(MFASystem):
@@ -50,12 +50,12 @@ class MyMFASystem(MFASystem):
 #
 # In this HOWTO, we only show the most direct one, where we create all needed attributes ourselves and pass them to the system.
 #
-# Other ways are shown in the "data input" HOWTO. They are actually recommended over the one presented here, as they make full use of the flexibility with regards to dimensions and dimension items in sodym.
+# Other ways are shown in the "data input" HOWTO. They are actually recommended over the one presented here, as they make full use of the flexibility with regards to dimensions and dimension items in flodym.
 #
 # Let's prepare the attributes we need. We start with the dimensions:
 
 # %%
-from sodym import DimensionSet, Dimension, Flow, Parameter, Process
+from flodym import DimensionSet, Dimension, Flow, Parameter, Process
 
 dims = DimensionSet(
     dim_list=[
@@ -178,12 +178,12 @@ my_mfa_system.check_mass_balance()
 #
 # As you saw, some of the attributes were a bit cumbersome to create.
 #
-# sodym has definition objects, which store exactly the information you need to create them, and methods that take these definitions to produce the dictionaries.
+# flodym has definition objects, which store exactly the information you need to create them, and methods that take these definitions to produce the dictionaries.
 #
 # For processes, all that's needed for definition is a list of names
 
 # %%
-from sodym import make_processes
+from flodym import make_processes
 
 process_names = [
     "sysenv",
@@ -196,7 +196,7 @@ processes = make_processes(process_names)
 # For flows, there is a dedicated definition object:
 
 # %%
-from sodym import FlowDefinition
+from flodym import FlowDefinition
 
 flow_definitions = [
     FlowDefinition(from_process_name="sysenv", to_process_name="process_a", dim_letters=("r", "t")),
@@ -213,7 +213,7 @@ flow_definitions = [
 # It can then be transformed, for which the actual `DimensionSet` and `Process` objects are needed:
 
 # %%
-from sodym import make_empty_flows
+from flodym import make_empty_flows
 
 flows = make_empty_flows(processes=processes, flow_definitions=flow_definitions, dims=dims)
 
@@ -224,7 +224,7 @@ print("Flow names:\n ", "\n  ".join(flows))
 # If you don't like this, you can either choose a different naming function, write your own (not shown), or override the names in the `FlowDefinition` with the `name_override` attribute:
 
 # %%
-from sodym.flow_naming import (
+from flodym.flow_naming import (
     # shown below
     process_ids,
     # the default
