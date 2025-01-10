@@ -57,7 +57,7 @@ from sodym import (
 )
 from sodym.data_reader import DataReader
 from sodym.processes import Process
-from sodym.survival_functions import NormalSurvival
+from sodym.survival_models import NormalSurvival
 from sodym.stocks import InflowDrivenDSM
 
 # %% [markdown]

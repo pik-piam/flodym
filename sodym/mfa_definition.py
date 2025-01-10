@@ -82,6 +82,11 @@ class StockDefinition(DefinitionWithDimLetters):
         default="undefined process", validation_alias=AliasChoices("process", "process_name")
     )
     """Name of the process to which the stock is connected."""
+    time_letter: str = "t"
+    """Letter of the time dimension, to ensure it's the first appearing in dim_letters."""
+    type: str = "flow_driven"  # TODO: only allow four possibilities here
+    """Name of the process to which the stock is connected."""
+    survival_model: Optional[str] = None  # TODO: has to be present if type is not simple_flow_driven, else None
 
 
 class ParameterDefinition(DefinitionWithDimLetters):

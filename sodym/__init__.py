@@ -16,7 +16,7 @@ from sodym.named_dim_arrays import (
 from sodym.processes import Process as Process, make_processes as make_processes
 from sodym.stocks import (
     Stock as Stock,
-    FlowDrivenStock as FlowDrivenStock,
+    SimpleFlowDrivenStock as SimpleFlowDrivenStock,
     DynamicStockModel as DynamicStockModel,
     InflowDrivenDSM as InflowDrivenDSM,
     StockDrivenDSM as StockDrivenDSM,

@@ -72,7 +72,7 @@ from sodym import (
 )
 from sodym.processes import Process
 from sodym.stocks import InflowDrivenDSM
-from sodym.survival_functions import NormalSurvival
+from sodym.survival_models import NormalSurvival
 from sodym.flow_helper import make_empty_flows
 from sodym.stock_helper import make_empty_stocks
 
