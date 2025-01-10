@@ -32,4 +32,3 @@ sphinx:
 python:
    install:
    - requirements: pyproject.toml
-
