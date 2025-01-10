@@ -4,9 +4,7 @@ from .named_dim_arrays import FlodymArray
 from .dimensions import Dimension
 
 
-def named_dim_array_stack(
-    named_dim_arrays: list[FlodymArray], dimension: Dimension
-) -> FlodymArray:
+def named_dim_array_stack(named_dim_arrays: list[FlodymArray], dimension: Dimension) -> FlodymArray:
     """Stack a list of FlodymArray objects using a new dimension.
     Like numpy.stack with axis=-1, but for `FlodymArray`s.
     Method can be applied to `FlodymArray`s, `StockArray`s, `Parameter`s and `Flow`s.
