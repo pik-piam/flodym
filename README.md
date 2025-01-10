@@ -26,7 +26,7 @@ To install as a user: run `python -m pip install flodym@git+https://github.com/p
 To install as a developer:
 
 1. Clone the flodym repository using git.
-2. From the project main directory, run `pip install -e ".[test,docs,examples]"` to obtain all the necessary
+2. From the project main directory, run `pip install -e ".[tests,docs,examples]"` to obtain all the necessary
 dependencies, including those for running the tests, making the documentation, and running the examples.
 
 Note that it is advisable to do this within a virtual environment.
