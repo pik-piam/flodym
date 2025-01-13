@@ -69,12 +69,10 @@ from flodym import (
     FlowDefinition,
     StockDefinition,
     MFASystem,
+    MFADefinition,
 )
-from flodym.processes import Process
 from flodym.stocks import InflowDrivenDSM
 from flodym.survival_functions import NormalSurvival
-from flodym.flow_helper import make_empty_flows
-from flodym.stock_helper import make_empty_stocks
 
 # %% [markdown]
 # ## 2. Define the data requirements, flows, stocks and MFA system equations
@@ -89,6 +87,8 @@ dimension_definitions = [
     DimensionDefinition(letter="w", name="waste", dtype=str),
 ]
 
+process_names = ["sysenv", "market", "use", "waste", "scrap"]
+
 parameter_definitions = [
     ParameterDefinition(name="vehicle lifetime", dim_letters=("r",)),
     ParameterDefinition(name="vehicle material content", dim_letters=("m",)),
@@ -97,11 +97,6 @@ parameter_definitions = [
     ParameterDefinition(name="eol recovery rate", dim_letters=("m", "w")),
 ]
 
-# %%
-process_names = ["sysenv", "market", "use", "waste", "scrap"]
-processes = {name: Process(name=name, id=index) for index, name in enumerate(process_names)}
-
-# %%
 flow_definitions = [
     FlowDefinition(from_process_name="sysenv", to_process_name="market", dim_letters=("t", "r")),
     FlowDefinition(from_process_name="market", to_process_name="use", dim_letters=("t", "m", "r")),
@@ -112,6 +107,7 @@ flow_definitions = [
         from_process_name="scrap", to_process_name="sysenv", dim_letters=("t", "w", "m")
     ),
 ]
+
 stock_definitions = [
     StockDefinition(
         name="in use",
@@ -119,6 +115,14 @@ stock_definitions = [
         dim_letters=("t", "r"),
     )
 ]
+
+mfa_definition = MFADefinition(
+    dimensions=dimension_definitions,
+    processes=process_names,
+    flows=flow_definitions,
+    stocks=stock_definitions,
+    parameters=parameter_definitions,
+)
 
 
 # %%
@@ -218,7 +222,7 @@ class CustomDataReader(DataReader):
 
     def read_parameter_values(self, parameter_name: str, dims: DimensionSet) -> Parameter:
         data = pd.read_excel(
-            join(self.data_directory, f"example5_{parameter_name.replace(" ", "_")}.xlsx"), "Data"
+            join(self.data_directory, f"example5_{parameter_name.replace(' ', '_')}.xlsx"), "Data"
         )
         data = data.fillna(0)
         if "r" in dims.letters:  # remove unwanted regions
@@ -249,20 +253,10 @@ class CustomDataReader(DataReader):
 
 # %%
 data_reader = CustomDataReader(data_directory="input_data")
-dimensions = data_reader.read_dimensions(dimension_definitions)
-parameters = data_reader.read_parameters(parameter_definitions, dims=dimensions)
 
-stocks = make_empty_stocks(
-    stock_definitions=stock_definitions, processes=processes, dims=dimensions
-)
-flows = make_empty_flows(processes=processes, dims=dimensions, flow_definitions=flow_definitions)
-
-vehicle_mfa = VehicleMFA(
-    dims=dimensions,
-    parameters=parameters,
-    flows=flows,
-    stocks=stocks,
-    processes=processes,
+vehicle_mfa = VehicleMFA.from_data_reader(
+    definition=mfa_definition,
+    data_reader=data_reader,
 )
 stock_diff = vehicle_mfa.compute_stock()  # compute 1st stock estimate and difference to data
 
@@ -310,22 +304,10 @@ class AnotherCustomDataReader(CustomDataReader):
 
 # %%
 data_reader_2 = AnotherCustomDataReader(data_directory="input_data")
-dimensions_2 = data_reader_2.read_dimensions(dimension_definitions)
-parameters_2 = data_reader_2.read_parameters(parameter_definitions, dims=dimensions_2)
 
-stocks_2 = make_empty_stocks(
-    stock_definitions=stock_definitions, processes=processes, dims=dimensions_2
-)
-flows_2 = make_empty_flows(
-    processes=processes, dims=dimensions_2, flow_definitions=flow_definitions
-)
-
-vehicle_mfa_2 = VehicleMFA(
-    dims=dimensions_2,
-    parameters=parameters_2,
-    flows=flows_2,
-    stocks=stocks_2,
-    processes=processes,
+vehicle_mfa_2 = VehicleMFA.from_data_reader(
+    definition=mfa_definition,
+    data_reader=data_reader_2,
 )
 stock_diff_2 = (
     vehicle_mfa_2.compute()
@@ -357,7 +339,7 @@ fig.show(renderer="notebook")
 
 # %%
 np.nan_to_num(vehicle_mfa_2.flows["scrap => sysenv"].values, copy=False)
-scrap_outflow = vehicle_mfa_2.flows["scrap => sysenv"].sum_nda_over(sum_over_dims=("r", "m"))
+scrap_outflow = vehicle_mfa_2.flows["scrap => sysenv"].sum_nda_over(sum_over_dims=("m"))
 outflow_df = scrap_outflow.to_df(dim_to_columns="waste")
 outflow_df = outflow_df[outflow_df.index > 2017]
 fig = px.line(outflow_df, title="Scrap outflow")

@@ -61,6 +61,6 @@ This gives a flodym-based MFA models the following properties:
  <!-- stop parsing here on readthedocs -->
 # Documentation
 
-See our readthedocs page for documentation!
+See our [readthedocs](https://flodym.readthedocs.io/en/latest/) page for documentation!
 
 The notebooks in the [examples](examples) folder provide usage examples of the code.

@@ -13,8 +13,8 @@ from .survival_functions import (
     LogNormalSurvival,
     WeibullSurvival,
 )
-from .named_dim_arrays import StockArray, Parameter
-from .named_dim_array_helper import named_dim_array_stack
+from .flodym_arrays import StockArray, Parameter
+from .flodym_array_helper import named_dim_array_stack
 from .dimensions import Dimension, DimensionSet
 from .mfa_definition import StockDefinition
 from .stocks import DynamicStockModel, InflowDrivenDSM, StockDrivenDSM, FlowDrivenStock, Stock

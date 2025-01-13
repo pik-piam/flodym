@@ -4,7 +4,7 @@ from polyfactory.factories.pydantic_factory import ModelFactory
 import pytest
 
 from flodym import FlodymArray, Dimension, DimensionSet
-from flodym.named_dim_array_helper import named_dim_array_stack
+from flodym.flodym_array_helper import named_dim_array_stack
 
 
 dimension_set = DimensionSet(

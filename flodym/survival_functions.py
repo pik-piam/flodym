@@ -5,7 +5,7 @@ import numpy as np
 import scipy.stats
 
 from .dimensions import DimensionSet
-from .named_dim_arrays import FlodymArray
+from .flodym_arrays import FlodymArray
 
 
 class SurvivalModel:

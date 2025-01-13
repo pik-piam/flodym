@@ -6,7 +6,7 @@ from pydantic import BaseModel as PydanticBaseModel, model_validator, ConfigDict
 from typing import Any
 from abc import ABC, abstractmethod
 
-from ..named_dim_arrays import FlodymArray
+from ..flodym_arrays import FlodymArray
 from ..dimensions import DimensionSet
 from .helper import CustomNameDisplayer
 

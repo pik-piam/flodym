@@ -9,7 +9,7 @@ from typing import Optional
 
 from .processes import Process
 from .survival_functions import SurvivalModel
-from .named_dim_arrays import StockArray
+from .flodym_arrays import StockArray
 
 
 class Stock(PydanticBaseModel):

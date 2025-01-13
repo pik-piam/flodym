@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 import plotly as pl
 
 from ..mfa_system import MFASystem
-from ..named_dim_arrays import Flow
+from ..flodym_arrays import Flow
 from .helper import CustomNameDisplayer
 
 
