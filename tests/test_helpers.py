@@ -3,8 +3,8 @@ from numpy.testing import assert_array_equal
 from polyfactory.factories.pydantic_factory import ModelFactory
 import pytest
 
-from sodym import NamedDimArray, Dimension, DimensionSet
-from sodym.named_dim_array_helper import named_dim_array_stack
+from flodym import FlodymArray, Dimension, DimensionSet
+from flodym.flodym_array_helper import named_dim_array_stack
 
 
 dimension_set = DimensionSet(
@@ -15,14 +15,14 @@ dimension_set = DimensionSet(
 )
 
 
-class NamedDimArrayFactory(ModelFactory[NamedDimArray]):
+class FlodymArrayFactory(ModelFactory[FlodymArray]):
     dims = dimension_set
     values = np.random.rand(3, 1)
 
 
 @pytest.mark.parametrize("new_dim_length", [2, 7])
 def test_named_dim_array_stack(new_dim_length):
-    named_dim_arrays = [NamedDimArrayFactory.build() for _ in range(new_dim_length)]
+    named_dim_arrays = [FlodymArrayFactory.build() for _ in range(new_dim_length)]
     additional_dim = Dimension(name="extra", letter="x", items=list(range(new_dim_length)))
     stacked = named_dim_array_stack(named_dim_arrays, additional_dim)
 
@@ -36,7 +36,7 @@ def test_named_dim_array_stack(new_dim_length):
 
 
 def test_named_dim_array_split():
-    named_dim_arrays = [NamedDimArrayFactory.build() for _ in range(3)]
+    named_dim_arrays = [FlodymArrayFactory.build() for _ in range(3)]
     items = ["pre-industrial", 1950, 2000]
     additional_dim = Dimension(name="extra", letter="x", items=items)
     stacked = named_dim_array_stack(named_dim_arrays, additional_dim)

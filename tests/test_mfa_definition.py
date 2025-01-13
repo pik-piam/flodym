@@ -1,7 +1,7 @@
 from pydantic_core import ValidationError
 import pytest
 
-from sodym import DimensionDefinition, MFADefinition
+from flodym import DimensionDefinition, MFADefinition
 
 
 def test_validate_dimension_definition():

@@ -6,9 +6,9 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = "sodym"
-copyright = "2024, the sodym authors"
-author = "the sodym authors"
+project = "flodym"
+copyright = "2024, the flodym authors"
+author = "the flodym authors"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

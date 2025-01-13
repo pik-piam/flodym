@@ -14,9 +14,9 @@
 
 # %% [markdown]
 # # Example 3. Dynamic Stock modelling
-# *ODYM example by Stefan Pauliuk, adapted for sodym*
+# *ODYM example by Stefan Pauliuk, adapted for flodym*
 #
-# sodym defines the class DynamicStockModel for handling the inflow-driven and stock driven model of in-use stocks, see methods section 3 of the [uni-freiburg industrial ecology course](http://www.teaching.industrialecology.uni-freiburg.de/). In this notebook, we show how the dynamic stock model is used in the sodym framework. Other methods of the dynamic_stock_modelling class can be used in a similar way.
+# flodym defines the class DynamicStockModel for handling the inflow-driven and stock driven model of in-use stocks, see methods section 3 of the [uni-freiburg industrial ecology course](http://www.teaching.industrialecology.uni-freiburg.de/). In this notebook, we show how the dynamic stock model is used in the flodym framework. Other methods of the dynamic_stock_modelling class can be used in a similar way.
 #
 # The research question is:
 # * How large are in-use stocks of steel in selected countries?
@@ -39,7 +39,7 @@
 # $S(t) = \sum_{t'\leq t} ds(t')$
 
 # %% [markdown]
-# ## 1. Load sodym and useful packages
+# ## 1. Load flodym and useful packages
 
 # %%
 import os
@@ -47,18 +47,18 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 
-from sodym import (
+from flodym import (
     DimensionDefinition,
     ParameterDefinition,
     Dimension,
     DimensionSet,
     Parameter,
     StockArray,
+    Process,
+    DataReader,
+    InflowDrivenDSM,
 )
-from sodym.data_reader import DataReader
-from sodym.processes import Process
-from sodym.survival_models import NormalSurvival
-from sodym.stocks import InflowDrivenDSM
+from flodym.survival_models import NormalSurvival
 
 # %% [markdown]
 # ## 2. Define system dimensions and load data
@@ -141,7 +141,7 @@ parameters = data_reader.read_parameters(parameter_definitions, dimensions)
 # %% [markdown]
 # ## 3. Perform dynamic stock modelling
 #
-# In this example, we do not need to build a whole MFA system, since we are only considering one dynamic stock. To make a dynamic stock in sodym, we first need to define a survival model; in this case we assume a normal distribution of lifetimes. Then, we can initiate the dynamic stock model. Here we choose an inflow driven stock model, because we have data that specifies the inflow and from this and the survival model we want to calculate the stock and the outflow.
+# In this example, we do not need to build a whole MFA system, since we are only considering one dynamic stock. To make a dynamic stock in flodym, we first need to define a survival model; in this case we assume a normal distribution of lifetimes. Then, we can initiate the dynamic stock model. Here we choose an inflow driven stock model, because we have data that specifies the inflow and from this and the survival model we want to calculate the stock and the outflow.
 
 # %%
 normal_survival_model = NormalSurvival(

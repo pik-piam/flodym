@@ -14,7 +14,7 @@
 
 # %% [markdown]
 # # Example 2. Alloying elements in recycling.
-# *ODYM example by Stefan Pauliuk, adapted for sodym*
+# *ODYM example by Stefan Pauliuk, adapted for flodym*
 #
 # A recycling system with two end-of-life (EoL) products, two scrap types, one secondary material, and several types of losses are studied. Three chemical elements are considered: iron, copper, and manganese. A time horizon of 30 years [1980-2010], five processes, and time-dependent parameters are analysed. The processes have element-specific yield factors, meaning that the loss rates depend on the chemical element considered. These values are given below.
 #
@@ -39,7 +39,7 @@
 # Here the index letters t denote the model time and e the chemical element.
 
 # %% [markdown]
-# ## 1. Load sodym and other useful packages
+# ## 1. Load flodym and other useful packages
 
 # %%
 import os
@@ -47,7 +47,7 @@ from copy import deepcopy
 import numpy as np
 import plotly.io as pio
 
-from sodym import (
+from flodym import (
     MFADefinition,
     DimensionDefinition,
     ParameterDefinition,
@@ -55,7 +55,7 @@ from sodym import (
     StockDefinition,
     MFASystem,
 )
-from sodym.export import PlotlyArrayPlotter
+from flodym.export import PlotlyArrayPlotter
 
 # needed only for correct rendering on the readthedocs homepage
 pio.renderers.default = "browser"

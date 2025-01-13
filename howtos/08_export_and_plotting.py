@@ -7,10 +7,10 @@
 # %% [markdown]
 # ### Array to data frame
 #
-# `NamedDimArray` objects have a `to_df()` method, which exports them to a pandas DataFrame:
+# `FlodymArray` objects have a `to_df()` method, which exports them to a pandas DataFrame:
 
 # %%
-from sodym.example_objects import get_example_array
+from flodym.example_objects import get_example_array
 
 array = get_example_array()
 df = array.to_df()
@@ -21,15 +21,15 @@ df.head()
 # ### MFA system to dictionary and pickle file
 #
 # The easiest way to store an MFA object is to pickle it (see the pickle documentation for details).
-# However, whoever loads it from the pickle file needs sodym to read it.
+# However, whoever loads it from the pickle file needs flodym to read it.
 #
-# sodym has a method to convert the MFASystem object to a nested dictionary, which does not need sodym.
+# flodym has a method to convert the MFASystem object to a nested dictionary, which does not need flodym.
 # There are two data types the array values can be converted to: numpy arrays and pandas DataFrames.
 # Let's try both:
 
 # %%
-from sodym.export import convert_to_dict
-from sodym.example_objects import get_example_mfa
+from flodym.export import convert_to_dict
+from flodym.example_objects import get_example_mfa
 
 
 # printing function
@@ -67,7 +67,7 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
-from sodym.export import export_mfa_to_pickle
+from flodym.export import export_mfa_to_pickle
 
 export_path = "output_data/mfa.pickle"
 export_mfa_to_pickle(mfa=mfa, export_path=export_path)
@@ -75,11 +75,11 @@ export_mfa_to_pickle(mfa=mfa, export_path=export_path)
 # %% [markdown]
 # ## To CSV
 #
-# sodym has functions to export MFA flows and stocks to csv files. Let's start with flows:
+# flodym has functions to export MFA flows and stocks to csv files. Let's start with flows:
 
 # %%
 import os
-from sodym.export import export_mfa_flows_to_csv, export_mfa_stocks_to_csv
+from flodym.export import export_mfa_flows_to_csv, export_mfa_stocks_to_csv
 
 export_dir = "output_data/flows"
 export_mfa_flows_to_csv(mfa, export_directory=export_dir)
@@ -102,7 +102,7 @@ print("".join(head))
 # %%
 
 import os
-from sodym.export import export_mfa_stocks_to_csv
+from flodym.export import export_mfa_stocks_to_csv
 
 export_dir = "output_data/stocks"
 export_mfa_stocks_to_csv(mfa, export_directory=export_dir, with_in_and_out=True)
@@ -117,11 +117,11 @@ print("\n".join(os.listdir(export_dir)))
 # %% [markdown]
 # ## Sankey plotting
 #
-# sodym can print Sankey plots of mfa systems:
+# flodym can print Sankey plots of mfa systems:
 #
 
 # %%
-from sodym.export import PlotlySankeyPlotter
+from flodym.export import PlotlySankeyPlotter
 
 plotter = PlotlySankeyPlotter(
     mfa=mfa, split_flows_by="Material", slice_dict={"t": 2000}, color_scheme="antique"
@@ -135,12 +135,12 @@ fig.show(renderer="notebook")
 # %% [markdown]
 # ## Plotting yourself
 #
-# Obviously, you can always export a `NamedDimArray` to a DataFrame and use your own plotly routine, or use the numpy array in the `values` attribute.
+# Obviously, you can always export a `FlodymArray` to a DataFrame and use your own plotly routine, or use the numpy array in the `values` attribute.
 # This is done in the examples.
 #
 # ## Array plotting using `ArrayPlotter`
 #
-# sodym has some implemented functionality that is especially suited for plotting 3-dimensional data.
+# flodym has some implemented functionality that is especially suited for plotting 3-dimensional data.
 # It can be handy if you want a quick impression of three-dimensional data (which is then differentiated by x-axis index, subplot, and lines).
 # Two versions exist: One for pyplot, and one for plotly.
 #
