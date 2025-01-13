@@ -103,7 +103,7 @@ show_array(divided)
 # This may not be the dimension we want, for example we might want to sum the result over products, keeping the dimensions tie and region. There are some class methods for these kinds of operations. See the API reference for the full documentation. For our example:
 
 # %%
-reduced = multiplied.sum_nda_to(result_dims=("t", "r"))
+reduced = multiplied.sum_to(result_dims=("t", "r"))
 print("reduced:")
 show_array(reduced)
 
