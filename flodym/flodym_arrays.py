@@ -429,7 +429,7 @@ class FlodymArray(PydanticBaseModel):
         self.set_values(DataFrameToNDADataConverter(df_in, self).nda_values)
 
     def split(self, dim_letter: str) -> dict:
-        """Reverse the named_dim_array_stack, returns a dictionary of FlodymArray objects
+        """Reverse the flodym_array_stack, returns a dictionary of FlodymArray objects
         associated with the item in the dimension that has been split.
         Method can be applied to classes FlodymArray, StockArray, Parameter and Flow.
         """
@@ -487,8 +487,8 @@ class SubArrayHandler:
     However, one can use it to create a FlodymArray object with the `to_nda()` method.
     """
 
-    def __init__(self, named_dim_array: FlodymArray, definition):
-        self.nda = named_dim_array
+    def __init__(self, flodym_array: FlodymArray, definition):
+        self.nda = flodym_array
         self._get_def_dict(definition)
         self.invalid_nda = any(_is_iterable(v) for v in self.def_dict.values())
         self._init_dims_out()

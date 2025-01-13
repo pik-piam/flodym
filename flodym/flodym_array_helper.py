@@ -4,14 +4,14 @@ from .flodym_arrays import FlodymArray
 from .dimensions import Dimension
 
 
-def named_dim_array_stack(named_dim_arrays: list[FlodymArray], dimension: Dimension) -> FlodymArray:
+def flodym_array_stack(flodym_arrays: list[FlodymArray], dimension: Dimension) -> FlodymArray:
     """Stack a list of FlodymArray objects using a new dimension.
     Like numpy.stack with axis=-1, but for `FlodymArray`s.
     Method can be applied to `FlodymArray`s, `StockArray`s, `Parameter`s and `Flow`s.
     """
-    named_dim_array0 = named_dim_arrays[0]
-    extended_dimensions = named_dim_array0.dims.expand_by([dimension])
+    flodym_array0 = flodym_arrays[0]
+    extended_dimensions = flodym_array0.dims.expand_by([dimension])
     extended = FlodymArray(dims=extended_dimensions)
-    for item, nda in zip(dimension.items, named_dim_arrays):
+    for item, nda in zip(dimension.items, flodym_arrays):
         extended[{dimension.letter: item}] = nda
     return extended

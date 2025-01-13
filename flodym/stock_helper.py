@@ -14,7 +14,7 @@ from .survival_functions import (
     WeibullSurvival,
 )
 from .flodym_arrays import StockArray, Parameter
-from .flodym_array_helper import named_dim_array_stack
+from .flodym_array_helper import flodym_array_stack
 from .dimensions import Dimension, DimensionSet
 from .mfa_definition import StockDefinition
 from .stocks import DynamicStockModel, InflowDrivenDSM, StockDrivenDSM, FlowDrivenStock, Stock
@@ -27,9 +27,9 @@ def stock_stack(stocks: list[Stock], dimension: Dimension) -> FlowDrivenStock:
     with this function we can combine them to a stock object that contains
     information about all the materials.
     """
-    stacked_stock = named_dim_array_stack([stock.stock for stock in stocks], dimension=dimension)
-    stacked_inflow = named_dim_array_stack([stock.inflow for stock in stocks], dimension=dimension)
-    stacked_outflow = named_dim_array_stack(
+    stacked_stock = flodym_array_stack([stock.stock for stock in stocks], dimension=dimension)
+    stacked_inflow = flodym_array_stack([stock.inflow for stock in stocks], dimension=dimension)
+    stacked_outflow = flodym_array_stack(
         [stock.outflow for stock in stocks], dimension=dimension
     )
     return FlowDrivenStock(
