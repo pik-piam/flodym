@@ -29,9 +29,7 @@ def stock_stack(stocks: list[Stock], dimension: Dimension) -> FlowDrivenStock:
     """
     stacked_stock = flodym_array_stack([stock.stock for stock in stocks], dimension=dimension)
     stacked_inflow = flodym_array_stack([stock.inflow for stock in stocks], dimension=dimension)
-    stacked_outflow = flodym_array_stack(
-        [stock.outflow for stock in stocks], dimension=dimension
-    )
+    stacked_outflow = flodym_array_stack([stock.outflow for stock in stocks], dimension=dimension)
     return FlowDrivenStock(
         stock=stacked_stock,
         inflow=stacked_inflow,

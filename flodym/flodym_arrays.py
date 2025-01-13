@@ -212,7 +212,7 @@ class FlodymArray(PydanticBaseModel):
         result_dims = self._tuple_to_letters(result_dims)
         return np.einsum(f"{self.dims.string}->{''.join(result_dims)}", self.values)
 
-    def sum_to(self, result_dims: tuple = ()) -> 'FlodymArray':
+    def sum_to(self, result_dims: tuple = ()) -> "FlodymArray":
         """Return the FlodymArray summed, such that only the dimensions given in the result_dims tuple are left.
 
         Args:
@@ -228,7 +228,7 @@ class FlodymArray(PydanticBaseModel):
             name=self.name,
         )
 
-    def sum_over(self, sum_over_dims: tuple = ()) -> 'FlodymArray':
+    def sum_over(self, sum_over_dims: tuple = ()) -> "FlodymArray":
         """Return the FlodymArray summed over a given tuple of dimensions.
 
         Args:
@@ -565,7 +565,9 @@ class SubArrayHandler:
                 "Use a new dimension object with the subset as values instead"
             )
 
-        return FlodymArray(dims=self.dims_out, values=self.values_pointer, name=self.flodym_array.name)
+        return FlodymArray(
+            dims=self.dims_out, values=self.values_pointer, name=self.flodym_array.name
+        )
 
     def _init_ids(self):
         """

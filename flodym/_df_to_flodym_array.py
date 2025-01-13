@@ -198,7 +198,9 @@ class DataFrameToFlodymDataConverter:
         if self.flodym_array.dims.ndim == 0:
             expected_index_tuples = set()
         else:
-            expected_index_tuples = set(itertools.product(*(dim.items for dim in self.flodym_array.dims)))
+            expected_index_tuples = set(
+                itertools.product(*(dim.items for dim in self.flodym_array.dims))
+            )
 
         # Generate actual index tuples from DataFrame columns
         actual_index_tuples = set(
