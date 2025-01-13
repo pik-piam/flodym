@@ -11,14 +11,14 @@ if TYPE_CHECKING:
     from .flodym_arrays import FlodymArray
 
 
-class NDADataFormat(PydanticBaseModel):
+class FlodymDataFormat(PydanticBaseModel):
 
     type: Literal["long", "wide"]
     value_column: str = "value"
     columns_dim: Optional[str] = None
 
 
-class DataFrameToNDADataConverter:
+class DataFrameToFlodymDataConverter:
     """Converts a panda DataFrame with various possible formats to a numpy array that can be used
     as values of a FlodymArray.
 
@@ -28,14 +28,14 @@ class DataFrameToNDADataConverter:
     In case of errors, turning on debug logging might help to understand the process.
     """
 
-    def __init__(self, df: pd.DataFrame, nda: "FlodymArray"):
+    def __init__(self, df: pd.DataFrame, flodym_array: "FlodymArray"):
         self.df = df.copy()
-        self.nda = nda
-        self.nda_values = self.get_nda_values()
+        self.flodym_array = flodym_array
+        self.target_values = self.get_target_values()
 
-    def get_nda_values(self) -> np.ndarray:
+    def get_target_values(self) -> np.ndarray:
         logging.debug(
-            f"Start setting values for FlodymArray {self.nda.name} with dimensions {self.nda.dims.names} from dataframe."
+            f"Start setting values for FlodymArray {self.flodym_array.name} with dimensions {self.flodym_array.dims.names} from dataframe."
         )
         self._reset_non_default_index()
         self._determine_format()
@@ -44,7 +44,7 @@ class DataFrameToNDADataConverter:
         self._convert_type()
         self._sort_df()
         self._check_data_complete()
-        return self.df[self.format.value_column].values.reshape(self.nda.shape)
+        return self.df[self.format.value_column].values.reshape(self.flodym_array.shape)
 
     def _reset_non_default_index(self):
         if isinstance(self.df.index, pd.MultiIndex):
@@ -63,7 +63,7 @@ class DataFrameToNDADataConverter:
         self._check_value_columns()
 
     def _get_dim_columns_by_name(self):
-        self.dim_columns = [c for c in self.df.columns if c in self.nda.dims.names]
+        self.dim_columns = [c for c in self.df.columns if c in self.flodym_array.dims.names]
         logging.debug(f"Recognized index columns by name: {self.dim_columns}")
 
     def _check_if_first_row_are_items(self):
@@ -74,7 +74,7 @@ class DataFrameToNDADataConverter:
         column_name = self.df.columns[0]
         col_items = self.df[column_name].unique()
         extended_col_items = [column_name] + col_items.tolist()
-        for dim in self.nda.dims:
+        for dim in self.flodym_array.dims:
             if self.same_items(extended_col_items, dim):
                 self._add_column_names_as_row(column_name, dim)
 
@@ -108,7 +108,7 @@ class DataFrameToNDADataConverter:
     def _check_if_dim_column_by_items(self, column_name: str) -> bool:
         logging.debug(f"Checking if {column_name} is a dimension by comparing items with dim items")
         col_items = self.df[column_name].unique()
-        for dim in self.nda.dims:
+        for dim in self.flodym_array.dims:
             if self.same_items(col_items, dim):
                 logging.debug(f"{column_name} is dimension {dim.name}.")
                 self.df.rename(columns={column_name: dim.name}, inplace=True)
@@ -125,10 +125,10 @@ class DataFrameToNDADataConverter:
 
     def _check_if_value_columns_match_dim_items(self, value_cols: list[str]) -> bool:
         logging.debug("Trying to match set of value column names with items of dimension.")
-        for dim in self.nda.dims:
+        for dim in self.flodym_array.dims:
             if self.same_items(value_cols, dim):
                 logging.debug(f"Value columns match dimension items of {dim.name}.")
-                self.format = NDADataFormat(type="wide", columns_dim=dim.name)
+                self.format = FlodymDataFormat(type="wide", columns_dim=dim.name)
                 if dim.dtype is not None:
                     for c in value_cols:
                         self.df.rename(columns={c: dim.dtype(c)}, inplace=True)
@@ -140,7 +140,7 @@ class DataFrameToNDADataConverter:
             "Could not find dimension with same item set as value column names. Assuming long format, i.e. one value column."
         )
         if len(value_cols) == 1:
-            self.format = NDADataFormat(type="long", value_column=value_cols[0])
+            self.format = FlodymDataFormat(type="long", value_column=value_cols[0])
             logging.debug(f"Value column name is {value_cols[0]}.")
         else:
             raise ValueError(
@@ -152,7 +152,7 @@ class DataFrameToNDADataConverter:
         if self.format.type != "wide":
             return
         logging.debug("Converting wide format to long format.")
-        value_cols = self.nda.dims[self.format.columns_dim].items
+        value_cols = self.flodym_array.dims[self.format.columns_dim].items
         self.df = self.df.melt(
             id_vars=[c for c in self.df.columns if c not in value_cols],
             value_vars=value_cols,
@@ -160,13 +160,13 @@ class DataFrameToNDADataConverter:
             value_name=self.format.value_column,
         )
         self.dim_columns.append(self.format.columns_dim)
-        self.format = NDADataFormat(type="long", value_column=self.format.value_column)
+        self.format = FlodymDataFormat(type="long", value_column=self.format.value_column)
 
     def _check_missing_dim_columns(self):
-        missing_dim_columns = np.setdiff1d(list(self.nda.dims.names), self.dim_columns)
+        missing_dim_columns = np.setdiff1d(list(self.flodym_array.dims.names), self.dim_columns)
         for c in missing_dim_columns:
-            if len(self.nda.dims[c].items) == 1:
-                self.df[c] = self.nda.dims[c].items[0]
+            if len(self.flodym_array.dims[c].items) == 1:
+                self.df[c] = self.flodym_array.dims[c].items[0]
                 self.dim_columns.append(c)
             else:
                 raise ValueError(
@@ -174,7 +174,7 @@ class DataFrameToNDADataConverter:
                 )
 
     def _convert_type(self):
-        for dim in self.nda.dims:
+        for dim in self.flodym_array.dims:
             if dim.dtype is not None:
                 self.df[dim.name] = self.df[dim.name].map(dim.dtype)
         self.df[self.format.value_column] = self.df[self.format.value_column].astype(np.float64)
@@ -186,19 +186,19 @@ class DataFrameToNDADataConverter:
         FlodymArray.
         """
         # sort columns
-        self.df = self.df[list(self.nda.dims.names) + [self.format.value_column]]
+        self.df = self.df[list(self.flodym_array.dims.names) + [self.format.value_column]]
         # sort rows
         self.df = self.df.sort_values(
-            by=list(self.nda.dims.names),
-            key=lambda x: x.map(lambda y: self.nda.dims[x.name].items.index(y)),
+            by=list(self.flodym_array.dims.names),
+            key=lambda x: x.map(lambda y: self.flodym_array.dims[x.name].items.index(y)),
         )
 
     def _check_data_complete(self):
         # Generate expected index tuples from FlodymArray dimensions
-        if self.nda.dims.ndim == 0:
+        if self.flodym_array.dims.ndim == 0:
             expected_index_tuples = set()
         else:
-            expected_index_tuples = set(itertools.product(*(dim.items for dim in self.nda.dims)))
+            expected_index_tuples = set(itertools.product(*(dim.items for dim in self.flodym_array.dims)))
 
         # Generate actual index tuples from DataFrame columns
         actual_index_tuples = set(

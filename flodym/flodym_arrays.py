@@ -13,7 +13,7 @@ from typing import Optional, Union
 
 from .processes import Process
 from .dimensions import DimensionSet, Dimension
-from ._df_to_nda import DataFrameToNDADataConverter
+from ._df_to_flodym_array import DataFrameToFlodymDataConverter
 
 
 def _is_iterable(arg):
@@ -110,7 +110,7 @@ class FlodymArray(PydanticBaseModel):
             df (DataFrame): pandas DataFrame containing the values of the FlodymArray.
                 Dimensions of the named dim array can be given in DataFrame columns or the index.
                 The DataFrame can be in long or wide format, that is there can either be one value column,
-                or the value columns are named by items of one NDA dimension.
+                or the value columns are named by items of one FlodymArray dimension.
                 If dimension names are not given in the respective index or column, they are inferred from the
                 items of the dimensions of the FlodymArray.
                 It is advisable to give the dimension names in the DataFrame, as this makes the error messages
@@ -123,9 +123,9 @@ class FlodymArray(PydanticBaseModel):
         Returns:
             FlodymArray: FlodymArray object with the values from the DataFrame
         """
-        nda = cls(dims=dims, **kwargs)
-        nda.set_values_from_df(df)
-        return nda
+        flodym_array = cls(dims=dims, **kwargs)
+        flodym_array.set_values_from_df(df)
+        return flodym_array
 
     def _sub_array_handler(self, definition) -> "SubArrayHandler":
         return SubArrayHandler(self, definition)
@@ -141,7 +141,7 @@ class FlodymArray(PydanticBaseModel):
         For safety reasons, using scalars or broadcasting smaller arrays is not allowed,
         i.e. the shape of the values must match the shape of the FlodymArray.
 
-        As a less safe but more flexible alternative, you can use e.g. nda.values[...] = 3.5 to set the values directly.
+        As a less safe but more flexible alternative, you can use e.g. flodym_array.values[...] = 3.5 to set the values directly.
         """
         self.values = values
         self._check_value_format()
@@ -212,7 +212,7 @@ class FlodymArray(PydanticBaseModel):
         result_dims = self._tuple_to_letters(result_dims)
         return np.einsum(f"{self.dims.string}->{''.join(result_dims)}", self.values)
 
-    def sum_nda_to(self, result_dims: tuple = ()):
+    def sum_to(self, result_dims: tuple = ()) -> 'FlodymArray':
         """Return the FlodymArray summed, such that only the dimensions given in the result_dims tuple are left.
 
         Args:
@@ -228,7 +228,7 @@ class FlodymArray(PydanticBaseModel):
             name=self.name,
         )
 
-    def sum_nda_over(self, sum_over_dims: tuple = ()):
+    def sum_over(self, sum_over_dims: tuple = ()) -> 'FlodymArray':
         """Return the FlodymArray summed over a given tuple of dimensions.
 
         Args:
@@ -369,7 +369,7 @@ class FlodymArray(PydanticBaseModel):
         """Defines what is returned when the object with square brackets stands on the right-hand side of an assignment,
         e.g. foo = foo = bar[{'e': 'C'}] Here, it is solely used for slicing, the the input tot the square brackets must
         be a dictionary defining the slice."""
-        return self._sub_array_handler(keys).to_nda()
+        return self._sub_array_handler(keys).to_flodym_array()
 
     def __setitem__(self, keys, item):
         """Defines what is returned when the object with square brackets stands on the left-hand side of an assignment,
@@ -399,7 +399,7 @@ class FlodymArray(PydanticBaseModel):
         df = df.set_index(multiindex)
         if dim_to_columns is not None:
             if dim_to_columns not in self.dims:
-                raise ValueError(f"Dimension name {dim_to_columns} not found in nda.dims")
+                raise ValueError(f"Dimension name {dim_to_columns} not found in flodym_array.dims")
             # transform to name, if given as letter
             dim_to_columns = self.dims[dim_to_columns].name
             df.reset_index(inplace=True)
@@ -416,7 +416,7 @@ class FlodymArray(PydanticBaseModel):
             df (DataFrame): pandas DataFrame containing the values of the FlodymArray.
                 Dimensions of the named dim array can be given in DataFrame columns or the index.
                 The DataFrame can be in long or wide format, that is there can either be one value column,
-                or the value columns are named by items of one NDA dimension.
+                or the value columns are named by items of one FlodymArray dimension.
                 If dimension names are not given in the respective index or column, they are inferred from the
                 items of the dimensions of the FlodymArray.
                 It is advisable to give the dimension names in the DataFrame, as this makes the error messages
@@ -426,7 +426,7 @@ class FlodymArray(PydanticBaseModel):
                 Dimensions with only one item do not need to be given in the DataFrame.
                 Supersets of dimensions (i.e. additional values) will lead to an error.
         """
-        self.set_values(DataFrameToNDADataConverter(df_in, self).nda_values)
+        self.set_values(DataFrameToFlodymDataConverter(df_in, self).target_values)
 
     def split(self, dim_letter: str) -> dict:
         """Reverse the flodym_array_stack, returns a dictionary of FlodymArray objects
@@ -444,7 +444,7 @@ class FlodymArray(PydanticBaseModel):
         if all([d in dim_letters for d in self.dims.letters]):
             return self / self.sum_values()
 
-        return self / self.sum_nda_over(sum_over_dims=dim_letters)
+        return self / self.sum_over(sum_over_dims=dim_letters)
 
 
 class SubArrayHandler:
@@ -454,7 +454,7 @@ class SubArrayHandler:
 
     It returns either
 
-    - a new FlodymArray object (via the `to_nda()` function), or
+    - a new FlodymArray object (via the `to_flodym_array()` function), or
     - a pointer to a subset of the values array of the parent FlodymArray object, via the `values_pointer` attribute.
 
     There are several possible syntaxes for the definition of the subset:
@@ -484,13 +484,13 @@ class SubArrayHandler:
       USA.
 
     Note that does not inherit from FlodymArray, so it is not a FlodymArray object itself.
-    However, one can use it to create a FlodymArray object with the `to_nda()` method.
+    However, one can use it to create a FlodymArray object with the `to_flodym_array()` method.
     """
 
     def __init__(self, flodym_array: FlodymArray, definition):
-        self.nda = flodym_array
+        self.flodym_array = flodym_array
         self._get_def_dict(definition)
-        self.invalid_nda = any(_is_iterable(v) for v in self.def_dict.values())
+        self.invalid_flodym_array = any(_is_iterable(v) for v in self.def_dict.values())
         self._init_dims_out()
         self._init_ids()
 
@@ -511,7 +511,7 @@ class SubArrayHandler:
                 "docstring."
             )
         key = None
-        for d in self.nda.dims:
+        for d in self.flodym_array.dims:
             if item in d.items:
                 if key is not None:
                     raise ValueError(
@@ -539,10 +539,10 @@ class SubArrayHandler:
     @property
     def values_pointer(self):
         """Pointer to the subset of the values array of the parent FlodymArray object."""
-        return self.nda.values[self.ids]
+        return self.flodym_array.values[self.ids]
 
     def _init_dims_out(self):
-        self.dims_out = deepcopy(self.nda.dims)
+        self.dims_out = deepcopy(self.flodym_array.dims)
         for letter, value in self.def_dict.items():
             if isinstance(value, Dimension):
                 self.dims_out.replace(letter, value, inplace=True)
@@ -554,25 +554,25 @@ class SubArrayHandler:
         """Updated dimension letters, where sliced dimensions with only one item along that direction are removed."""
         return self.dims_out.letters
 
-    def to_nda(self) -> "FlodymArray":
+    def to_flodym_array(self) -> "FlodymArray":
         """Return a FlodymArray object that is a slice of the original FlodymArray object.
 
         Attention: This creates a new FlodymArray object, which is not linked to the original one.
         """
-        if self.invalid_nda:
+        if self.invalid_flodym_array:
             raise ValueError(
                 "Cannot convert to FlodymArray if there are dimension slices with several items."
                 "Use a new dimension object with the subset as values instead"
             )
 
-        return FlodymArray(dims=self.dims_out, values=self.values_pointer, name=self.nda.name)
+        return FlodymArray(dims=self.dims_out, values=self.values_pointer, name=self.flodym_array.name)
 
     def _init_ids(self):
         """
         - Init the internal list of index slices to slice(None) (i.e. no slicing, keep all items along that dimension)
         - For each dimension that is sliced, get the corresponding item IDs and set the index slice to these IDs.
         """
-        self._id_list = [slice(None) for _ in self.nda.dims.letters]
+        self._id_list = [slice(None) for _ in self.flodym_array.dims.letters]
         for dim_letter, item_or_items in self.def_dict.items():
             self._set_ids_single_dim(dim_letter, item_or_items)
 
@@ -580,7 +580,7 @@ class SubArrayHandler:
         """Given either a single item name or a list of item names, return the corresponding item IDs, along one
         dimension 'dim_letter'."""
         if isinstance(item_or_items, Dimension):
-            if item_or_items.is_subset(self.nda.dims[dim_letter]):
+            if item_or_items.is_subset(self.flodym_array.dims[dim_letter]):
                 items_ids = [
                     self._get_single_item_id(dim_letter, item) for item in item_or_items.items
                 ]
@@ -592,10 +592,10 @@ class SubArrayHandler:
             items_ids = [self._get_single_item_id(dim_letter, item) for item in item_or_items]
         else:
             items_ids = self._get_single_item_id(dim_letter, item_or_items)  # single item
-        self._id_list[self.nda.dims.index(dim_letter)] = items_ids
+        self._id_list[self.flodym_array.dims.index(dim_letter)] = items_ids
 
     def _get_single_item_id(self, dim_letter, item_name):
-        return self.nda.dims[dim_letter].items.index(item_name)
+        return self.flodym_array.dims[dim_letter].items.index(item_name)
 
 
 class Flow(FlodymArray):

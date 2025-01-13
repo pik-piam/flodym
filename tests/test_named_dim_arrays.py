@@ -56,29 +56,29 @@ def test_cast_to():
     assert casted_flodym_array.values.shape == (2, 3, 4)
 
 
-def test_sum_nda_to():
+def test_sum_to():
     # sum over one dimension
-    summed_flodym_array = space_animals.sum_nda_to(result_dims=("p", "t"))
+    summed_flodym_array = space_animals.sum_to(result_dims=("p", "t"))
     assert summed_flodym_array.dims == DimensionSet(dim_list=base_dim_list)
     assert_array_almost_equal(summed_flodym_array.values, np.sum(animal_values, axis=2))
 
     # sum over two dimensions
-    summed_flodym_array = space_animals.sum_nda_to(result_dims=("t"))
+    summed_flodym_array = space_animals.sum_to(result_dims=("t"))
     assert_array_almost_equal(
         summed_flodym_array.values, np.sum(np.sum(animal_values, axis=2), axis=0)
     )
 
     # example attempt to get a resulting dimension that does not exist
     with pytest.raises(KeyError):
-        space_animals.sum_nda_to(result_dims=("s"))
+        space_animals.sum_to(result_dims=("s"))
 
     # example where dimensions to sum over are specified rather than the remaining dimensions
-    summed_over = space_animals.sum_nda_over(sum_over_dims=("p", "a"))
+    summed_over = space_animals.sum_over(sum_over_dims=("p", "a"))
     assert_array_almost_equal(summed_over.values, summed_flodym_array.values)
 
     # example sum over dimension that doesn't exist
     with pytest.raises(KeyError):
-        space_animals.sum_nda_over(sum_over_dims=("s"))
+        space_animals.sum_over(sum_over_dims=("s"))
 
 
 def test_get_shares_over():

@@ -12,6 +12,6 @@ def flodym_array_stack(flodym_arrays: list[FlodymArray], dimension: Dimension) -
     flodym_array0 = flodym_arrays[0]
     extended_dimensions = flodym_array0.dims.expand_by([dimension])
     extended = FlodymArray(dims=extended_dimensions)
-    for item, nda in zip(dimension.items, flodym_arrays):
-        extended[{dimension.letter: item}] = nda
+    for item, flodym_array in zip(dimension.items, flodym_arrays):
+        extended[{dimension.letter: item}] = flodym_array
     return extended
