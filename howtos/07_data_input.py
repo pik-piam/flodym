@@ -1,18 +1,18 @@
 # %% [markdown]
 # # Data input
 #
-# Before, we have covered how to initialize the attributes of an MFASystem directly with their attributes. 
+# Before, we have covered how to initialize the attributes of an MFASystem directly with their attributes.
 # You can, of course, write your own data input routines and do this.
 #
 # Here, we will discuss how to directly read data into flodym objects.
 #
-# There are lots of different methods with different levels of integration vs customizability. 
+# There are lots of different methods with different levels of integration vs customizability.
 #
 # ## From DataFrame
 #
-# FlodymArray objects provide the `from_df()` method. 
+# FlodymArray objects provide the `from_df()` method.
 #
-# You can create your own data read-in to a csv file, and use this method. 
+# You can create your own data read-in to a csv file, and use this method.
 
 # %%
 import pandas as pd
@@ -40,7 +40,7 @@ print("Values:", my_array.values.flatten())
 # Notice how the entries were re-ordered according to the order of items in the dims.
 # the `from_df()` methods performs lots of checks and can handle different input data formats.
 #
-# For details on allowed formats, see the API reference of the method. 
+# For details on allowed formats, see the API reference of the method.
 #
 # NB: `Dimension` objects also have `from_np()` and `from_df` methods, which can be combined with numpy and pandas read functions.
 # Refer to the API reference for usage.
@@ -49,17 +49,17 @@ print("Values:", my_array.values.flatten())
 #
 # ## From file: CSV & Excel
 #
-# DimensionSets can be loaded using a `DimensionReader`. 
+# DimensionSets can be loaded using a `DimensionReader`.
 #
 # Why would you put the items of the dimension in an external file instead of putting them in the code directly?
-# In order to change them later together with the other input data. 
+# In order to change them later together with the other input data.
 # Like this, you can easily switch between different regional resolutions, temporal scope, and so on, without changing the code.
 #
 #
 # There are two dimension readers implemented, an `ExcelDimensionReader` and a `CSVDimensionReader`
 # We only show the `ExcelDimensionReader` here. For the  `CSVDimensionReader`, refer to the API reference.
 #
-# When working with reader, the information needed in addition to the data (for dimensions, everything apart from the items) is given in a definition object: 
+# When working with reader, the information needed in addition to the data (for dimensions, everything apart from the items) is given in a definition object:
 
 # %%
 from flodym import ExcelDimensionReader, DimensionDefinition
@@ -71,8 +71,8 @@ dimension_definitions = [
 
 
 # %% [markdown]
-# We initialize the reader with dictionaries containing the paths and sheet names for each dimension. 
-# Here, we've put everything in the same file, and named the sheets the same as the dimensions. 
+# We initialize the reader with dictionaries containing the paths and sheet names for each dimension.
+# Here, we've put everything in the same file, and named the sheets the same as the dimensions.
 
 # %%
 
@@ -108,7 +108,7 @@ parameter_definitions = [
 ]
 
 # %% [markdown]
-# We initialize the reader with dictionaries for file names and sheets names: 
+# We initialize the reader with dictionaries for file names and sheets names:
 
 # %%
 parameter_file = "../examples/input_data/example2_parameters.xlsx"
@@ -128,9 +128,9 @@ parameters = reader.read_parameters(parameter_definitions=parameter_definitions,
 # %% [markdown]
 # ## MFASystem `from_excel()` and `from_csv`
 #
-# If you wish to do your dat input using either excel or csv files as shown above, you can list all definitions, combine that into an MFADefinition object, and pass that into the `MFASystem.from_excel()` or `from_csv()` class methods together with the dictionaries for file paths (and sheet names for excel). 
+# If you wish to do your dat input using either excel or csv files as shown above, you can list all definitions, combine that into an MFADefinition object, and pass that into the `MFASystem.from_excel()` or `from_csv()` class methods together with the dictionaries for file paths (and sheet names for excel).
 #
-# It's a very clean, easy and quick way, but not very customizable. 
+# It's a very clean, easy and quick way, but not very customizable.
 # This method is used in example 2 and therefore not repeated here.
 
 # %% [markdown]
@@ -140,14 +140,14 @@ parameters = reader.read_parameters(parameter_definitions=parameter_definitions,
 # ### of `DimensionReader` and `ParameterReader`
 #
 # There are parent classes of `DimensionReader` and `ParameterReader` that you can write your own subclasses for.
-# - In a subclass of the `DimensionReader`, you will have to provide the function `read_dimension` (singular, not plural!), which takes a `DimensionDefinition` object and returns a `DimensionObject`. 
+# - In a subclass of the `DimensionReader`, you will have to provide the function `read_dimension` (singular, not plural!), which takes a `DimensionDefinition` object and returns a `DimensionObject`.
 # - In a subclass of the `ParameterReader`, you will have to provide the function `read_parameter_values`, which takes a parameter name and the correct `DimensionSet` according to the letters given in the definition, and returns a `Parameter`.
 # For both, you can provide additional information (such as file paths) in the `__init__` method.
 #
 # ### of `DataReader`
 #
-# There is also a combined `DataReader` class, which contains the methods described above for both dimension and parameter reading. 
-# If you have your own custom subclass of this, you can pass it to the `MFASystem.from_data_reader()`. 
+# There is also a combined `DataReader` class, which contains the methods described above for both dimension and parameter reading.
+# If you have your own custom subclass of this, you can pass it to the `MFASystem.from_data_reader()`.
 # This method is elegant, but required writing your own subclass, which may not be straightforward as other methods. It is shown in Example 5, so it is not demonstrated here.
 #
 # ###  Using `CompoundDataReader`
