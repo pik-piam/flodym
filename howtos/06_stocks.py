@@ -1,4 +1,4 @@
 # %% [markdown]
-# # Stocks / DSM
+# # Stocks 
 #
-# TODO
+# This HOWTO is a placeholder. Content is coming soon!

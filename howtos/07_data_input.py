@@ -28,7 +28,7 @@ df = pd.DataFrame(
     {
         "Time": [2020, 2020, 2020, 2010, 2010, 2010],
         "Material": ["Mn", "Cu", "Fe", "Fe", "Cu", "Mn"],
-        "value": [6., 5., 4., 1., 2., 3.],
+        "value": [6.0, 5.0, 4.0, 1.0, 2.0, 3.0],
     }
 )
 my_array = FlodymArray.from_df(dims=dims, df=df)
@@ -137,13 +137,19 @@ parameters = reader.read_parameters(parameter_definitions=parameter_definitions,
 #
 # ## Write your own customized subclasses
 #
-# There are parent classes of `DmensionReader` and `ParamaterReader` that you can write your own subclasses for.
+# ### of `DimensionReader` and `ParameterReader`
+#
+# There are parent classes of `DimensionReader` and `ParameterReader` that you can write your own subclasses for.
 # - In a subclass of the `DimensionReader`, you will have to provide the function `read_dimension` (singular, not plural!), which takes a `DimensionDefinition` object and returns a `DimensionObject`. 
 # - In a subclass of the `ParameterReader`, you will have to provide the function `read_parameter_values`, which takes a parameter name and the correct `DimensionSet` according to the letters given in the definition, and returns a `Parameter`.
 # For both, you can provide additional information (such as file paths) in the `__init__` method.
+#
+# ### of `DataReader`
 #
 # There is also a combined `DataReader` class, which contains the methods described above for both dimension and parameter reading. 
 # If you have your own custom subclass of this, you can pass it to the `MFASystem.from_data_reader()`. 
 # This method is elegant, but required writing your own subclass, which may not be straightforward as other methods. It is shown in Example 5, so it is not demonstrated here.
 #
-# As a final note, there is also a `CompoundDatReader`, which combines a `DimensionReader` and a `ParamaterReader` into an integrated `DataReader`. It's useful if you want to mix different methods without re-implementing them. Endless possibilities!
+# ###  Using `CompoundDataReader`
+#
+# As a final note, there is also a `CompoundDataReader`, which combines a `DimensionReader` and a `ParameterReader` into an integrated `DataReader`. You don't need a subclass, just pass the other reader instances at initialization. It's useful if you want to mix different methods without re-implementing them. Endless possibilities!
