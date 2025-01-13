@@ -330,7 +330,7 @@ stock_by_material_type = (
     * vehicle_mfa_2.parameters["vehicle material content"]
     * 1e-9
 )
-global_stock_by_material_type = stock_by_material_type.sum_nda_over(sum_over_dims=("r"))
+global_stock_by_material_type = stock_by_material_type.sum_over(sum_over_dims=("r"))
 global_stock_by_material_type_in_2017 = global_stock_by_material_type[{"t": 2017}]
 
 stock_df = global_stock_by_material_type_in_2017.to_df(index=False)
@@ -339,7 +339,7 @@ fig.show(renderer="notebook")
 
 # %%
 np.nan_to_num(vehicle_mfa_2.flows["scrap => sysenv"].values, copy=False)
-scrap_outflow = vehicle_mfa_2.flows["scrap => sysenv"].sum_nda_over(sum_over_dims=("m"))
+scrap_outflow = vehicle_mfa_2.flows["scrap => sysenv"].sum_over(sum_over_dims=("m"))
 outflow_df = scrap_outflow.to_df(dim_to_columns="waste")
 outflow_df = outflow_df[outflow_df.index > 2017]
 fig = px.line(outflow_df, title="Scrap outflow")

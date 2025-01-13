@@ -2,7 +2,7 @@
 
 from .processes import Process
 from .survival_models import get_survival_model_by_type
-from .flodym_array_helper import named_dim_array_stack
+from .flodym_array_helper import flodym_array_stack
 from .dimensions import Dimension, DimensionSet
 from .mfa_definition import StockDefinition
 from .stocks import get_stock_by_type, Stock
@@ -15,11 +15,9 @@ def stock_stack(stocks: list[Stock], dimension: Dimension) -> Stock:
     with this function we can combine them to a stock object that contains
     information about all the materials.
     """
-    stacked_stock = named_dim_array_stack([stock.stock for stock in stocks], dimension=dimension)
-    stacked_inflow = named_dim_array_stack([stock.inflow for stock in stocks], dimension=dimension)
-    stacked_outflow = named_dim_array_stack(
-        [stock.outflow for stock in stocks], dimension=dimension
-    )
+    stacked_stock = flodym_array_stack([stock.stock for stock in stocks], dimension=dimension)
+    stacked_inflow = flodym_array_stack([stock.inflow for stock in stocks], dimension=dimension)
+    stacked_outflow = flodym_array_stack([stock.outflow for stock in stocks], dimension=dimension)
     return stocks[0].__class__(
         stock=stacked_stock,
         inflow=stacked_inflow,

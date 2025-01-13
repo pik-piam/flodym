@@ -45,6 +45,6 @@
    api.definitions
    api.data_readers
    api.dimensions
-   api.named_dim_arrays
+   api.flodym_arrays
    api.processes
    api.export_and_plotting
