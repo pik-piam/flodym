@@ -3,6 +3,8 @@
 from abc import abstractmethod
 import numpy as np
 import scipy.stats
+from pydantic import BaseModel as PydanticBaseModel, model_validator
+from typing import Any
 # from scipy.special import gammaln, logsumexp
 # from scipy.optimize import root_scalar
 
@@ -10,21 +12,39 @@ from .dimensions import DimensionSet
 from .flodym_arrays import FlodymArray
 
 
-class SurvivalModel:
+class SurvivalModel(PydanticBaseModel):
     """Contains shared functionality across the various survival models."""
 
-    def __init__(self, dims: DimensionSet, time_letter: str = "t"):
-        self.dims = dims
-        self.t = np.array(dims[time_letter].items)
-        if not dims.dim_list[0].letter == time_letter:
-            raise ValueError(
-                f"The time dimension {time_letter} must be the first dimension in the set."
-            )
-        self.shape = dims.shape()
-        self._n_t = len(self.t)
-        self._shape_cohort = (self._n_t,) + self.shape
-        self._shape_no_t = tuple(list(self.shape)[1:])
-        self.sf = np.zeros(self._shape_cohort)
+    dims: DimensionSet
+    time_letter: str = "t"
+    _sf: np.ndarray = None
+
+    @property
+    def t(self):
+        return np.array(self.dims[self.time_letter].items)
+
+    @property
+    def shape(self):
+        return self.dims.shape()
+
+    @property
+    def _n_t(self):
+        return len(self.t)
+
+    @property
+    def _shape_cohort(self):
+        return (self._n_t,) + self.shape
+
+    @property
+    def _shape_no_t(self):
+        return tuple(list(self.shape)[1:])
+
+    @property
+    def sf(self):
+        if self._sf is None:
+            self._sf = np.zeros(self._shape_cohort)
+            self.compute_survival_factor()
+        return self._sf
 
     @property
     def t_diag_indices(self):
@@ -58,7 +78,7 @@ class SurvivalModel:
         """
         self._check_lifetime_set()
         for m in range(0, self._n_t):  # cohort index
-            self.sf[m::, m, ...] = self._survival_by_year_id(m)
+            self._sf[m::, m, ...] = self._survival_by_year_id(m)
 
     @abstractmethod
     def _survival_by_year_id(m, **kwargs):
@@ -72,36 +92,40 @@ class SurvivalModel:
     def set_lifetime(self):
         pass
 
+    def cast_any_to_flodym_array(self, prm_in):
+        if isinstance(prm_in, FlodymArray):
+            prm_out = prm_in.cast_to(target_dims=self.dims).values
+        else:
+            prm_out = np.ndarray(self.shape)
+            prm_out[...] = prm_in
+        return prm_out
+
     def compute_outflow_pdf(self):
         """Returns an array year-by-cohort of the probability that an item
         added to stock in year m (aka cohort m) leaves in in year n. This value equals pdf(n,m).
         """
-        self.sf = self.compute_survival_factor()
-        self.pdf = np.zeros(self._shape_cohort)
-        self.pdf[self.t_diag_indices] = 1.0 - np.moveaxis(self.sf.diagonal(0, 0, 1), -1, 0)
+        self._sf = self.compute_survival_factor()
+        pdf = np.zeros(self._shape_cohort)
+        pdf[self.t_diag_indices] = 1.0 - np.moveaxis(self._sf.diagonal(0, 0, 1), -1, 0)
         for m in range(0, self._n_t):
-            self.pdf[m + 1 :, m, ...] = -1 * np.diff(self.sf[m:, m, ...], axis=0)
-        return self.pdf
+            pdf[m + 1 :, m, ...] = -1 * np.diff(self._sf[m:, m, ...], axis=0)
+        return pdf
 
 
 class FixedSurvival(SurvivalModel):
     """Fixed lifetime, age-cohort leaves the stock in the model year when a certain age,
     specified as 'Mean', is reached."""
 
-    def __init__(
-        self,
-        dims: DimensionSet,
-        time_letter: str = "t",
-        lifetime_mean: FlodymArray = None,
-    ):
-        super().__init__(dims, time_letter)
-        if lifetime_mean is None:
-            self.lifetime_mean = None
-        else:
-            self.set_lifetime(lifetime_mean)
+    lifetime_mean: Any = None
+
+    @model_validator(mode="after")
+    def cast_lifetime_mean(self):
+        if self.lifetime_mean is not None:
+            self.lifetime_mean = self.cast_any_to_flodym_array(self.lifetime_mean)
+        return self
 
     def set_lifetime(self, lifetime_mean: FlodymArray):
-        self.lifetime_mean = lifetime_mean.cast_to(target_dims=self.dims).values
+        self.lifetime_mean = self.cast_any_to_flodym_array(lifetime_mean)
 
     def _check_lifetime_set(self):
         if self.lifetime_mean is None:
@@ -114,24 +138,21 @@ class FixedSurvival(SurvivalModel):
 
 
 class StandardDeviationSurvivalModel(SurvivalModel):
-    def __init__(
-        self,
-        dims: DimensionSet,
-        time_letter: str = "t",
-        lifetime_mean: FlodymArray = None,
-        lifetime_std: FlodymArray = None,
-    ):
-        super().__init__(dims, time_letter)
-        self.lifetime_mean = None
-        self.lifetime_std = None
-        if lifetime_mean is not None and lifetime_std is not None:
-            self.set_lifetime(lifetime_mean, lifetime_std)
-        elif lifetime_mean is None != lifetime_std is None:
-            raise ValueError("Either both or none of lifetime_mean and lifetime_std must be set.")
+
+    lifetime_mean: Any = None
+    lifetime_std: Any = None
+
+    @model_validator(mode="after")
+    def cast_lifetime_mean_std(self):
+        if self.lifetime_mean is not None:
+            self.lifetime_mean = self.cast_any_to_flodym_array(self.lifetime_mean)
+        if self.lifetime_std is not None:
+            self.lifetime_std = self.cast_any_to_flodym_array(self.lifetime_std)
+        return self
 
     def set_lifetime(self, lifetime_mean: FlodymArray, lifetime_std: FlodymArray):
-        self.lifetime_mean = lifetime_mean.cast_to(target_dims=self.dims).values
-        self.lifetime_std = lifetime_std.cast_to(target_dims=self.dims).values
+        self.lifetime_mean = self.cast_any_to_flodym_array(lifetime_mean)
+        self.lifetime_std = self.cast_any_to_flodym_array(lifetime_std)
 
     def _check_lifetime_set(self):
         if self.lifetime_mean is None or self.lifetime_std is None:
@@ -218,24 +239,20 @@ class LogNormalSurvival(StandardDeviationSurvivalModel):
 class WeibullSurvival(SurvivalModel):
     """Weibull distribution with standard definition of scale and shape parameters."""
 
-    def __init__(
-        self,
-        dims: DimensionSet,
-        time_letter: str = "t",
-        lifetime_shape: FlodymArray = None,
-        lifetime_scale: FlodymArray = None,
-    ):
-        super().__init__(dims, time_letter)
-        self.lifetime_shape = None
-        self.lifetime_scale = None
-        if lifetime_shape is not None and lifetime_scale is not None:
-            self.set_lifetime(lifetime_shape, lifetime_scale)
-        elif lifetime_shape is None != lifetime_scale is None:
-            raise ValueError("Either both or none of lifetime_shape and lifetime_scale must be set.")
+    lifetime_shape: Any = None
+    lifetime_scale: Any = None
+
+    @model_validator(mode="after")
+    def cast_lifetime_shape_scale(self):
+        if self.lifetime_shape is not None:
+            self.lifetime_shape = self.cast_any_to_flodym_array(self.lifetime_shape)
+        if self.lifetime_scale is not None:
+            self.lifetime_scale = self.cast_any_to_flodym_array(self.lifetime_scale)
+        return self
 
     def set_lifetime(self, lifetime_shape: FlodymArray, lifetime_scale: FlodymArray):
-        self.lifetime_shape = lifetime_shape.cast_to(target_dims=self.dims).values
-        self.lifetime_scale = lifetime_scale.cast_to(target_dims=self.dims).values
+        self.lifetime_shape = self.cast_any_to_flodym_array(lifetime_shape)
+        self.lifetime_scale = self.cast_any_to_flodym_array(lifetime_scale)
 
     def _check_lifetime_set(self):
         if self.lifetime_shape is None or self.lifetime_scale is None:
@@ -278,18 +295,3 @@ class WeibullSurvival(SurvivalModel):
     #     c = res.root
     #     scale = np.exp(np.log(mean) - gammaln(1 + 1/c))
     #     return c, scale
-
-
-def get_survival_model_by_type(stock_type: str) -> SurvivalModel:
-    """Return the stock class for a given stock type."""
-    survival_model_by_type = {
-        "fixed": FixedSurvival,
-        "normal": NormalSurvival,
-        "foldedNormal": FoldedNormalSurvival,
-        "logNormal": LogNormalSurvival,
-        "weibull": WeibullSurvival,
-        None: None,
-    }
-    if stock_type not in survival_model_by_type:
-        raise ValueError(f"Stock type {stock_type} must be one of {list(survival_model_by_type.keys())}.")
-    return survival_model_by_type[stock_type]

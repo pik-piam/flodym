@@ -1,11 +1,10 @@
 """Home to helper functions for the `Stock` class."""
 
 from .processes import Process
-from .survival_models import get_survival_model_by_type
 from .flodym_array_helper import flodym_array_stack
 from .dimensions import Dimension, DimensionSet
 from .mfa_definition import StockDefinition
-from .stocks import get_stock_by_type, Stock
+from .stocks import Stock
 
 
 def stock_stack(stocks: list[Stock], dimension: Dimension) -> Stock:
@@ -43,12 +42,11 @@ def make_empty_stocks(
                 process = processes[stock_definition.process_name]
             except KeyError:
                 raise KeyError(f"Process {stock_definition.process_name} not in processes.")
-        subclass = get_stock_by_type(stock_definition.type)
-        survival_model = get_survival_model_by_type(stock_definition.survival_model)(
+        survival_model = stock_definition.survival_model_class(
             dims=dim_subset, time_letter=stock_definition.time_letter
         )
 
-        stock = subclass.from_dims(
+        stock = stock_definition.subclass.from_dims(
             dims=dim_subset,
             time_letter=stock_definition.time_letter,
             name=stock_definition.name,

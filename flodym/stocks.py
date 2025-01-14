@@ -5,7 +5,7 @@ including flow-driven stocks and dynamic (lifetime-based) stocks.
 from abc import abstractmethod
 import numpy as np
 from pydantic import BaseModel as PydanticBaseModel, ConfigDict, model_validator
-from typing import Optional
+from typing import Optional, Union
 import logging
 
 from .processes import Process
@@ -27,10 +27,10 @@ class Stock(PydanticBaseModel):
     model_config = ConfigDict(protected_namespaces=(), arbitrary_types_allowed=True)
 
     dims: DimensionSet
-    stock: Optional[StockArray]
-    inflow: Optional[StockArray]
-    outflow: Optional[StockArray]
-    name: str
+    stock: Optional[StockArray] = None
+    inflow: Optional[StockArray] = None
+    outflow: Optional[StockArray] = None
+    name: Optional[str] = "unnamed"
     process: Optional[Process] = None
     time_letter: str = "t"
 
@@ -56,10 +56,27 @@ class Stock(PydanticBaseModel):
             **kwargs,
         )
 
-    # TODO: validate: all stock arrays same dims
+    @model_validator(mode="after")
+    def validate_stock_arrays(self):
+        if self.stock is None:
+            self.stock = StockArray(dims=self.dims, name=f"{self.name}_stock")
+        elif self.stock.dims.letters != self.dims.letters:
+            raise ValueError(f"Stock dimensions {self.stock.dims.letters} do not match prescribed dims {self.dims.letters}.")
+        if self.inflow is None:
+            self.inflow = StockArray(dims=self.dims, name=f"{self.name}_stock")
+        elif self.inflow.dims.letters != self.dims.letters:
+            raise ValueError(f"Inflow dimensions {self.inflow.dims.letters} do not match prescribed dims {self.dims.letters}.")
+        if self.outflow is None:
+            self.outflow = StockArray(dims=self.dims, name=f"{self.name}_stock")
+        elif self.outflow.dims.letters != self.dims.letters:
+            raise ValueError(f"Outflow dimensions {self.outflow.dims.letters} do not match prescribed dims {self.dims.letters}.")
+        return self
 
-    # TODO: validate: t first dim of all
-
+    @model_validator(mode="after")
+    def validate_time_first_dim(self):
+        if self.dims.letters[0] != self.time_letter:
+            raise ValueError(f"Time dimension must be the first dimension, i.e. time_letter (now {self.time_letter}) must be the first letter in dims.letters (now {self.dims.letters[0]}).")
+        return self
 
     @abstractmethod
     def compute(self):
@@ -123,8 +140,11 @@ class DynamicStockModel(Stock):
     lifetime (distribution).
     """
 
-    survival_model: SurvivalModel
-    """Survival model, which contains the lifetime distribution function."""
+    survival_model: Union[SurvivalModel, type]
+    """Survival model, which contains the lifetime distribution function.
+    Can be input either as a SurvivalModel subclass, or as an instance of a
+    SurvivalModel subclass. For available subclasses, see `flodym.survival_models`.
+    """
     _outflow_by_cohort: np.ndarray = None
     _stock_by_cohort: np.ndarray = None
 
@@ -132,6 +152,17 @@ class DynamicStockModel(Stock):
     def init_cohort_arrays(self):
         self._stock_by_cohort = np.zeros(self._shape_cohort)
         self._outflow_by_cohort = np.zeros(self._shape_cohort)
+        return self
+
+    @model_validator(mode="after")
+    def init_survival_model(self):
+        if isinstance(self.survival_model, type):
+            if not issubclass(self.survival_model, SurvivalModel):
+                raise ValueError("survival_model must be a subclass of SurvivalModel.")
+            self.survival_model = self.survival_model(dims=self.dims, time_letter=self.time_letter)
+        elif self.survival_model.dims.letters != self.dims.letters:
+            raise ValueError("Survival model dimensions do not match stock dimensions.")
+        return self
 
     def _check_needed_arrays(self):
         self.survival_model._check_lifetime_set()
@@ -207,7 +238,7 @@ class StockDrivenDSM(DynamicStockModel):
     def compute_inflow_and_outflow(self) -> tuple[np.ndarray]:
         """With given total stock and lifetime distribution,
         the method builds the stock by cohort and the inflow."""
-        sf = self.survival_model.sf
+        sf = self.survival_model._sf
         # construct the sf of a product of cohort tc remaining in the stock in year t
         # First year:
         self.inflow.values[0, ...] = np.where(sf[0, 0, ...] != 0.0, self.stock.values[0] / sf[0, 0], 0.0)
@@ -226,7 +257,7 @@ class StockDrivenDSM(DynamicStockModel):
     def inflow_from_balance(self, m: int) -> np.ndarray:
         """determine inflow from mass balance and do not correct negative inflow"""
 
-        sf = self.survival_model.sf
+        sf = self.survival_model._sf
         # allow for outflow during first year by rescaling with 1/sf[m,m]
         self.inflow.values[m, ...] = np.where(
             sf[m, m, ...] != 0.0,
@@ -293,15 +324,3 @@ class StockDrivenDSM_NIC(StockDrivenDSM):
         self._stock_by_cohort[m::, 0:m, ...] = self._stock_by_cohort[m::, 0:m, ...] * (
             1 - delta_percent
         )
-
-def get_stock_by_type(stock_type: str) -> Stock:
-    """Return the stock class for a given stock type."""
-    stock_by_type = {
-        "simple_flow_driven": SimpleFlowDrivenStock,
-        "dsm_inflow_driven": InflowDrivenDSM,
-        "stock_driven_dsm": StockDrivenDSM,
-        "stock_driven_dsm_nic": StockDrivenDSM_NIC,
-    }
-    if stock_type not in stock_by_type:
-        raise ValueError(f"Stock type {stock_type} must be one of {list(stock_by_type.keys())}.")
-    return stock_by_type[stock_type]
