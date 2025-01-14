@@ -20,6 +20,15 @@ from flodym.stocks import (
     DynamicStockModel as DynamicStockModel,
     InflowDrivenDSM as InflowDrivenDSM,
     StockDrivenDSM as StockDrivenDSM,
+    StockDrivenDSM_NIC as StockDrivenDSM_NIC,
+)
+from flodym.survival_models import (
+    SurvivalModel as SurvivalModel,
+    FixedSurvival as FixedSurvival,
+    NormalSurvival as NormalSurvival,
+    FoldedNormalSurvival as FoldedNormalSurvival,
+    LogNormalSurvival as LogNormalSurvival,
+    WeibullSurvival as WeibullSurvival,
 )
 from flodym.flow_helper import make_empty_flows as make_empty_flows
 from flodym.stock_helper import make_empty_stocks as make_empty_stocks
@@ -33,4 +42,3 @@ from flodym.data_reader import (
     ExcelParameterReader as ExcelParameterReader,
     CompoundDataReader as CompoundDataReader,
 )
-import flodym.export
