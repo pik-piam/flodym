@@ -1,9 +1,9 @@
 # flodym
 
-The flodym package provides key functionality for material flow analysis, including
+The flodym (Flexibe Open Dynamic Material Systems Model) library provides key functionality for building material flow analysis models, including
 - the class `MFASystem` acting as a template (parent class) for users to create their own material flow models
 - the class `FlodymArray` handling mathematical operations between multi-dimensional arrays
-- different classes like `DynamicStockModel` representing stocks accumulation, in- and outflows based on age cohort tracking and lifetime distributions. Those can be integrated in the `MFASystem`.
+- different classes representing stocks accumulation, in- and outflows based on age cohort tracking and lifetime distributions. Those can be integrated in the `MFASystem`.
 - different options for data input and export, as well as visualization
 
 # Thanks

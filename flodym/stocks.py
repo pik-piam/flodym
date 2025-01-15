@@ -46,21 +46,29 @@ class Stock(PydanticBaseModel):
         if self.stock is None:
             self.stock = StockArray(dims=self.dims, name=f"{self.name}_stock")
         elif self.stock.dims.letters != self.dims.letters:
-            raise ValueError(f"Stock dimensions {self.stock.dims.letters} do not match prescribed dims {self.dims.letters}.")
+            raise ValueError(
+                f"Stock dimensions {self.stock.dims.letters} do not match prescribed dims {self.dims.letters}."
+            )
         if self.inflow is None:
             self.inflow = StockArray(dims=self.dims, name=f"{self.name}_inflow")
         elif self.inflow.dims.letters != self.dims.letters:
-            raise ValueError(f"Inflow dimensions {self.inflow.dims.letters} do not match prescribed dims {self.dims.letters}.")
+            raise ValueError(
+                f"Inflow dimensions {self.inflow.dims.letters} do not match prescribed dims {self.dims.letters}."
+            )
         if self.outflow is None:
             self.outflow = StockArray(dims=self.dims, name=f"{self.name}_outflow")
         elif self.outflow.dims.letters != self.dims.letters:
-            raise ValueError(f"Outflow dimensions {self.outflow.dims.letters} do not match prescribed dims {self.dims.letters}.")
+            raise ValueError(
+                f"Outflow dimensions {self.outflow.dims.letters} do not match prescribed dims {self.dims.letters}."
+            )
         return self
 
     @model_validator(mode="after")
     def validate_time_first_dim(self):
         if self.dims.letters[0] != self.time_letter:
-            raise ValueError(f"Time dimension must be the first dimension, i.e. time_letter (now {self.time_letter}) must be the first letter in dims.letters (now {self.dims.letters[0]}).")
+            raise ValueError(
+                f"Time dimension must be the first dimension, i.e. time_letter (now {self.time_letter}) must be the first letter in dims.letters (now {self.dims.letters[0]})."
+            )
         return self
 
     @abstractmethod
@@ -111,7 +119,10 @@ class SimpleFlowDrivenStock(Stock):
     """Given inflows and outflows, the stock can be calculated."""
 
     def _check_needed_arrays(self):
-        if np.max(np.abs(self.inflow.values)) < 1e-10 and np.max(np.abs(self.outflow.values)) < 1e-10:
+        if (
+            np.max(np.abs(self.inflow.values)) < 1e-10
+            and np.max(np.abs(self.outflow.values)) < 1e-10
+        ):
             logging.warning("Inflow and Outflow are zero. This will lead to a zero stock.")
 
     def compute(self):
@@ -192,7 +203,9 @@ class InflowDrivenDSM(DynamicStockModel):
         from the perspective of the stock the inflow has the dimension age-cohort,
         as each inflow(t) is added to the age-cohort c = t
         """
-        self._stock_by_cohort = np.einsum("c...,tc...->tc...", self.inflow.values, self.lifetime_model.sf)
+        self._stock_by_cohort = np.einsum(
+            "c...,tc...->tc...", self.inflow.values, self.lifetime_model.sf
+        )
 
     def compute_outflow_by_cohort(self) -> np.ndarray:
         """Compute outflow by cohort from changes in the stock by cohort and the known inflow."""
@@ -225,10 +238,14 @@ class StockDrivenDSM(DynamicStockModel):
         sf = self.lifetime_model.sf
         # construct the sf of a product of cohort tc remaining in the stock in year t
         # First year:
-        self.inflow.values[0, ...] = np.where(sf[0, 0, ...] != 0.0, self.stock.values[0] / sf[0, 0], 0.0)
+        self.inflow.values[0, ...] = np.where(
+            sf[0, 0, ...] != 0.0, self.stock.values[0] / sf[0, 0], 0.0
+        )
         # Future decay of age-cohort of year 0.
         self._stock_by_cohort[:, 0, ...] = self.inflow.values[0, ...] * sf[:, 0, ...]
-        self._outflow_by_cohort[0, 0, ...] = self.inflow.values[0, ...] - self._stock_by_cohort[0, 0, ...]
+        self._outflow_by_cohort[0, 0, ...] = (
+            self.inflow.values[0, ...] - self._stock_by_cohort[0, 0, ...]
+        )
         # all other years:
         for m in range(1, self._n_t):  # for all years m, starting in second year
             # 1) Compute outflow from previous age-cohorts up to m-1
@@ -257,11 +274,11 @@ class StockDrivenDSM(DynamicStockModel):
 class StockDrivenDSM_NIC(StockDrivenDSM):
 
     def inflow_from_balance(self, m):
-            is_negative_inflow = self.check_negative_inflow(m)
-            if is_negative_inflow:
-                self.inflow_from_balance_correction(m)
-            else:
-                super().inflow_from_balance(m)
+        is_negative_inflow = self.check_negative_inflow(m)
+        if is_negative_inflow:
+            self.inflow_from_balance_correction(m)
+        else:
+            super().inflow_from_balance(m)
 
     def check_negative_inflow(self, m: int) -> bool:
         """Check if inflow is negative."""
