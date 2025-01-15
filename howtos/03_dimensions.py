@@ -52,7 +52,7 @@ dims = DimensionSet(
 #
 # Each FlodymArray object also has a dims attribute, with a subset of dimensions that this array is defined over.
 #
-# Subsets and single dimensions can be extracted by indexing. A single index in square brackets returns a `Dimension`. 
+# Subsets and single dimensions can be extracted by indexing. A single index in square brackets returns a `Dimension`.
 # Several indexes in the square brackets, or a tuple (even with a single item inside), return a `DimensionSet`.
 
 # %%
