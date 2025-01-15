@@ -1,10 +1,8 @@
 # %% [markdown]
-# # MFASystem
-#
-# ## The MFASystem attributes, explained
+# ## Primer: The MFA system parts
 #
 # The central class of flodym is the MFASystem class.
-# In the following, its different parts are explained in more detail.
+# In the following, its different parts (i.e. attributes of the class) are explained broadly.
 # If you are familiar with MFA modelling or ODYM, you may skim through or skip this HOWTO.
 #
 # ### Flows

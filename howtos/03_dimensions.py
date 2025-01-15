@@ -50,9 +50,10 @@ dims = DimensionSet(
 # %% [markdown]
 # The MFASystem class has a dims attribute, which is a DimensionSet object containing all dimensions ever used in the system.
 #
-# Each FlodymArray object also has a dims object, with a subset of dimensions that this array is defined over.
+# Each FlodymArray object also has a dims attribute, with a subset of dimensions that this array is defined over.
 #
-# Subsets and single dimensions can be extracted by indexing:
+# Subsets and single dimensions can be extracted by indexing. A single index in square brackets returns a `Dimension`.
+# Several indexes in the square brackets, or a tuple (even with a single item inside), return a `DimensionSet`.
 
 # %%
 item_by_letter = dims["r"]
@@ -63,6 +64,9 @@ print(f"Item by name | type: {type(item_by_name)}, name: {item_by_name.name}")
 
 subset = dims["r", "p"]
 print(f"Subset | type: {type(subset)}, names: {subset.names}")
+
+subset_size_1_tuple = dims[("r",)]
+print(f"Size 1 subset | type: {type(subset_size_1_tuple)}, names: {subset_size_1_tuple.names}")
 
 # %% [markdown]
 # DimensionSet objects have several attributes (like `names` or `letters`) and a range of methods to modify or combine them.

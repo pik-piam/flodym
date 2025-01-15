@@ -1,5 +1,5 @@
 # %% [markdown]
-# # A `pydantic` Primer
+# # Primer: `pydantic`
 #
 # Most classes in flodym are based on the `pydantic` library, which provides safety in data handling.
 # More specifically, most classes in flodym are `pydanctic.BaseModel`s.
