@@ -21,7 +21,7 @@ The development of flodym was conducted within the TRANSIENCE project, grant num
 
 flodym dependencies are managed with [pip](https://pypi.org/project/pip/).
 
-To install as a user: run `python -m pip install flodym@git+https://github.com/pik-piam/flodym.git`
+To install as a user: run `python -m pip install flodym`
 
 To install as a developer:
 
