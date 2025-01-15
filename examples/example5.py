@@ -59,7 +59,6 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 
-from flodym.data_reader import DataReader
 from flodym import (
     DimensionDefinition,
     Dimension,
@@ -70,9 +69,10 @@ from flodym import (
     StockDefinition,
     MFASystem,
     MFADefinition,
+    DataReader,
+    InflowDrivenDSM,
 )
-from flodym.stocks import InflowDrivenDSM
-from flodym.survival_functions import NormalSurvival
+from flodym.lifetime_models import NormalLifetime
 
 # %% [markdown]
 # ## 2. Define the data requirements, flows, stocks and MFA system equations
@@ -113,6 +113,9 @@ stock_definitions = [
         name="in use",
         process="use",
         dim_letters=("t", "r"),
+        subclass=InflowDrivenDSM,
+        lifetime_model_class=NormalLifetime,
+        time_letter="t",
     )
 ]
 
@@ -138,17 +141,10 @@ class VehicleMFA(MFASystem):
     def compute_stock(self):
         self.flows["sysenv => market"][...] = self.parameters["vehicle new registration"]
         self.stocks["in use"].inflow[...] = self.flows["sysenv => market"]
-        survival_model = NormalSurvival(
-            dims=self.stocks["in use"].inflow.dims,
+        self.stocks["in use"].lifetime_model.set_lifetime(
             lifetime_mean=self.parameters["vehicle lifetime"],
             lifetime_std=self.parameters["vehicle lifetime"] * 0.3,
         )
-        if not isinstance(self.stocks["in use"], InflowDrivenDSM):
-            self.stocks["in use"] = self.stocks["in use"].to_stock_type(
-                InflowDrivenDSM, survival_model=survival_model
-            )
-        else:
-            self.stocks["in use"].survival_model = survival_model
         self.stocks["in use"].compute()
         stock_diff = self.get_new_array(dim_letters=("r"))
         stock_diff[...] = (
@@ -177,7 +173,7 @@ class VehicleMFA(MFASystem):
 # %% [markdown]
 # ## 3. Define our data reader
 # Now that we have defined the MFA system and know what data we need, we can load the data.
-# To do the data loading, we define a DataReader class. Such a class can be reused with different datasets of the same format by passing attributes, e.g. the directory where the data is stored, in the init function. In this example, we will also build upon this data reader in a following step.
+# To do the data loading, we define a DataReader class. Such a class can be reused with different datasets of the same format by passing attributes, e.g. the directory where the data is stored, in the init function. In this example, we will also use this data reader in a following step.
 
 
 # %%
@@ -187,12 +183,9 @@ class CustomDataReader(DataReader):
     that we specify for our usecase here.
     """
 
-    def __init__(self, data_directory):
+    def __init__(self, data_directory, years):
         self.data_directory = data_directory
-
-    @property
-    def years(self):
-        return list(range(2012, 2018))
+        self.years = years
 
     def read_dimension(self, dimension_definition: DimensionDefinition) -> Dimension:
         if (dim_name := dimension_definition.name) == "region":
@@ -217,6 +210,7 @@ class CustomDataReader(DataReader):
         return Dimension(
             name=dimension_definition.name,
             letter=dimension_definition.letter,
+            dtype=dimension_definition.dtype,
             items=data,
         )
 
@@ -225,26 +219,31 @@ class CustomDataReader(DataReader):
             join(self.data_directory, f"example5_{parameter_name.replace(' ', '_')}.xlsx"), "Data"
         )
         data = data.fillna(0)
-        if "r" in dims.letters:  # remove unwanted regions
+        if "r" in dims:  # remove unwanted regions
             data = data[data["region"].isin(dims["r"].items)]
 
         if parameter_name == "vehicle new registration":
-            return self.vehicle_new_registration(data, dims)
-
-        data.columns = [x.lower() for x in data.columns]
-        data = data[[dim.name for dim in dims] + ["value"]]  # select only relevant information
-        data.sort_values([dim.name for dim in dims], inplace=True)  # sort to ensure correct order
-        if len(dims.dim_list) == 1:
-            return Parameter(dims=dims, values=data["value"].values)
-        elif len(dims.dim_list) == 2:
-            multiindex = data.set_index([dim.name for dim in dims])
-            data = multiindex.unstack().values[:, :]
-            return Parameter(dims=dims, values=data)
-
-    def vehicle_new_registration(self, data, dims):
-        data.sort_values("region", inplace=True)
-        data = data[self.years]
-        return Parameter(dims=dims, values=data.values.T)
+            # add rows with missing years
+            for year in self.years:
+                if year not in data.columns:
+                    data[year] = 0
+            # remove unncessary columns
+            data = data[["region"] + self.years]
+        else:
+            data.columns = [x.lower() for x in data.columns]
+            # remove unncessary columns
+            data = data[[dim.name for dim in dims] + ["value"]]
+        if parameter_name == "eol recovery rate":
+            # add rows with missing waste /material combinations
+            waste_material_combinations = [
+                (waste, material)
+                for waste in dims["w"].items
+                for material in dims["m"].items
+            ]
+            data = data.set_index(["waste", "material"])
+            data = data.reindex(waste_material_combinations).reset_index()
+            data = data.fillna(0)
+        return Parameter.from_df(dims=dims, df=data)
 
 
 # %% [markdown]
@@ -252,7 +251,7 @@ class CustomDataReader(DataReader):
 # We make an instance of our `CustomDataReader`, read in the data and use it to create an instance of our `VehicleMFA` class. Then we can run the calculations, and check what our estimate of vehicle stocks looks like compared to the data for 2015 in the `vehicle_stock.xlsx` file.
 
 # %%
-data_reader = CustomDataReader(data_directory="input_data")
+data_reader = CustomDataReader(data_directory="input_data", years=list(range(2012, 2018)))
 
 vehicle_mfa = VehicleMFA.from_data_reader(
     definition=mfa_definition,
@@ -270,40 +269,12 @@ stock_diff
 #
 # In addition to this and to answer our research questions, we will extend the timeseries out to 2050, with no more inflow after 2017.
 #
-# To make these changes in the model dimensions and parameters, we build on the `CustomDataReader` class defined above, extending the time dimension to earlier years, as well as extending the data for the `vehicle_new_registration` parameter, which is our only time-dependent parameter.
-
-
-# %%
-class AnotherCustomDataReader(CustomDataReader):
-    @property
-    def years(self):
-        return self.historical_years + self.future_years
-
-    @property
-    def historical_years(self):
-        return list(range(1990, 2018))
-
-    @property
-    def future_years(self):
-        return list(range(2018, 2051))
-
-    def vehicle_new_registration(self, data, dims):
-        data.sort_values("region", inplace=True)
-        data.set_index("region", inplace=True)
-        data_years = [k for k in data.keys() if isinstance(k, int)]
-        data = data[data_years]
-
-        repeated_values = np.tile(data[min(data_years)].values, (len(self.historical_years), 1))
-        historical_data = pd.DataFrame(
-            index=data.index, columns=self.historical_years, data=repeated_values.T
-        )
-        future_data = pd.DataFrame(index=data.index, columns=self.future_years, data=0)
-        data = data.combine_first(historical_data).combine_first(future_data)
-        return Parameter(dims=dims, values=data.values.T)
-
+# To make these changes in the model dimensions and parameters, we use the `CustomDataReader` class defined above, extending the time dimension. This will also extend the data for the `vehicle_new_registration` parameter, which is our only time-dependent parameter.
+#
+#
 
 # %%
-data_reader_2 = AnotherCustomDataReader(data_directory="input_data")
+data_reader_2 = CustomDataReader(data_directory="input_data", years=list(range(1990, 2051)))
 
 vehicle_mfa_2 = VehicleMFA.from_data_reader(
     definition=mfa_definition,

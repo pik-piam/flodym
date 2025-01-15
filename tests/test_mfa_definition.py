@@ -1,7 +1,7 @@
 from pydantic_core import ValidationError
 import pytest
 
-from flodym import DimensionDefinition, MFADefinition
+from flodym import DimensionDefinition, MFADefinition, SimpleFlowDrivenStock
 
 
 def test_validate_dimension_definition():
@@ -22,7 +22,7 @@ def test_validate_mfa_definition():
             processes=[],
             flows=[],
             stocks=[
-                {"name": "stock_zero", "dim_letters": ("t")},
+                {"name": "stock_zero", "dim_letters": ("t"), "subclass": SimpleFlowDrivenStock},
             ],
             parameters=[],
         )
@@ -40,7 +40,7 @@ def test_validate_mfa_definition():
             processes=[],
             flows=[],
             stocks=[
-                {"name": "bad_stock", "dim_letters": ("t", "x")},
+                {"name": "bad_stock", "dim_letters": ("t", "x"), "subclass": SimpleFlowDrivenStock},
             ],
             parameters=[],
         )
@@ -53,7 +53,7 @@ def test_validate_mfa_definition():
             processes=[],
             flows=[],
             stocks=[
-                {"name": "good_stock", "dim_letters": letter_combinations},
+                {"name": "good_stock", "dim_letters": letter_combinations, "subclass": SimpleFlowDrivenStock},
             ],
             parameters=[],
         )

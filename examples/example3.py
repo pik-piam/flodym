@@ -48,17 +48,13 @@ import pandas as pd
 import plotly.express as px
 
 from flodym import (
-    DimensionDefinition,
-    ParameterDefinition,
     Dimension,
     DimensionSet,
     Parameter,
     StockArray,
+    InflowDrivenDSM,
 )
-from flodym.data_reader import DataReader
-from flodym.processes import Process
-from flodym.survival_functions import NormalSurvival
-from flodym.stocks import InflowDrivenDSM
+from flodym.lifetime_models import NormalLifetime
 
 # %% [markdown]
 # ## 2. Define system dimensions and load data
@@ -66,59 +62,13 @@ from flodym.stocks import InflowDrivenDSM
 # First, we specify the dimensions that are relevant to our system. These will get passed to our data reader class and thereby we can ensure that the data we are reading has the correct shape.
 #
 # Even though this is only a small system, we will load data from an excel file, as an example for more complex systems with larger datasets.
-# In this example, we'd like to keep the data in the same format as it was, so we define a data reader class to read the data and put it into the desired python objects. Such a class can be reused with different datasets of the same format by passing attributes, e.g. the file path, in the init function.
+# In this example, we'd like to keep the data in the same format as it was, so we read it in as a pandas dataframe and then convert it to the flodym data format.
 
 # %%
-dimension_definitions = [
-    DimensionDefinition(letter="t", name="Time", dtype=int),
-    DimensionDefinition(letter="r", name="Region", dtype=str),
-]
-
-parameter_definitions = [
-    ParameterDefinition(
-        name="inflow",
-        dim_letters=(
-            "t",
-            "r",
-        ),
-    ),
-    ParameterDefinition(name="tau", dim_letters=("r",)),
-    ParameterDefinition(name="sigma", dim_letters=("r",)),
-]
-
-
-# %%
-class LittleDataReader(DataReader):
-    def __init__(self, country_lifetimes, steel_consumption_file):
-        self.country_lifetimes = country_lifetimes
-        self.steel_consumption = self.prepare_steel_consumption_data(steel_consumption_file)
-
-    def prepare_steel_consumption_data(self, steel_consumption_file):
-        steel_consumption = pd.read_excel(steel_consumption_file)
-        steel_consumption = steel_consumption[["CS", "T", "V"]]
-        return steel_consumption.rename(columns={"CS": "r", "T": "t", "V": "inflow"})
-
-    def read_dimension(self, dimension_definition: DimensionDefinition) -> Dimension:
-        if dimension_definition.letter == "t":
-            data = list(self.steel_consumption["t"].unique())
-        elif dimension_definition.letter == "r":
-            data = list(self.country_lifetimes.keys())
-        return Dimension(
-            name=dimension_definition.name,
-            letter=dimension_definition.letter,
-            items=data,
-        )
-
-    def read_parameter_values(self, parameter_name: str, dims: DimensionSet) -> Parameter:
-        if parameter_name == "tau":
-            data = np.array(list(country_lifetimes.values()))
-        elif parameter_name == "sigma":
-            data = np.array([0.3 * lifetime for lifetime in country_lifetimes.values()])
-        elif parameter_name == "inflow":
-            multiindex = self.steel_consumption.set_index(["t", "r"])
-            data = multiindex.unstack().values[:, :]
-        return Parameter(dims=dims, values=data)
-
+steel_consumption_file=os.path.join("input_data", "example3_steel_consumption.xlsx")
+steel_consumption = pd.read_excel(steel_consumption_file)
+steel_consumption = steel_consumption[["CS", "T", "V"]]
+steel_consumption = steel_consumption.rename(columns={"CS": "Region", "T": "Time", "V": "values"})
 
 country_lifetimes = {
     "Argentina": 45,
@@ -131,32 +81,40 @@ country_lifetimes = {
     "Hungary": 30,
     "Indonesia": 30,
 }
-data_reader = LittleDataReader(
-    country_lifetimes=country_lifetimes,
-    steel_consumption_file=os.path.join("input_data", "example3_steel_consumption.xlsx"),
-)
-dimensions = data_reader.read_dimensions(dimension_definitions)
-parameters = data_reader.read_parameters(parameter_definitions, dimensions)
+relative_std = 0.3
+
+
+# %%
+years = sorted(list(steel_consumption["Time"].unique()))
+dimensions = DimensionSet(dim_list=[
+    Dimension(letter="t", name="Time", dtype=np.int64, items=years),
+    Dimension(letter="r", name="Region", dtype=str, items=list(country_lifetimes.keys())),
+])
+
+inflow = StockArray.from_df(dims=dimensions, df=steel_consumption)
+lifetime_values = np.array(list(country_lifetimes.values()))
+lifetime_mean = Parameter(dims=dimensions[('r',)], values=lifetime_values)
+lifetime_std = relative_std * lifetime_mean
+
 
 # %% [markdown]
 # ## 3. Perform dynamic stock modelling
 #
-# In this example, we do not need to build a whole MFA system, since we are only considering one dynamic stock. To make a dynamic stock in flodym, we first need to define a survival model; in this case we assume a normal distribution of lifetimes. Then, we can initiate the dynamic stock model. Here we choose an inflow driven stock model, because we have data that specifies the inflow and from this and the survival model we want to calculate the stock and the outflow.
+# In this example, we do not need to build a whole MFA system, since we are only considering one dynamic stock. To make a dynamic stock in flodym, we first need to define a lifetime model; in this case we assume a normal distribution of lifetimes. Then, we can initiate the dynamic stock model. Here we choose an inflow driven stock model, because we have data that specifies the inflow and from this and the lifetime model we want to calculate the stock and the outflow.
 
 # %%
-normal_survival_model = NormalSurvival(
+normal_lifetime_model = NormalLifetime(
     dims=dimensions,
-    lifetime_mean=parameters["tau"],
-    lifetime_std=parameters["sigma"],
+    time_letter="t",
+    mean=lifetime_mean,
+    std=lifetime_std,
 )
-
-inflow_stock = StockArray(dims=dimensions, values=parameters["inflow"].values)
 
 dynamic_stock = InflowDrivenDSM(
     name="steel",
-    process=Process(name="in use", id=1),
-    survival_model=normal_survival_model,
-    inflow=inflow_stock,
+    dims=dimensions,
+    lifetime_model=normal_lifetime_model,
+    inflow=inflow,
 )
 dynamic_stock.compute()
 

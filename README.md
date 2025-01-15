@@ -39,7 +39,7 @@ For example, the generation of different waste types `waste` might be a 3D-array
 In numpy, the according matrix multiplication can be carried out nicely with the `einsum` function, were an index string indicates the involved dimensions:
 
 ```
-waste = np.einsum('trw,pw->trp', end_of_life_products, waste_share)
+waste = np.einsum('trp,pw->trw', end_of_life_products, waste_share)
 ```
 
 flodym uses this function under the hood, but wraps it in a data type `FlodymArray`, which stores the dimensions of the array and internally manages the dimensions of different arrays involved in mathematical operations.

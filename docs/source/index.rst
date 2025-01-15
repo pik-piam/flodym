@@ -46,5 +46,6 @@
    api.data_readers
    api.dimensions
    api.flodym_arrays
+   api.stocks
    api.processes
    api.export_and_plotting

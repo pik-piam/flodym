@@ -183,7 +183,7 @@ class MFASystem(PydanticBaseModel):
 
         # Add stock changes to the mass balance
         for stock in self.stocks.values():
-            if stock.process_id is None:  # not connected to a process
+            if stock.process is None:  # not connected to a process
                 continue
             # add/subtract stock changes to processes
             contributions[stock.process.name].append(-stock.inflow)
