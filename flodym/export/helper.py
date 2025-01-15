@@ -24,6 +24,9 @@ class CustomNameDisplayer(PydanticBaseModel):
     """
 
     display_names: Optional[dict] = {}
+    """Dictionary for string replacement in figures. Keys are strings to be replaced (like process names, etc.), values are strings to display instead.
+    All strings not in this dictionary will be displayed as is.
+    """
 
     def display_name(self, name):
         return self.display_names[name] if name in self.display_names else name
