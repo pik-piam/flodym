@@ -53,7 +53,11 @@ def test_validate_mfa_definition():
             processes=[],
             flows=[],
             stocks=[
-                {"name": "good_stock", "dim_letters": letter_combinations, "subclass": SimpleFlowDrivenStock},
+                {
+                    "name": "good_stock",
+                    "dim_letters": letter_combinations,
+                    "subclass": SimpleFlowDrivenStock,
+                },
             ],
             parameters=[],
         )

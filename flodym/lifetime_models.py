@@ -5,6 +5,7 @@ import numpy as np
 import scipy.stats
 from pydantic import BaseModel as PydanticBaseModel, model_validator
 from typing import Any
+
 # from scipy.special import gammaln, logsumexp
 # from scipy.optimize import root_scalar
 
@@ -207,29 +208,18 @@ class LogNormalLifetime(StandardDeviationLifetimeModel):
     Same result as EXCEL function "=LOGNORM.VERT(x;LT_LN;SG_LN;TRUE)"
     """
 
-
     def _survival_by_year_id(self, m):
         # calculate parameter mu of underlying normal distribution:
         lt_ln = np.log(
             self.mean[m, ...]
             / np.sqrt(
-                1
-                + (
-                    self.mean[m, ...]
-                    * self.mean[m, ...]
-                    / (self.std[m, ...] * self.std[m, ...])
-                )
+                1 + (self.mean[m, ...] * self.mean[m, ...] / (self.std[m, ...] * self.std[m, ...]))
             )
         )
         # calculate parameter sigma of underlying normal distribution
         sg_ln = np.sqrt(
             np.log(
-                1
-                + (
-                    self.mean[m, ...]
-                    * self.mean[m, ...]
-                    / (self.std[m, ...] * self.std[m, ...])
-                )
+                1 + (self.mean[m, ...] * self.mean[m, ...] / (self.std[m, ...] * self.std[m, ...]))
             )
         )
         # compute survial function

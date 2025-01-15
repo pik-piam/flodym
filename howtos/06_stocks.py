@@ -1,23 +1,23 @@
 # %% [markdown]
 # # Stocks
 #
-# `Stock` objects are flodym's way to account for accumulating materials. 
+# `Stock` objects are flodym's way to account for accumulating materials.
 # Each `Stock` object has three arrays as attributes: `inflow`, `outflow`, and `stock`.
-# They are instances of the `FlodymArray` subclass `StockArray`. 
+# They are instances of the `FlodymArray` subclass `StockArray`.
 #
-# There are different kinds of `Stock` (i.e. different subclasses), which differ in which of the above three quantities are given, which is calculated from the others, and how. 
+# There are different kinds of `Stock` (i.e. different subclasses), which differ in which of the above three quantities are given, which is calculated from the others, and how.
 #
 # ## Input requirements
 #
-# The first dimension of the dimension set `dims` must be time. If the time dimension does not have the dimension letter `t`, you must specify that via the `time_letter` argument. 
-# If you do not pass the three arrays to the constructor, they are created and initialized to zero. 
+# The first dimension of the dimension set `dims` must be time. If the time dimension does not have the dimension letter `t`, you must specify that via the `time_letter` argument.
+# If you do not pass the three arrays to the constructor, they are created and initialized to zero.
 # If you do pass them, they must have the same `dims` as the stock object.
 #
 # You can attach stocks to a process (which is needed for example for `MFASystem.check_mass_baance`), but you don't have to.
 #
-# ## Simple, from constructor 
+# ## Simple, from constructor
 #
-# The simplest stock is the `SimpleFlowDrivenStock`. 
+# The simplest stock is the `SimpleFlowDrivenStock`.
 # Here, inflow and/or outflow are given, and the stock is calculated as the cumulative sum over time of inflow minus outflow.
 
 # %%
@@ -30,10 +30,7 @@ dims = DimensionSet(
     ]
 )
 
-my_stock = SimpleFlowDrivenStock(
-    dims=dims,
-    name="in-use"
-)
+my_stock = SimpleFlowDrivenStock(dims=dims, name="in-use")
 
 # example output
 print("Inflow type:", type(my_stock.inflow))
@@ -43,8 +40,8 @@ print(f"Array names: {my_stock.stock.name}, {my_stock.inflow.name}, {my_stock.ou
 
 
 # %% [markdown]
-# Now you can work with the stock. 
-# Every stock has a `compute()` routine, which depends on the type of stock you choose. 
+# Now you can work with the stock.
+# Every stock has a `compute()` routine, which depends on the type of stock you choose.
 #
 # As mentioned above, for `SimpleFlowDrivenStock`, the stock is calculated as the cumulative sum over time of inflow minus outflow.
 #
@@ -62,10 +59,10 @@ my_stock.check_stock_balance()
 # %% [markdown]
 # ## Dynamic Stock Models (DSM)
 #
-# The other `Stock` subclasses are all dynamic stock models (DSM). 
+# The other `Stock` subclasses are all dynamic stock models (DSM).
 # This means they rely on a lifetime model to compute some of their quantities.
-# There are different lifetime models available. There are two ways of passing the lifetime model to the stock. 
-# The first is to just specify the lifetime model class at initialization, and set its parameters later. 
+# There are different lifetime models available. There are two ways of passing the lifetime model to the stock.
+# The first is to just specify the lifetime model class at initialization, and set its parameters later.
 # Lifetimes can be set as `FlodymArray`s or as scalars. As `FlodymArray`s, they can have lower dimensionality than the stock, and will be cast to full dimensionality.
 
 # %%
@@ -79,20 +76,20 @@ my_dsm = InflowDrivenDSM(
 )
 lifetime_mean = Parameter(dims=dims[("p",)], values=np.array([10, 20, 5]))
 my_dsm.inflow.values[...] = 0.1
-my_dsm.lifetime_model.set_prms(mean=lifetime_mean, std=0.3*lifetime_mean)
+my_dsm.lifetime_model.set_prms(mean=lifetime_mean, std=0.3 * lifetime_mean)
 my_dsm.compute()
 
 print("Stock values for Vehicles:", my_dsm.stock["Vehicles"].values)
 
 # %% [markdown]
-# Alternatively, the lifetime model can be initialized with its parameters, and the instance can be passed to the Stock. 
-# In this example, let's also try passing the inflows to the Stock at initialization. 
+# Alternatively, the lifetime model can be initialized with its parameters, and the instance can be passed to the Stock.
+# In this example, let's also try passing the inflows to the Stock at initialization.
 
 # %%
 from flodym import StockArray
 
-lifetime_model = NormalLifetime(dims=dims, mean=lifetime_mean, std=0.3*lifetime_mean)
-inflow = StockArray(dims=dims, name="in-use-dsm_inflows", values=0.1*np.ones(dims.shape()))
+lifetime_model = NormalLifetime(dims=dims, mean=lifetime_mean, std=0.3 * lifetime_mean)
+inflow = StockArray(dims=dims, name="in-use-dsm_inflows", values=0.1 * np.ones(dims.shape()))
 my_dsm = InflowDrivenDSM(
     dims=dims,
     name="in-use-dsm",
@@ -106,26 +103,24 @@ print("Stock values for Vehicles:", my_dsm.stock["Vehicles"].values)
 # %% [markdown]
 # ## `StockDefinition` objects
 #
-# If you are working with definition objects for your MFA system, you can also use stock definitions: 
+# If you are working with definition objects for your MFA system, you can also use stock definitions:
 
 # %%
 from flodym import StockDefinition, make_empty_stocks, make_processes
 
-stock_defs = [StockDefinition(
-    dim_letters=("t", "p"),
-    name="in-use",
-    subclass=InflowDrivenDSM,
-    lifetime_model_class=NormalLifetime,
-    process_name="use_phase"
-)]
+stock_defs = [
+    StockDefinition(
+        dim_letters=("t", "p"),
+        name="in-use",
+        subclass=InflowDrivenDSM,
+        lifetime_model_class=NormalLifetime,
+        process_name="use_phase",
+    )
+]
 
 processes = make_processes(["sysenv", "use_phase"])
 
-stocks = make_empty_stocks(
-    stock_definitions=stock_defs,
-    processes=processes,
-    dims=dims
-)
+stocks = make_empty_stocks(stock_definitions=stock_defs, processes=processes, dims=dims)
 
 # still zero, as not yet computed
 print("Stock values for Vehicles:", stocks["in-use"].stock["Vehicles"].values)

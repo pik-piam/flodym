@@ -103,5 +103,7 @@ def _convert_to_dict_by_func(mfa: MFASystem, convert_func: Callable) -> dict:
     dict_out["stock_dimensions"] = {
         s_name: s.stock.dims.letters for s_name, s in mfa.stocks.items()
     }
-    dict_out["stock_processes"] = {s_name: s.process.name for s_name, s in mfa.stocks.items() if s.process is not None}
+    dict_out["stock_processes"] = {
+        s_name: s.process.name for s_name, s in mfa.stocks.items() if s.process is not None
+    }
     return dict_out

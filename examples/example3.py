@@ -65,7 +65,7 @@ from flodym.lifetime_models import NormalLifetime
 # In this example, we'd like to keep the data in the same format as it was, so we read it in as a pandas dataframe and then convert it to the flodym data format.
 
 # %%
-steel_consumption_file=os.path.join("input_data", "example3_steel_consumption.xlsx")
+steel_consumption_file = os.path.join("input_data", "example3_steel_consumption.xlsx")
 steel_consumption = pd.read_excel(steel_consumption_file)
 steel_consumption = steel_consumption[["CS", "T", "V"]]
 steel_consumption = steel_consumption.rename(columns={"CS": "Region", "T": "Time", "V": "values"})
@@ -86,14 +86,16 @@ relative_std = 0.3
 
 # %%
 years = sorted(list(steel_consumption["Time"].unique()))
-dimensions = DimensionSet(dim_list=[
-    Dimension(letter="t", name="Time", dtype=np.int64, items=years),
-    Dimension(letter="r", name="Region", dtype=str, items=list(country_lifetimes.keys())),
-])
+dimensions = DimensionSet(
+    dim_list=[
+        Dimension(letter="t", name="Time", dtype=np.int64, items=years),
+        Dimension(letter="r", name="Region", dtype=str, items=list(country_lifetimes.keys())),
+    ]
+)
 
 inflow = StockArray.from_df(dims=dimensions, df=steel_consumption)
 lifetime_values = np.array(list(country_lifetimes.values()))
-lifetime_mean = Parameter(dims=dimensions[('r',)], values=lifetime_values)
+lifetime_mean = Parameter(dims=dimensions[("r",)], values=lifetime_values)
 lifetime_std = relative_std * lifetime_mean
 
 

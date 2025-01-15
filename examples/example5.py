@@ -236,9 +236,7 @@ class CustomDataReader(DataReader):
         if parameter_name == "eol recovery rate":
             # add rows with missing waste /material combinations
             waste_material_combinations = [
-                (waste, material)
-                for waste in dims["w"].items
-                for material in dims["m"].items
+                (waste, material) for waste in dims["w"].items for material in dims["m"].items
             ]
             data = data.set_index(["waste", "material"])
             data = data.reindex(waste_material_combinations).reset_index()
