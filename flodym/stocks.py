@@ -222,7 +222,7 @@ class StockDrivenDSM(DynamicStockModel):
     def compute_inflow_and_outflow(self) -> tuple[np.ndarray]:
         """With given total stock and lifetime distribution,
         the method builds the stock by cohort and the inflow."""
-        sf = self.lifetime_model._sf
+        sf = self.lifetime_model.sf
         # construct the sf of a product of cohort tc remaining in the stock in year t
         # First year:
         self.inflow.values[0, ...] = np.where(sf[0, 0, ...] != 0.0, self.stock.values[0] / sf[0, 0], 0.0)
@@ -241,7 +241,7 @@ class StockDrivenDSM(DynamicStockModel):
     def inflow_from_balance(self, m: int) -> np.ndarray:
         """determine inflow from mass balance and do not correct negative inflow"""
 
-        sf = self.lifetime_model._sf
+        sf = self.lifetime_model.sf
         # allow for outflow during first year by rescaling with 1/sf[m,m]
         self.inflow.values[m, ...] = np.where(
             sf[m, m, ...] != 0.0,

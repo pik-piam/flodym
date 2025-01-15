@@ -239,34 +239,34 @@ class LogNormalLifetime(StandardDeviationLifetimeModel):
 class WeibullLifetime(LifetimeModel):
     """Weibull distribution with standard definition of scale and shape parameters."""
 
-    shape: Any = None
-    scale: Any = None
+    weibull_shape: Any = None
+    weibull_scale: Any = None
 
     @model_validator(mode="after")
     def cast_shape_scale(self):
-        if self.shape is not None:
-            self.shape = self.cast_any_to_flodym_array(self.shape)
-        if self.scale is not None:
-            self.scale = self.cast_any_to_flodym_array(self.scale)
+        if self.weibull_shape is not None:
+            self.weibull_shape = self.cast_any_to_flodym_array(self.weibull_shape)
+        if self.weibull_scale is not None:
+            self.weibull_scale = self.cast_any_to_flodym_array(self.weibull_scale)
         return self
 
-    def set_prms(self, shape: FlodymArray, scale: FlodymArray):
-        self.shape = self.cast_any_to_flodym_array(shape)
-        self.scale = self.cast_any_to_flodym_array(scale)
+    def set_prms(self, weibull_shape: FlodymArray, weibull_scale: FlodymArray):
+        self.weibull_shape = self.cast_any_to_flodym_array(weibull_shape)
+        self.weibull_scale = self.cast_any_to_flodym_array(weibull_scale)
 
     def _check_prms_set(self):
-        if self.shape is None or self.scale is None:
+        if self.weibull_shape is None or self.weibull_scale is None:
             raise ValueError("Lifetime mean and standard deviation must be set before use.")
 
     def _survival_by_year_id(self, m):
-        if np.min(self.shape) < 0:
+        if np.min(self.weibull_shape) < 0:
             raise ValueError("Lifetime shape must be positive for Weibull distribution.")
 
         return scipy.stats.weibull_min.sf(
             self._remaining_ages(m),
-            c=self.shape[m, ...],
+            c=self.weibull_shape[m, ...],
             loc=0,
-            scale=self.scale[m, ...],
+            scale=self.weibull_scale[m, ...],
         )
 
     # @staticmethod
