@@ -78,25 +78,25 @@ class StockDefinition(DefinitionWithDimLetters):
 
     name: str = "undefined stock"
     """Name of the stock."""
-    process_name: str = Field(
-        default="undefined process", validation_alias=AliasChoices("process", "process_name")
+    process_name: Optional[str] = Field(
+        default=None, validation_alias=AliasChoices("process", "process_name")
     )
     """Name of the process to which the stock is connected."""
     time_letter: str = "t"
     """Letter of the time dimension, to ensure it's the first appearing in dim_letters."""
     subclass: type
     """type of stock. Can be any found in :py:data:`flodym.stocks`."""
-    survival_model_class: Optional[type] = None
-    """Survival model used for the stock. Only needed if type is not simple_flow_driven.
-    Available survival models can be found in :py:data:`flodym.survival_models`.
+    lifetime_model_class: Optional[type] = None
+    """Lifetime model used for the stock. Only needed if type is not simple_flow_driven.
+    Available lifetime models can be found in :py:data:`flodym.lifetime_models`.
     """
 
     @model_validator(mode="after")
-    def check_survival_model(self):
-        if self.survival_model_class is not None and "survival_model" not in self.subclass.__fields__:
-            raise ValueError(f"Survival model is given, but not used in subclass {self.subclass}.")
-        elif self.survival_model_class is None and "survival_model" in self.subclass.__fields__:
-            raise ValueError(f"Survival model class must be part of definition for given subclass {self.subclass}")
+    def check_lifetime_model(self):
+        if self.lifetime_model_class is not None and "lifetime_model" not in self.subclass.__fields__:
+            raise ValueError(f"Lifetime model is given, but not used in subclass {self.subclass}.")
+        elif self.lifetime_model_class is None and "lifetime_model" in self.subclass.__fields__:
+            raise ValueError(f"Lifetime model class must be part of definition for given subclass {self.subclass}")
         return self
 
 

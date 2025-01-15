@@ -1,4 +1,4 @@
-"""Home to various survival models, for use in dynamic stock modelling."""
+"""Home to various lifetime models, for use in dynamic stock modelling."""
 
 from abc import abstractmethod
 import numpy as np
@@ -12,8 +12,8 @@ from .dimensions import DimensionSet
 from .flodym_arrays import FlodymArray
 
 
-class SurvivalModel(PydanticBaseModel):
-    """Contains shared functionality across the various survival models."""
+class LifetimeModel(PydanticBaseModel):
+    """Contains shared functionality across the various lifetime models."""
 
     dims: DimensionSet
     time_letter: str = "t"
@@ -76,7 +76,7 @@ class SurvivalModel(PydanticBaseModel):
         For example, sf could be assigned to the dynamic stock model from an exogenous computation
         to save time.
         """
-        self._check_lifetime_set()
+        self._check_prms_set()
         for m in range(0, self._n_t):  # cohort index
             self._sf[m::, m, ...] = self._survival_by_year_id(m)
 
@@ -85,11 +85,11 @@ class SurvivalModel(PydanticBaseModel):
         pass
 
     @abstractmethod
-    def _check_lifetime_set(self):
+    def _check_prms_set(self):
         pass
 
     @abstractmethod
-    def set_lifetime(self):
+    def set_prms(self):
         pass
 
     def cast_any_to_flodym_array(self, prm_in):
@@ -112,54 +112,54 @@ class SurvivalModel(PydanticBaseModel):
         return pdf
 
 
-class FixedSurvival(SurvivalModel):
+class FixedLifetime(LifetimeModel):
     """Fixed lifetime, age-cohort leaves the stock in the model year when a certain age,
     specified as 'Mean', is reached."""
 
-    lifetime_mean: Any = None
+    mean: Any = None
 
     @model_validator(mode="after")
-    def cast_lifetime_mean(self):
-        if self.lifetime_mean is not None:
-            self.lifetime_mean = self.cast_any_to_flodym_array(self.lifetime_mean)
+    def cast_mean(self):
+        if self.mean is not None:
+            self.mean = self.cast_any_to_flodym_array(self.mean)
         return self
 
-    def set_lifetime(self, lifetime_mean: FlodymArray):
-        self.lifetime_mean = self.cast_any_to_flodym_array(lifetime_mean)
+    def set_prms(self, mean: FlodymArray):
+        self.mean = self.cast_any_to_flodym_array(mean)
 
-    def _check_lifetime_set(self):
-        if self.lifetime_mean is None:
+    def _check_prms_set(self):
+        if self.mean is None:
             raise ValueError("Lifetime mean must be set before use.")
 
     def _survival_by_year_id(self, m):
         # Example: if lt is 3.5 years fixed, product will still be there after 0, 1, 2, and 3 years,
         # gone after 4 years.
-        return (self._remaining_ages(m) < self.lifetime_mean[m, ...]).astype(int)
+        return (self._remaining_ages(m) < self.mean[m, ...]).astype(int)
 
 
-class StandardDeviationSurvivalModel(SurvivalModel):
+class StandardDeviationLifetimeModel(LifetimeModel):
 
-    lifetime_mean: Any = None
-    lifetime_std: Any = None
+    mean: Any = None
+    std: Any = None
 
     @model_validator(mode="after")
-    def cast_lifetime_mean_std(self):
-        if self.lifetime_mean is not None:
-            self.lifetime_mean = self.cast_any_to_flodym_array(self.lifetime_mean)
-        if self.lifetime_std is not None:
-            self.lifetime_std = self.cast_any_to_flodym_array(self.lifetime_std)
+    def cast_mean_std(self):
+        if self.mean is not None:
+            self.mean = self.cast_any_to_flodym_array(self.mean)
+        if self.std is not None:
+            self.std = self.cast_any_to_flodym_array(self.std)
         return self
 
-    def set_lifetime(self, lifetime_mean: FlodymArray, lifetime_std: FlodymArray):
-        self.lifetime_mean = self.cast_any_to_flodym_array(lifetime_mean)
-        self.lifetime_std = self.cast_any_to_flodym_array(lifetime_std)
+    def set_prms(self, mean: FlodymArray, std: FlodymArray):
+        self.mean = self.cast_any_to_flodym_array(mean)
+        self.std = self.cast_any_to_flodym_array(std)
 
-    def _check_lifetime_set(self):
-        if self.lifetime_mean is None or self.lifetime_std is None:
+    def _check_prms_set(self):
+        if self.mean is None or self.std is None:
             raise ValueError("Lifetime mean and standard deviation must be set before use.")
 
 
-class NormalSurvival(StandardDeviationSurvivalModel):
+class NormalLifetime(StandardDeviationLifetimeModel):
     """Normally distributed lifetime with mean and standard deviation.
     Watch out for nonzero values, for negative ages, no correction or truncation done here.
     NOTE: As normal distributions have nonzero pdf for negative ages,
@@ -170,35 +170,35 @@ class NormalSurvival(StandardDeviationSurvivalModel):
     """
 
     def _survival_by_year_id(self, m):
-        if np.min(self.lifetime_mean) < 0:
-            raise ValueError("lifetime_mean must be greater than zero.")
+        if np.min(self.mean) < 0:
+            raise ValueError("mean must be greater than zero.")
 
         return scipy.stats.norm.sf(
             self._remaining_ages(m),
-            loc=self.lifetime_mean[m, ...],
-            scale=self.lifetime_std[m, ...],
+            loc=self.mean[m, ...],
+            scale=self.std[m, ...],
         )
 
 
-class FoldedNormalSurvival(StandardDeviationSurvivalModel):
+class FoldedNormalLifetime(StandardDeviationLifetimeModel):
     """Folded normal distribution, cf. https://en.wikipedia.org/wiki/Folded_normal_distribution
     NOTE: call this with the parameters of the normal distribution mu and sigma of curve
     BEFORE folding, curve after folding will have different mu and sigma.
     """
 
     def _survival_by_year_id(self, m):
-        if np.min(self.lifetime_mean) < 0:
-            raise ValueError("lifetime_mean must be greater than zero.")
+        if np.min(self.mean) < 0:
+            raise ValueError("mean must be greater than zero.")
 
         return scipy.stats.foldnorm.sf(
             self._remaining_ages(m),
-            self.lifetime_mean[m, ...] / self.lifetime_std[m, ...],
+            self.mean[m, ...] / self.std[m, ...],
             0,
-            scale=self.lifetime_std[m, ...],
+            scale=self.std[m, ...],
         )
 
 
-class LogNormalSurvival(StandardDeviationSurvivalModel):
+class LogNormalLifetime(StandardDeviationLifetimeModel):
     """Lognormal distribution
     Here, the mean and stddev of the lognormal curve, not those of the underlying normal
     distribution, need to be specified!
@@ -211,13 +211,13 @@ class LogNormalSurvival(StandardDeviationSurvivalModel):
     def _survival_by_year_id(self, m):
         # calculate parameter mu of underlying normal distribution:
         lt_ln = np.log(
-            self.lifetime_mean[m, ...]
+            self.mean[m, ...]
             / np.sqrt(
                 1
                 + (
-                    self.lifetime_mean[m, ...]
-                    * self.lifetime_mean[m, ...]
-                    / (self.lifetime_std[m, ...] * self.lifetime_std[m, ...])
+                    self.mean[m, ...]
+                    * self.mean[m, ...]
+                    / (self.std[m, ...] * self.std[m, ...])
                 )
             )
         )
@@ -226,9 +226,9 @@ class LogNormalSurvival(StandardDeviationSurvivalModel):
             np.log(
                 1
                 + (
-                    self.lifetime_mean[m, ...]
-                    * self.lifetime_mean[m, ...]
-                    / (self.lifetime_std[m, ...] * self.lifetime_std[m, ...])
+                    self.mean[m, ...]
+                    * self.mean[m, ...]
+                    / (self.std[m, ...] * self.std[m, ...])
                 )
             )
         )
@@ -236,37 +236,37 @@ class LogNormalSurvival(StandardDeviationSurvivalModel):
         return scipy.stats.lognorm.sf(self._remaining_ages(m), s=sg_ln, loc=0, scale=np.exp(lt_ln))
 
 
-class WeibullSurvival(SurvivalModel):
+class WeibullLifetime(LifetimeModel):
     """Weibull distribution with standard definition of scale and shape parameters."""
 
-    lifetime_shape: Any = None
-    lifetime_scale: Any = None
+    shape: Any = None
+    scale: Any = None
 
     @model_validator(mode="after")
-    def cast_lifetime_shape_scale(self):
-        if self.lifetime_shape is not None:
-            self.lifetime_shape = self.cast_any_to_flodym_array(self.lifetime_shape)
-        if self.lifetime_scale is not None:
-            self.lifetime_scale = self.cast_any_to_flodym_array(self.lifetime_scale)
+    def cast_shape_scale(self):
+        if self.shape is not None:
+            self.shape = self.cast_any_to_flodym_array(self.shape)
+        if self.scale is not None:
+            self.scale = self.cast_any_to_flodym_array(self.scale)
         return self
 
-    def set_lifetime(self, lifetime_shape: FlodymArray, lifetime_scale: FlodymArray):
-        self.lifetime_shape = self.cast_any_to_flodym_array(lifetime_shape)
-        self.lifetime_scale = self.cast_any_to_flodym_array(lifetime_scale)
+    def set_prms(self, shape: FlodymArray, scale: FlodymArray):
+        self.shape = self.cast_any_to_flodym_array(shape)
+        self.scale = self.cast_any_to_flodym_array(scale)
 
-    def _check_lifetime_set(self):
-        if self.lifetime_shape is None or self.lifetime_scale is None:
+    def _check_prms_set(self):
+        if self.shape is None or self.scale is None:
             raise ValueError("Lifetime mean and standard deviation must be set before use.")
 
     def _survival_by_year_id(self, m):
-        if np.min(self.lifetime_shape) < 0:
+        if np.min(self.shape) < 0:
             raise ValueError("Lifetime shape must be positive for Weibull distribution.")
 
         return scipy.stats.weibull_min.sf(
             self._remaining_ages(m),
-            c=self.lifetime_shape[m, ...],
+            c=self.shape[m, ...],
             loc=0,
-            scale=self.lifetime_scale[m, ...],
+            scale=self.scale[m, ...],
         )
 
     # @staticmethod

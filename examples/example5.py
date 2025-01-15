@@ -72,7 +72,7 @@ from flodym import (
     DataReader,
     InflowDrivenDSM,
 )
-from flodym.survival_models import NormalSurvival
+from flodym.lifetime_models import NormalLifetime
 
 # %% [markdown]
 # ## 2. Define the data requirements, flows, stocks and MFA system equations
@@ -114,7 +114,7 @@ stock_definitions = [
         process="use",
         dim_letters=("t", "r"),
         subclass=InflowDrivenDSM,
-        survival_model_class=NormalSurvival,
+        lifetime_model_class=NormalLifetime,
         time_letter="t",
     )
 ]
@@ -141,7 +141,7 @@ class VehicleMFA(MFASystem):
     def compute_stock(self):
         self.flows["sysenv => market"][...] = self.parameters["vehicle new registration"]
         self.stocks["in use"].inflow[...] = self.flows["sysenv => market"]
-        self.stocks["in use"].survival_model.set_lifetime(
+        self.stocks["in use"].lifetime_model.set_lifetime(
             lifetime_mean=self.parameters["vehicle lifetime"],
             lifetime_std=self.parameters["vehicle lifetime"] * 0.3,
         )

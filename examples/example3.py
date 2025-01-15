@@ -54,7 +54,7 @@ from flodym import (
     StockArray,
     InflowDrivenDSM,
 )
-from flodym.survival_models import NormalSurvival
+from flodym.lifetime_models import NormalLifetime
 
 # %% [markdown]
 # ## 2. Define system dimensions and load data
@@ -100,20 +100,20 @@ lifetime_std = relative_std * lifetime_mean
 # %% [markdown]
 # ## 3. Perform dynamic stock modelling
 #
-# In this example, we do not need to build a whole MFA system, since we are only considering one dynamic stock. To make a dynamic stock in flodym, we first need to define a survival model; in this case we assume a normal distribution of lifetimes. Then, we can initiate the dynamic stock model. Here we choose an inflow driven stock model, because we have data that specifies the inflow and from this and the survival model we want to calculate the stock and the outflow.
+# In this example, we do not need to build a whole MFA system, since we are only considering one dynamic stock. To make a dynamic stock in flodym, we first need to define a lifetime model; in this case we assume a normal distribution of lifetimes. Then, we can initiate the dynamic stock model. Here we choose an inflow driven stock model, because we have data that specifies the inflow and from this and the lifetime model we want to calculate the stock and the outflow.
 
 # %%
-normal_survival_model = NormalSurvival(
+normal_lifetime_model = NormalLifetime(
     dims=dimensions,
     time_letter="t",
-    lifetime_mean=lifetime_mean,
-    lifetime_std=lifetime_std,
+    mean=lifetime_mean,
+    std=lifetime_std,
 )
 
 dynamic_stock = InflowDrivenDSM(
     name="steel",
     dims=dimensions,
-    survival_model=normal_survival_model,
+    lifetime_model=normal_lifetime_model,
     inflow=inflow,
 )
 dynamic_stock.compute()

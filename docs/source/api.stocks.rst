@@ -1,4 +1,4 @@
-Stocks and Survival Models
+Stocks and Lifetime Models
 ------------------------------
 
 .. autopydantic_model:: flodym::Stock
@@ -16,20 +16,20 @@ Stocks and Survival Models
 .. autopydantic_model:: flodym::StockDrivenDSM_NIC
    :inherited-members: BaseModel
 
-.. autopydantic_model:: flodym::SurvivalModel
+.. autopydantic_model:: flodym::LifetimeModel
    :inherited-members: BaseModel
 
-.. autopydantic_model:: flodym::FixedSurvival
+.. autopydantic_model:: flodym::FixedLifetime
    :inherited-members: BaseModel
 
-.. autopydantic_model:: flodym::NormalSurvival
+.. autopydantic_model:: flodym::NormalLifetime
    :inherited-members: BaseModel
 
-.. autopydantic_model:: flodym::FoldedNormalSurvival
+.. autopydantic_model:: flodym::FoldedNormalLifetime
    :inherited-members: BaseModel
 
-.. autopydantic_model:: flodym::LogNormalSurvival
+.. autopydantic_model:: flodym::LogNormalLifetime
    :inherited-members: BaseModel
 
-.. autopydantic_model:: flodym::WeibullSurvival
+.. autopydantic_model:: flodym::WeibullLifetime
    :inherited-members: BaseModel

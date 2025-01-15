@@ -22,13 +22,13 @@ from flodym.stocks import (
     StockDrivenDSM as StockDrivenDSM,
     StockDrivenDSM_NIC as StockDrivenDSM_NIC,
 )
-from flodym.survival_models import (
-    SurvivalModel as SurvivalModel,
-    FixedSurvival as FixedSurvival,
-    NormalSurvival as NormalSurvival,
-    FoldedNormalSurvival as FoldedNormalSurvival,
-    LogNormalSurvival as LogNormalSurvival,
-    WeibullSurvival as WeibullSurvival,
+from flodym.lifetime_models import (
+    LifetimeModel as LifetimeModel,
+    FixedLifetime as FixedLifetime,
+    NormalLifetime as NormalLifetime,
+    FoldedNormalLifetime as FoldedNormalLifetime,
+    LogNormalLifetime as LogNormalLifetime,
+    WeibullLifetime as WeibullLifetime,
 )
 from flodym.flow_helper import make_empty_flows as make_empty_flows
 from flodym.stock_helper import make_empty_stocks as make_empty_stocks

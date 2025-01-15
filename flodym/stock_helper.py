@@ -42,17 +42,19 @@ def make_empty_stocks(
                 process = processes[stock_definition.process_name]
             except KeyError:
                 raise KeyError(f"Process {stock_definition.process_name} not in processes.")
-        survival_model = stock_definition.survival_model_class(
-            dims=dim_subset, time_letter=stock_definition.time_letter
-        )
 
-        stock = stock_definition.subclass.from_dims(
+        init_args = dict(
             dims=dim_subset,
             time_letter=stock_definition.time_letter,
             name=stock_definition.name,
             process=process,
-            survival_model=survival_model,
         )
+        if stock_definition.lifetime_model_class is not None:
+            lifetime_model = stock_definition.lifetime_model_class(
+                dims=dim_subset, time_letter=stock_definition.time_letter
+            )
+            init_args["lifetime_model"] = lifetime_model
 
+        stock = stock_definition.subclass(**init_args)
         empty_stocks[stock.name] = stock
     return empty_stocks

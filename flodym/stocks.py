@@ -11,7 +11,7 @@ import logging
 from .processes import Process
 from .flodym_arrays import StockArray
 from .dimensions import DimensionSet
-from .survival_models import SurvivalModel
+from .lifetime_models import LifetimeModel
 
 
 class Stock(PydanticBaseModel):
@@ -27,34 +27,19 @@ class Stock(PydanticBaseModel):
     model_config = ConfigDict(protected_namespaces=(), arbitrary_types_allowed=True)
 
     dims: DimensionSet
+    """Dimensions of the stock, inflow, and outflow arrays. Time must be the first dimension."""
     stock: Optional[StockArray] = None
+    """Accumulation of the stock"""
     inflow: Optional[StockArray] = None
+    """Inflow into the stock"""
     outflow: Optional[StockArray] = None
+    """Outflow from the stock"""
     name: Optional[str] = "unnamed"
+    """Name of the stock"""
     process: Optional[Process] = None
+    """Process the stock is associated with, if any. Needed for example for the mass balance."""
     time_letter: str = "t"
-
-    @classmethod
-    def from_dims(
-        cls,
-        dims: DimensionSet,
-        name: str,
-        stock_values: np.ndarray = None,
-        inflow_values: np.ndarray = None,
-        outflow_values: np.ndarray = None,
-        **kwargs,
-    ) -> 'Stock':
-        stock = StockArray(dims=dims, name=f"{name}_stock", values=stock_values)
-        inflow = StockArray(dims=dims, name=f"{name}_inflow", values=inflow_values)
-        outflow = StockArray(dims=dims, name=f"{name}_outflow", values=outflow_values)
-        return cls(
-            dims=dims,
-            name=name,
-            stock=stock,
-            inflow=inflow,
-            outflow=outflow,
-            **kwargs,
-        )
+    """Letter of the time dimension in the dimensions set, to make sure it's the first one."""
 
     @model_validator(mode="after")
     def validate_stock_arrays(self):
@@ -63,11 +48,11 @@ class Stock(PydanticBaseModel):
         elif self.stock.dims.letters != self.dims.letters:
             raise ValueError(f"Stock dimensions {self.stock.dims.letters} do not match prescribed dims {self.dims.letters}.")
         if self.inflow is None:
-            self.inflow = StockArray(dims=self.dims, name=f"{self.name}_stock")
+            self.inflow = StockArray(dims=self.dims, name=f"{self.name}_inflow")
         elif self.inflow.dims.letters != self.dims.letters:
             raise ValueError(f"Inflow dimensions {self.inflow.dims.letters} do not match prescribed dims {self.dims.letters}.")
         if self.outflow is None:
-            self.outflow = StockArray(dims=self.dims, name=f"{self.name}_stock")
+            self.outflow = StockArray(dims=self.dims, name=f"{self.name}_outflow")
         elif self.outflow.dims.letters != self.dims.letters:
             raise ValueError(f"Outflow dimensions {self.outflow.dims.letters} do not match prescribed dims {self.dims.letters}.")
         return self
@@ -126,8 +111,7 @@ class SimpleFlowDrivenStock(Stock):
     """Given inflows and outflows, the stock can be calculated."""
 
     def _check_needed_arrays(self):
-        if (np.allclose(self.inflow.values, np.zeros(self.shape) and
-            np.allclose(self.outflow.values, np.zeros(self.shape)))):
+        if np.max(np.abs(self.inflow.values)) < 1e-10 and np.max(np.abs(self.outflow.values)) < 1e-10:
             logging.warning("Inflow and Outflow are zero. This will lead to a zero stock.")
 
     def compute(self):
@@ -140,10 +124,10 @@ class DynamicStockModel(Stock):
     lifetime (distribution).
     """
 
-    survival_model: Union[SurvivalModel, type]
-    """Survival model, which contains the lifetime distribution function.
-    Can be input either as a SurvivalModel subclass, or as an instance of a
-    SurvivalModel subclass. For available subclasses, see `flodym.survival_models`.
+    lifetime_model: Union[LifetimeModel, type]
+    """Lifetime model, which contains the lifetime distribution function.
+    Can be input either as a LifetimeModel subclass, or as an instance of a
+    LifetimeModel subclass. For available subclasses, see `flodym.lifetime_models`.
     """
     _outflow_by_cohort: np.ndarray = None
     _stock_by_cohort: np.ndarray = None
@@ -155,17 +139,17 @@ class DynamicStockModel(Stock):
         return self
 
     @model_validator(mode="after")
-    def init_survival_model(self):
-        if isinstance(self.survival_model, type):
-            if not issubclass(self.survival_model, SurvivalModel):
-                raise ValueError("survival_model must be a subclass of SurvivalModel.")
-            self.survival_model = self.survival_model(dims=self.dims, time_letter=self.time_letter)
-        elif self.survival_model.dims.letters != self.dims.letters:
-            raise ValueError("Survival model dimensions do not match stock dimensions.")
+    def init_lifetime_model(self):
+        if isinstance(self.lifetime_model, type):
+            if not issubclass(self.lifetime_model, LifetimeModel):
+                raise ValueError("lifetime_model must be a subclass of LifetimeModel.")
+            self.lifetime_model = self.lifetime_model(dims=self.dims, time_letter=self.time_letter)
+        elif self.lifetime_model.dims.letters != self.dims.letters:
+            raise ValueError("Lifetime model dimensions do not match stock dimensions.")
         return self
 
     def _check_needed_arrays(self):
-        self.survival_model._check_lifetime_set()
+        self.lifetime_model._check_prms_set()
 
     @property
     def _n_t(self) -> int:
@@ -208,7 +192,7 @@ class InflowDrivenDSM(DynamicStockModel):
         from the perspective of the stock the inflow has the dimension age-cohort,
         as each inflow(t) is added to the age-cohort c = t
         """
-        self._stock_by_cohort = np.einsum("c...,tc...->tc...", self.inflow.values, self.survival_model.sf)
+        self._stock_by_cohort = np.einsum("c...,tc...->tc...", self.inflow.values, self.lifetime_model.sf)
 
     def compute_outflow_by_cohort(self) -> np.ndarray:
         """Compute outflow by cohort from changes in the stock by cohort and the known inflow."""
@@ -238,7 +222,7 @@ class StockDrivenDSM(DynamicStockModel):
     def compute_inflow_and_outflow(self) -> tuple[np.ndarray]:
         """With given total stock and lifetime distribution,
         the method builds the stock by cohort and the inflow."""
-        sf = self.survival_model._sf
+        sf = self.lifetime_model._sf
         # construct the sf of a product of cohort tc remaining in the stock in year t
         # First year:
         self.inflow.values[0, ...] = np.where(sf[0, 0, ...] != 0.0, self.stock.values[0] / sf[0, 0], 0.0)
@@ -257,7 +241,7 @@ class StockDrivenDSM(DynamicStockModel):
     def inflow_from_balance(self, m: int) -> np.ndarray:
         """determine inflow from mass balance and do not correct negative inflow"""
 
-        sf = self.survival_model._sf
+        sf = self.lifetime_model._sf
         # allow for outflow during first year by rescaling with 1/sf[m,m]
         self.inflow.values[m, ...] = np.where(
             sf[m, m, ...] != 0.0,
