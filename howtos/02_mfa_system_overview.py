@@ -20,9 +20,9 @@
 #
 # Each flow therefore connects two processes, the source and the target process (The flow has a clear direction!).
 #
-# Counter-insuitively, whenever a transformation happens to a material, that is not represented by a flow, but only a process:
-# For example, primary material production and fabrication could both be processes, while the flow connecting the two would be something like 'primary production to fabrication'.
-# Think of a flow as something being transported from one facility to another, while a process is something happening in a facility.
+# Counterintuitively, whenever a transformation occurs in a material, it is not represented as a flow but rather as a process.
+# For example, both primary material production and fabrication are processes, while the flow connecting them could be described as something like "primary production to fabrication."
+# Think of a flow as something being transported from one facility to another, while a process is something happening within a facility.
 #
 # A process can have multiple input and/or output flows.
 # For example, from the 'waste collection' process, one flow might go to 'recycling', one to 'landfilling' and another to 'incineration'.
@@ -30,20 +30,13 @@
 #
 # Each system has a system boundary.
 # To represent flows leading in and out of this boundary, the first process in flodym is alwas the 'system environment' process.
-# For example, there may be a flow from the system environment to a 'mining' process, where the materials enters the part of the material cycle represented in the MFA.
+# For example, there may be a flow from the system environment to a 'mining' process, where the material enters the part of the material cycle represented in the MFA.
 #
 # ### Parameters
 #
 # In the above example, for calculating these flows, we have to know which share of which waste type enters recycling, landfilling and incineration. Possibly, these shares are different for different regions or time steps.
-# So we need this information in multi-dimensional array form.
+# Therefore, we need this information in multi-dimensional array form.
 # This is what parameter objects are for. In flodym, they are also FlodymArray objects.
-#
-# ### Scalar parameters
-#
-# FlodymArrays can not be zero-dimensional.
-# But parameters might be -- for example, if the share of incinerated waste is assumed to be constant across time, region and waste type.
-#
-# Therefore, there is an own attribute for scalar parameters in the MFASystem class.
 #
 # ### Stocks
 #

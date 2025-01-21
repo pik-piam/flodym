@@ -47,3 +47,6 @@ docs = [
 
 [tool.setuptools]
 packages = ["flodym", "flodym.export"]
+
+[tool.black]
+line-length = 100
