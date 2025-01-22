@@ -23,7 +23,7 @@ from flodym import Dimension, DimensionSet, FlodymArray
 # Create a dimension set
 dims = DimensionSet(
     dim_list=[
-        Dimension(name="Region", letter="r",  items=["EU", "US", "MEX"]),
+        Dimension(name="Region", letter="r", items=["EU", "US", "MEX"]),
         Dimension(name="Product", letter="p", items=["A", "B"]),
         Dimension(name="Time", letter="t", items=[2020]),
     ]
