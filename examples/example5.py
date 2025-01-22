@@ -141,9 +141,9 @@ class VehicleMFA(MFASystem):
     def compute_stock(self):
         self.flows["sysenv => market"][...] = self.parameters["vehicle new registration"]
         self.stocks["in use"].inflow[...] = self.flows["sysenv => market"]
-        self.stocks["in use"].lifetime_model.set_lifetime(
-            lifetime_mean=self.parameters["vehicle lifetime"],
-            lifetime_std=self.parameters["vehicle lifetime"] * 0.3,
+        self.stocks["in use"].lifetime_model.set_prms(
+            mean=self.parameters["vehicle lifetime"],
+            std=self.parameters["vehicle lifetime"] * 0.3,
         )
         self.stocks["in use"].compute()
         stock_diff = self.get_new_array(dim_letters=("r"))

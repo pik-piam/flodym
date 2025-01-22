@@ -9,7 +9,7 @@
 # There are several subclasses of `FlodymArray`, often with little or no changes in functionality:
 # See the API reference of `Flow`, `Parameter`, and `StockArray`.
 #
-# `Flow` object have to be passed the two `Process` objects they connect at initialization.
+# `Flow` objects have to be passed the two `Process` objects they connect at initialization.
 #
 # In this HOWTO, only the `FlodymArray` base class is used.
 #
@@ -39,7 +39,7 @@ parameter_a = FlodymArray(dims=dims["r", "p"], values=0.5 * np.ones((3, 2)))
 # ## Math operations
 #
 # FlodymArrays have the basic mathematical operations implemented.
-# Let#s first create two arrays:
+# Let's first create two arrays:
 
 # %% [markdown]
 # We write a small routine to print properties of the resulting array, and test it on the inputs:
@@ -64,7 +64,7 @@ show_array(flow_b)
 
 # %%
 summed = flow_a + flow_b
-print("flow_a:")
+print("summed:")
 show_array(summed)
 
 # %% [markdown]
@@ -100,7 +100,7 @@ print("divided:")
 show_array(divided)
 
 # %% [markdown]
-# This may not be the dimension we want, for example we might want to sum the result over products, keeping the dimensions tie and region. There are some class methods for these kinds of operations. See the API reference for the full documentation. For our example:
+# This may not be the dimension we want, for example we might want to sum the result over products, keeping the dimensions time and region. There are some class methods for these kinds of operations. See the API reference for the full documentation. For our example:
 
 # %%
 reduced = multiplied.sum_to(result_dims=("t", "r"))
@@ -244,7 +244,7 @@ print("slice_a5:")
 show_array(slice_b1)
 
 # %% [markdown]
-# As mentioned earlier, You can also use slicing to only access a par of the array on the left-hand side of an assignment:
+# As mentioned earlier, you can also use slicing to only access a par of the array on the left-hand side of an assignment:
 
 # %%
 flow_b["EU"] = flow_a["A"]

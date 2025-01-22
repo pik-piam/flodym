@@ -54,6 +54,7 @@ from flodym import (
     FlowDefinition,
     StockDefinition,
     MFASystem,
+    SimpleFlowDrivenStock,
 )
 from flodym.export import PlotlyArrayPlotter
 
@@ -132,11 +133,13 @@ stock_definitions = [
         name="landfills",
         process="landfills",
         dim_letters=("t", "e"),
+        subclass=SimpleFlowDrivenStock,
     ),
     StockDefinition(
         name="slag piles",
         process="slag piles",
         dim_letters=("t", "e"),
+        subclass=SimpleFlowDrivenStock,
     ),
 ]
 
