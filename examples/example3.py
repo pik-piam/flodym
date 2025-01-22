@@ -25,18 +25,18 @@
 #
 # <img src="pictures/SimpleProcess.png" width="354" height="290" alt="Simple MFA system">
 #
-# Stocks S and outflow O are calculated from apparent final consumption i(t), which is obtained from statistics, cf. DOI 10.1016/j.resconrec.2012.11.008
+# Stocks S and outflow O are calculated from apparent final consumption i(t), which is obtained from statistics, cf. DOI 10.1016/j.resconrec.2012.11.008.
 # The model equations are as follows:
 #
 # First, we compute the outflow o_c(t,c) of each historic inflow/age-cohort i(c) in year t as
 # $o\_c(t,c) = i(c) \cdot sf(t,c)$
 # where sf is the survival function of the age cohort, which is 1-cdf, see the [wikipedia page on the survival function](https://en.wikipedia.org/wiki/Survival_function).
 # The total outflow o(t) in a given year is then
-# $o(t) = \sum_{c\leq t} o\_c(t,c)$
+# $o(t) = \sum_{c\leq t} o\_c(t,c)$.
 # The mass balance leads to the stock change $dS$:
 # $dS(t) = i(t) - o(t)$
-# And the stock finally is computed as
-# $S(t) = \sum_{t'\leq t} ds(t')$
+# and the stock finally is computed as
+# $S(t) = \sum_{t'\leq t} ds(t')$.
 
 # %% [markdown]
 # ## 1. Load flodym and useful packages
