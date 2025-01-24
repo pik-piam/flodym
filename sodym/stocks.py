@@ -54,12 +54,13 @@ class Stock(PydanticBaseModel):
         """Check whether inflow, outflow, and stock are balanced.
         If possible, the method returns the vector 'Balance', where Balance = inflow - outflow - stock_change
         """
-        dsdt = np.diff(self.stock.values, axis=0, prepend=0)  #stock_change(t) = stock(t) - stock(t-1)
+        dsdt = np.diff(self.stock.values, axis=0, prepend=0)  # stock_change(t) = stock(t) - stock(t-1)
         return self.inflow.values - self.outflow.values - dsdt
 
 
 class FlowDrivenStock(Stock):
     """Given inflows and outflows, the stock can be calculated."""
+
     def compute(self):
         time_dim_letter = 't' if 't' in self.stock.dims.letters else 'h'
         stock_vals = np.cumsum(self.inflow.values - self.outflow.values, axis=self.stock.dims.index(time_dim_letter))
@@ -80,7 +81,7 @@ class DynamicStockModel(Stock):
 
     @property
     def shape_cohort(self) -> tuple:
-        return (self.n_t, ) + self.shape
+        return (self.n_t,) + self.shape
 
     @property
     def shape_no_t(self) -> tuple:
@@ -107,7 +108,7 @@ class InflowDrivenDSM(DynamicStockModel):
         outflow_by_cohort = self.compute_outflow_by_cohort(stock_by_cohort)
         stock_vals = stock_by_cohort.sum(axis=1)
         outflow_vals = outflow_by_cohort.sum(axis=1)
-    
+
         self.stock = StockArray(
             dims=self.inflow.dims, values=stock_vals, name=f'{self.name}_stock',
         )
@@ -161,14 +162,14 @@ class StockDrivenDSM(DynamicStockModel):
         # First year:
         inflow[0, ...] = np.where(sf[0, 0, ...] != 0.0, self.stock.values[0] / sf[0, 0], 0.0)
         stock_by_cohort[:, 0, ...] = (
-            inflow[0, ...] * sf[:, 0, ...]
+                inflow[0, ...] * sf[:, 0, ...]
         )  # Future decay of age-cohort of year 0.
         outflow_by_cohort[0, 0, ...] = inflow[0, ...] - stock_by_cohort[0, 0, ...]
         # all other years:
         for m in range(1, self.n_t):  # for all years m, starting in second year
             # 1) Compute outflow from previous age-cohorts up to m-1
             outflow_by_cohort[m, 0:m, ...] = (
-                stock_by_cohort[m - 1, 0:m, ...] - stock_by_cohort[m, 0:m, ...]
+                    stock_by_cohort[m - 1, 0:m, ...] - stock_by_cohort[m, 0:m, ...]
             )  # outflow table is filled row-wise, for each year m.
             # 2) Determine inflow from mass balance:
             if not do_correct_negative_inflow:  # if no correction for negative inflows is made
@@ -204,12 +205,12 @@ class StockDrivenDSM(DynamicStockModel):
 
                     # increase outflow according to the lost fraction of the stock, based on Delta_c
                     outflow_by_cohort[m, :, ...] = outflow_by_cohort[m, :, ...] + (
-                        stock_by_cohort[m, :, ...] * delta_percent
+                            stock_by_cohort[m, :, ...] * delta_percent
                     )
                     # shrink future description of stock from previous age-cohorts by factor Delta_percent in current
                     # AND future years.
                     stock_by_cohort[m::, 0:m, ...] = (
-                        stock_by_cohort[m::, 0:m, ...] * (1 - delta_percent)
+                            stock_by_cohort[m::, 0:m, ...] * (1 - delta_percent)
                     )
                 else:  # If no negative inflow would occur
                     inflow[m, ...] = np.where(
@@ -226,5 +227,39 @@ class StockDrivenDSM(DynamicStockModel):
                 # it becomes obsolete. Each cohort loses the same fraction. Modellers need to try out whether this
                 # method leads to justifiable results. In some situations it is better to change the lifetime assumption
                 # than using the NegativeInflowCorrect option.
+
+        # Visualisation, TODO DELETE!
+        visualize = False
+        if visualize:
+            # visualize outflow
+
+            goods = ['Construction', 'Machinery', 'Products', 'Transportation']
+            regions = ['CAZ', 'CHA', 'EUR', 'IND', 'JPN', 'LAM', 'MEA', 'NEU', 'OAS', 'REF', 'SSA', 'USA']
+
+            good = 'Construction'
+            region = 'USA'
+
+            r = regions.index(region)
+            g = goods.index(good)
+            n_years = 130
+            cohorts = [1950, 1960, 1970]
+
+            cohort_ids = [cohort - 1900 for cohort in cohorts]
+
+            cohortA = outflow_by_cohort[cohort_ids[0]:cohort_ids[0] + n_years, cohort_ids[0], r, g]
+            cohortB = outflow_by_cohort[cohort_ids[1]:cohort_ids[1] + n_years, cohort_ids[1], r, g]
+            cohortC = outflow_by_cohort[cohort_ids[2]:cohort_ids[2] + n_years, cohort_ids[2], r, g]
+
+            from matplotlib import pyplot as plt
+            years = range(n_years)
+
+            plt.plot(years, cohortA, label=f'cohort {str(cohorts[0])}')
+            plt.plot(years, cohortB, label=f'cohort {str(cohorts[1])}')
+            plt.plot(years, cohortC, label=f'cohort {str(cohorts[2])}')
+            plt.legend()
+            plt.title(f'Outflow by cohort, {regions[r]}, {goods[g]}')
+            plt.xlabel('Years passed')
+            plt.ylabel('Outflow')
+            plt.show()
 
         return inflow, outflow_by_cohort, stock_by_cohort

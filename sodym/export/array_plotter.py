@@ -3,9 +3,9 @@ from plotly import graph_objects as go, colors as plc
 from plotly.subplots import make_subplots
 import numpy as np
 from pydantic import BaseModel as PydanticBaseModel, model_validator, ConfigDict
-from typing import Any
+from typing import Any, Union
+from types import NoneType
 from abc import ABC, abstractmethod
-
 from ..named_dim_arrays import NamedDimArray
 from ..dimensions import DimensionSet
 from .helper import CustomNameDisplayer
@@ -20,7 +20,7 @@ class ArrayPlotter(CustomNameDisplayer, PydanticBaseModel, ABC):
 
     array: NamedDimArray
     intra_line_dim: str
-    x_array: NamedDimArray = None
+    x_array: Union[NamedDimArray, NoneType] = None
     subplot_dim: str = None
     linecolor_dim: str = None
     fig: Any = None
@@ -28,6 +28,7 @@ class ArrayPlotter(CustomNameDisplayer, PydanticBaseModel, ABC):
     xlabel: str = None
     ylabel: str = None
     title: str = None
+    area: bool = False
 
     @model_validator(mode="after")
     def check_colors(self):
@@ -228,7 +229,7 @@ class PlotlyArrayPlotter(ArrayPlotter):
     fig: go.Figure = None
 
     def save(self, save_path: str = None):
-        self.fig.write_image(save_path)
+        self.fig.write_image(save_path, width=2200, height=1300)
 
     def show(self):
         self.fig.show()
@@ -266,14 +267,17 @@ class PlotlyArrayPlotter(ArrayPlotter):
 
     def add_line(self, i_subplot, x, y, label, i_line):
         i_color = i_line + self.n_previous_lines
-        color = plc.DEFAULT_PLOTLY_COLORS[i_color]
+        # use the default 10 plotly colors, if more than 10 are needed, repeat through the colors
+        color = plc.DEFAULT_PLOTLY_COLORS[i_color % len(plc.DEFAULT_PLOTLY_COLORS)]
         self.fig.add_trace(
             go.Scatter(
                 x=x,
                 y=y,
                 name=label,
                 line=dict(color=color),
-                showlegend=i_subplot == 0),
+                showlegend=i_subplot == 0,
+                stackgroup='one' if self.area else None,
+            ),
             row=self.row(i_subplot),
             col=self.col(i_subplot))
 

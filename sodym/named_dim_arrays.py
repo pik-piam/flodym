@@ -11,8 +11,9 @@ from .dimensions import DimensionSet, Dimension
 
 def is_iterable(arg):
     return (
-        isinstance(arg, Iterable) and not isinstance(arg, (str, Dimension))
+            isinstance(arg, Iterable) and not isinstance(arg, (str, Dimension))
     )
+
 
 def is_non_subset_dim(arg, other_dim):
     if not isinstance(arg, Dimension):
@@ -243,9 +244,10 @@ class NamedDimArray(PydanticBaseModel):
         assert all([d in self.dims.letters for d in dim_letters]), 'Dimensions to get share of must be in the object'
 
         if all([d in dim_letters for d in self.dims.letters]):
-            return self / self.sum_values()
+            # if sum values is zero, self is zero, hence can avoid Divide by zero
+            return self / self.sum_values().maximum(1e-10)
 
-        return self / self.sum_nda_over(sum_over_dims=dim_letters)
+        return self / self.sum_nda_over(sum_over_dims=dim_letters).maximum(1e-10)  # see above
 
 
 class SubArrayHandler:
@@ -353,7 +355,7 @@ class SubArrayHandler:
         """
         if self.invalid_nda:
             raise ValueError("Cannot convert to NamedDimArray if there are dimension slices with several items."
-            "Use a new dimension object with the subset as values instead")
+                             "Use a new dimension object with the subset as values instead")
 
         return NamedDimArray(dims=self.dims_out, values=self.values_pointer, name=self.nda.name)
 

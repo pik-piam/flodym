@@ -34,7 +34,7 @@ def make_empty_stock(stock_definition: StockDefinition, dims: DimensionSet, proc
 
 def make_empty_stocks(
         stock_definitions: list[StockDefinition], processes: dict[str, Process], dims: DimensionSet
-        ):
+):
     """Initialise empty FlowDrivenStock objects for each of the stocks listed in stock definitions.
     """
     empty_stocks = {}
@@ -50,14 +50,14 @@ def make_empty_stocks(
 
 
 def create_dynamic_stock(
-    name: str, process: Process,
-    time_letter: str='t',
-    stock: Optional[StockArray] = None,
-    inflow: Optional[StockArray] = None,
-    process_name: Optional[str] = None,
-    ldf_type: Optional[str] = None,
-    lifetime_mean: Optional[Parameter] = None,
-    lifetime_std: Optional[Parameter] = None,
+        name: str, process: Process,
+        time_letter: str = 't',
+        stock: Optional[StockArray] = None,
+        inflow: Optional[StockArray] = None,
+        process_name: Optional[str] = None,
+        ldf_type: Optional[str] = None,
+        lifetime_mean: Optional[Parameter] = None,
+        lifetime_std: Optional[Parameter] = None,
 ) -> DynamicStockModel:
     """Initialise either a StockDrivenDSM or an InflowDrivenDSM,
     depending on whether the user passes stock or inflow.
