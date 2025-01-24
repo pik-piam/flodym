@@ -3,7 +3,7 @@ from plotly import graph_objects as go, colors as plc
 from plotly.subplots import make_subplots
 import numpy as np
 from pydantic import BaseModel as PydanticBaseModel, model_validator, ConfigDict
-from typing import Any
+from typing import Any, Optional, Union
 from abc import ABC, abstractmethod
 
 from ..flodym_arrays import FlodymArray
@@ -23,7 +23,7 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
     """Values to plot, usually a Flow or Stock; sliced or summed along excess dimensions."""
     intra_line_dim: str
     """Name of the dimension along which lines are plotted (if no x_array is given, this is also the x-axis)."""
-    x_array: FlodymArray = None
+    x_array: Optional[Union[FlodymArray, None]] = None
     """Array with x-values for each line. Must have the same dimensions as array, or a subset of them. If None, the intra_line_dim is used as x-axis."""
     subplot_dim: str = None
     """Name of the dimension by which to split the array into subplots. If None, the array is plotted in a single subplot."""
@@ -107,7 +107,7 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
 
     def _plot_all_subplots(self, subplotlist_array, subplotlist_x_array):
         for i_subplot, (array_subplot, x_array_subplot) in enumerate(
-            zip(subplotlist_array, subplotlist_x_array)
+                zip(subplotlist_array, subplotlist_x_array)
         ):
             self._plot_subplot(i_subplot=i_subplot, array=array_subplot, x_array=x_array_subplot)
             self._label_subplot(i_subplot=i_subplot)
@@ -143,7 +143,7 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
         linedict_array = self._dict_of_slices(array, self.linecolor_dim)
         linedict_x_array = self._dict_of_slices(x_array, self.linecolor_dim)
         for i_line, (array_line, x_array_line, name_line) in enumerate(
-            zip(linedict_array.values(), linedict_x_array.values(), linedict_array.keys())
+                zip(linedict_array.values(), linedict_x_array.values(), linedict_array.keys())
         ):
             label = self.line_label if self.line_label is not None else self.display_name(name_line)
             assert array_line.dims.names == (self.intra_line_dim,), (
@@ -163,7 +163,7 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
             self.set_ylabel(i_subplot, ylabel)
 
     def _index2d(self, i_subplot):
-        return i_subplot // self.nx, i_subplot % self.nx
+        return i_subplot // self.ny, i_subplot % self.ny
 
     @abstractmethod
     def save(self, save_path: str = None):
@@ -207,7 +207,6 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
 
 
 class PyplotArrayPlotter(ArrayPlotter):
-
     fig: plt.Figure = None
     """A previously created pyplot figure object, for adding lines to an existing figure.
     If None, a new figure is created.
@@ -251,7 +250,6 @@ class PyplotArrayPlotter(ArrayPlotter):
 
 
 class PlotlyArrayPlotter(ArrayPlotter):
-
     fig: go.Figure = None
     """A previously created plotly figure object, for adding lines to an existing figure.
     If None, a new figure is created.
@@ -279,7 +277,7 @@ class PlotlyArrayPlotter(ArrayPlotter):
         grid_ref = self.fig._validate_get_grid_ref()
         nrows = len(grid_ref)
         ncols = len(grid_ref[0])
-        return ncols, nrows
+        return nrows, ncols
 
     def row(self, i_subplot):
         return self._index2d(i_subplot)[0] + 1
@@ -291,7 +289,7 @@ class PlotlyArrayPlotter(ArrayPlotter):
         self.fig.update_xaxes(title_text=label, row=self.row(i_subplot), col=self.col(i_subplot))
 
     def set_ylabel(self, i_subplot, label):
-        self.fig.update_yaxes(title_text=label, row=self.row(i_subplot), col=self.row(i_subplot))
+        self.fig.update_yaxes(title_text=label, row=self.row(i_subplot), col=self.col(i_subplot))
 
     def set_subplot_title(self, index, title):
         pass  # already set in make_subplots
