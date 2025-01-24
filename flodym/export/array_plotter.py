@@ -107,7 +107,7 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
 
     def _plot_all_subplots(self, subplotlist_array, subplotlist_x_array):
         for i_subplot, (array_subplot, x_array_subplot) in enumerate(
-                zip(subplotlist_array, subplotlist_x_array)
+            zip(subplotlist_array, subplotlist_x_array)
         ):
             self._plot_subplot(i_subplot=i_subplot, array=array_subplot, x_array=x_array_subplot)
             self._label_subplot(i_subplot=i_subplot)
@@ -143,7 +143,7 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
         linedict_array = self._dict_of_slices(array, self.linecolor_dim)
         linedict_x_array = self._dict_of_slices(x_array, self.linecolor_dim)
         for i_line, (array_line, x_array_line, name_line) in enumerate(
-                zip(linedict_array.values(), linedict_x_array.values(), linedict_array.keys())
+            zip(linedict_array.values(), linedict_x_array.values(), linedict_array.keys())
         ):
             label = self.line_label if self.line_label is not None else self.display_name(name_line)
             assert array_line.dims.names == (self.intra_line_dim,), (
