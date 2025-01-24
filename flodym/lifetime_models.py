@@ -109,7 +109,7 @@ class LifetimeModel(PydanticBaseModel):
         pdf = np.zeros(self._shape_cohort)
         pdf[self.t_diag_indices] = 1.0 - np.moveaxis(self._sf.diagonal(0, 0, 1), -1, 0)
         for m in range(0, self._n_t):
-            pdf[m + 1 :, m, ...] = -1 * np.diff(self._sf[m:, m, ...], axis=0)
+            pdf[m + 1:, m, ...] = -1 * np.diff(self._sf[m:, m, ...], axis=0)
         return pdf
 
 
@@ -139,7 +139,6 @@ class FixedLifetime(LifetimeModel):
 
 
 class StandardDeviationLifetimeModel(LifetimeModel):
-
     mean: Any = None
     std: Any = None
 
@@ -208,22 +207,24 @@ class LogNormalLifetime(StandardDeviationLifetimeModel):
     Same result as EXCEL function "=LOGNORM.VERT(x;LT_LN;SG_LN;TRUE)"
     """
 
-    def _survival_by_year_id(self, m):
-        # calculate parameter mu of underlying normal distribution:
-        lt_ln = np.log(
-            self.mean[m, ...]
-            / np.sqrt(
-                1 + (self.mean[m, ...] * self.mean[m, ...] / (self.std[m, ...] * self.std[m, ...]))
+    def survival_function_by_year_id(self, m):
+        mean_square = self.mean[m, ...] * self.mean[m, ...]
+        std_square = self.std[m, ...] * self.std[m, ...]
+        new_mean = np.log(
+            mean_square / np.sqrt(
+                mean_square + std_square
             )
         )
-        # calculate parameter sigma of underlying normal distribution
-        sg_ln = np.sqrt(
+        new_std = np.sqrt(
             np.log(
-                1 + (self.mean[m, ...] * self.mean[m, ...] / (self.std[m, ...] * self.std[m, ...]))
+                1 + std_square / mean_square
             )
         )
+        lt_ln = new_mean
+        sg_ln = new_std
         # compute survial function
-        return scipy.stats.lognorm.sf(self._remaining_ages(m), s=sg_ln, loc=0, scale=np.exp(lt_ln))
+        return scipy.stats.lognorm.sf(
+            self.remaining_ages(m), s=sg_ln, loc=0, scale=np.exp(lt_ln))
 
 
 class WeibullLifetime(LifetimeModel):
