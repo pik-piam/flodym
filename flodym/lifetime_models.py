@@ -109,7 +109,7 @@ class LifetimeModel(PydanticBaseModel):
         pdf = np.zeros(self._shape_cohort)
         pdf[self.t_diag_indices] = 1.0 - np.moveaxis(self._sf.diagonal(0, 0, 1), -1, 0)
         for m in range(0, self._n_t):
-            pdf[m + 1:, m, ...] = -1 * np.diff(self._sf[m:, m, ...], axis=0)
+            pdf[m + 1 :, m, ...] = -1 * np.diff(self._sf[m:, m, ...], axis=0)
         return pdf
 
 
@@ -210,21 +210,12 @@ class LogNormalLifetime(StandardDeviationLifetimeModel):
     def survival_function_by_year_id(self, m):
         mean_square = self.mean[m, ...] * self.mean[m, ...]
         std_square = self.std[m, ...] * self.std[m, ...]
-        new_mean = np.log(
-            mean_square / np.sqrt(
-                mean_square + std_square
-            )
-        )
-        new_std = np.sqrt(
-            np.log(
-                1 + std_square / mean_square
-            )
-        )
+        new_mean = np.log(mean_square / np.sqrt(mean_square + std_square))
+        new_std = np.sqrt(np.log(1 + std_square / mean_square))
         lt_ln = new_mean
         sg_ln = new_std
         # compute survial function
-        return scipy.stats.lognorm.sf(
-            self.remaining_ages(m), s=sg_ln, loc=0, scale=np.exp(lt_ln))
+        return scipy.stats.lognorm.sf(self.remaining_ages(m), s=sg_ln, loc=0, scale=np.exp(lt_ln))
 
 
 class WeibullLifetime(LifetimeModel):
