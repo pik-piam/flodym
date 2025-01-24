@@ -228,38 +228,4 @@ class StockDrivenDSM(DynamicStockModel):
                 # method leads to justifiable results. In some situations it is better to change the lifetime assumption
                 # than using the NegativeInflowCorrect option.
 
-        # Visualisation, TODO DELETE!
-        visualize = False
-        if visualize:
-            # visualize outflow
-
-            goods = ['Construction', 'Machinery', 'Products', 'Transportation']
-            regions = ['CAZ', 'CHA', 'EUR', 'IND', 'JPN', 'LAM', 'MEA', 'NEU', 'OAS', 'REF', 'SSA', 'USA']
-
-            good = 'Construction'
-            region = 'USA'
-
-            r = regions.index(region)
-            g = goods.index(good)
-            n_years = 130
-            cohorts = [1950, 1960, 1970]
-
-            cohort_ids = [cohort - 1900 for cohort in cohorts]
-
-            cohortA = outflow_by_cohort[cohort_ids[0]:cohort_ids[0] + n_years, cohort_ids[0], r, g]
-            cohortB = outflow_by_cohort[cohort_ids[1]:cohort_ids[1] + n_years, cohort_ids[1], r, g]
-            cohortC = outflow_by_cohort[cohort_ids[2]:cohort_ids[2] + n_years, cohort_ids[2], r, g]
-
-            from matplotlib import pyplot as plt
-            years = range(n_years)
-
-            plt.plot(years, cohortA, label=f'cohort {str(cohorts[0])}')
-            plt.plot(years, cohortB, label=f'cohort {str(cohorts[1])}')
-            plt.plot(years, cohortC, label=f'cohort {str(cohorts[2])}')
-            plt.legend()
-            plt.title(f'Outflow by cohort, {regions[r]}, {goods[g]}')
-            plt.xlabel('Years passed')
-            plt.ylabel('Outflow')
-            plt.show()
-
         return inflow, outflow_by_cohort, stock_by_cohort
