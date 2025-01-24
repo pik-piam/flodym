@@ -213,7 +213,7 @@ class PyplotArrayPlotter(ArrayPlotter):
     """
 
     def save(self, save_path: str = None):
-        self.fig.savefig(save_path)
+        self.fig.write_image(save_path, width=2200, height=1300)
 
     def show(self):
         self.fig.show()
@@ -256,7 +256,7 @@ class PlotlyArrayPlotter(ArrayPlotter):
     """
 
     def save(self, save_path: str = None):
-        self.fig.write_image(save_path)
+        self.fig.write_image(save_path, width=2200, height=1300)
 
     def show(self):
         self.fig.show()
