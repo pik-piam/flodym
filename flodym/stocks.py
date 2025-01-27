@@ -120,8 +120,8 @@ class SimpleFlowDrivenStock(Stock):
 
     def _check_needed_arrays(self):
         if (
-                np.max(np.abs(self.inflow.values)) < 1e-10
-                and np.max(np.abs(self.outflow.values)) < 1e-10
+            np.max(np.abs(self.inflow.values)) < 1e-10
+            and np.max(np.abs(self.outflow.values)) < 1e-10
         ):
             logging.warning("Inflow and Outflow are zero. This will lead to a zero stock.")
 
@@ -244,14 +244,14 @@ class StockDrivenDSM(DynamicStockModel):
         # Future decay of age-cohort of year 0.
         self._stock_by_cohort[:, 0, ...] = self.inflow.values[0, ...] * sf[:, 0, ...]
         self._outflow_by_cohort[0, 0, ...] = (
-                self.inflow.values[0, ...] - self._stock_by_cohort[0, 0, ...]
+            self.inflow.values[0, ...] - self._stock_by_cohort[0, 0, ...]
         )
         # all other years:
         for m in range(1, self._n_t):  # for all years m, starting in second year
             # 1) Compute outflow from previous age-cohorts up to m-1
             # outflow table is filled row-wise, for each year m.
             self._outflow_by_cohort[m, 0:m, ...] = (
-                    self._stock_by_cohort[m - 1, 0:m, ...] - self._stock_by_cohort[m, 0:m, ...]
+                self._stock_by_cohort[m - 1, 0:m, ...] - self._stock_by_cohort[m, 0:m, ...]
             )
             self.inflow_from_balance(m)
 
@@ -318,10 +318,10 @@ class StockDrivenDSM_NIC(StockDrivenDSM):
 
         # increase outflow according to the lost fraction of the stock, based on Delta_c
         self._outflow_by_cohort[m, :, ...] = self._outflow_by_cohort[m, :, ...] + (
-                self._stock_by_cohort[m, :, ...] * delta_percent
+            self._stock_by_cohort[m, :, ...] * delta_percent
         )
         # shrink future description of stock from previous age-cohorts by factor Delta_percent in current
         # AND future years.
         self._stock_by_cohort[m::, 0:m, ...] = self._stock_by_cohort[m::, 0:m, ...] * (
-                1 - delta_percent
+            1 - delta_percent
         )

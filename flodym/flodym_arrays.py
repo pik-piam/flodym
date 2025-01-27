@@ -85,7 +85,7 @@ class FlodymArray(PydanticBaseModel):
 
     @classmethod
     def from_dims_superset(
-            cls, dims_superset: DimensionSet, dim_letters: tuple = None, **kwargs
+        cls, dims_superset: DimensionSet, dim_letters: tuple = None, **kwargs
     ) -> "FlodymArray":
         """Create a FlodymArray object from a superset of dimensions, by specifying which
         dimensions to take.
@@ -318,8 +318,10 @@ class FlodymArray(PydanticBaseModel):
         other = self._prepare_other(other)
         dims_out = self.dims.union_with(other.dims)
         if np.any(other.values == 0):
-            raise ZeroDivisionError(f"Division by zero should not occur - change {self.__class__} "
-                                    f"to define how this should be handled.")
+            raise ZeroDivisionError(
+                f"Division by zero should not occur - change {self.__class__} "
+                f"to define how this should be handled."
+            )
         values_out = np.einsum(
             f"{self.dims.string},{other.dims.string}->{dims_out.string}",
             self.values,
@@ -366,8 +368,10 @@ class FlodymArray(PydanticBaseModel):
 
     def __rtruediv__(self, other):
         if np.any(self.values == 0):
-            raise ZeroDivisionError(f"Division by zero should not occur - change {self.__class__} "
-                                    f"to define how this should be handled.")
+            raise ZeroDivisionError(
+                f"Division by zero should not occur - change {self.__class__} "
+                f"to define how this should be handled."
+            )
         inv_self = FlodymArray(dims=self.dims, values=1 / self.values)
         return inv_self * other
 
@@ -451,7 +455,9 @@ class FlodymArray(PydanticBaseModel):
             return self / self.sum_values()
 
         sum_self = self.sum_over(sum_over_dims=dim_letters)
-        sum_self = sum_self.maximum(1e-10)  # avoid division by zero for shares, result will be zero anyways
+        sum_self = sum_self.maximum(
+            1e-10
+        )  # avoid division by zero for shares, result will be zero anyways
 
         return self / sum_self
 
