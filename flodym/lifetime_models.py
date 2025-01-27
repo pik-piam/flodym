@@ -207,30 +207,16 @@ class LogNormalLifetime(StandardDeviationLifetimeModel):
     Same result as EXCEL function "=LOGNORM.VERT(x;LT_LN;SG_LN;TRUE)"
     """
 
-    def survival_function_by_year_id(self, m):
+    def _survival_by_year_id(self, m):
         mean_square = self.mean[m, ...] * self.mean[m, ...]
         std_square = self.std[m, ...] * self.std[m, ...]
         new_mean = np.log(mean_square / np.sqrt(mean_square + std_square))
         new_std = np.sqrt(np.log(1 + std_square / mean_square))
         lt_ln = new_mean
         sg_ln = new_std
-        # compute survial function
-        return scipy.stats.lognorm.sf(self.remaining_ages(m), s=sg_ln, loc=0, scale=np.exp(lt_ln))
-
-    def survival_function_by_year_id_merlin(self, m):
-        # TODO: Something wrong here, decide between Sally's version above and Merlin's below
-        mean_square = self.mean[m, ...] * self.mean[m, ...]
-        std_square = self.std[m, ...] * self.std[m, ...]
-
-        new_mean = np.log(mean_square / np.sqrt(mean_square + std_square))
-
-        new_std = np.sqrt(np.log(1 + std_square / mean_square))
-
-        lt_ln = new_mean
-        sg_ln = new_std
-
-        # compute survial function
-        return scipy.stats.lognorm.sf(self.remaining_ages(m), s=sg_ln, loc=0, scale=np.exp(lt_ln))
+        # compute survival function
+        sf_m = scipy.stats.lognorm.sf(self._remaining_ages(m), s=sg_ln, loc=0, scale=np.exp(lt_ln))
+        return sf_m
 
 
 class WeibullLifetime(LifetimeModel):
