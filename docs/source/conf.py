@@ -7,7 +7,7 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "flodym"
-copyright = "2024, the flodym authors"
+copyright = "2025, the flodym authors"
 author = "the flodym authors"
 
 # -- General configuration ---------------------------------------------------

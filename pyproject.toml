@@ -4,11 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "flodym"
-version = "0.1.0"
+version = "0.1.1"
 authors = [
     {name = "Jakob Dürrwächter"},
     {name = "Sally Dacie"},
     {name = "Merlin Hosak"},
+    {name = "Bennet Weiß"},
 ]
 readme = "README.md"
 requires-python = ">= 3.10"

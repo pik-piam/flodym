@@ -1,4 +1,4 @@
-cff-version: 0.1.0
+cff-version: 0.1.1
 message: "If you use this software, please cite it as below."
 authors:
   - family-names: Dürrwächter
@@ -7,6 +7,8 @@ authors:
     given-names: Sally
   - family-names: Hosak
     given-names: Merlin
+  - family-names: Weiß
+    given-names: Bennet
 title: "flodym"
-version: 0.1.0
-date-released: 2024-09-23
+version: 0.1.1
+date-released: 2025-01-30
