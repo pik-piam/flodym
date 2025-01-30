@@ -139,7 +139,6 @@ class FixedLifetime(LifetimeModel):
 
 
 class StandardDeviationLifetimeModel(LifetimeModel):
-
     mean: Any = None
     std: Any = None
 
@@ -209,21 +208,15 @@ class LogNormalLifetime(StandardDeviationLifetimeModel):
     """
 
     def _survival_by_year_id(self, m):
-        # calculate parameter mu of underlying normal distribution:
-        lt_ln = np.log(
-            self.mean[m, ...]
-            / np.sqrt(
-                1 + (self.mean[m, ...] * self.mean[m, ...] / (self.std[m, ...] * self.std[m, ...]))
-            )
-        )
-        # calculate parameter sigma of underlying normal distribution
-        sg_ln = np.sqrt(
-            np.log(
-                1 + (self.mean[m, ...] * self.mean[m, ...] / (self.std[m, ...] * self.std[m, ...]))
-            )
-        )
-        # compute survial function
-        return scipy.stats.lognorm.sf(self._remaining_ages(m), s=sg_ln, loc=0, scale=np.exp(lt_ln))
+        mean_square = self.mean[m, ...] * self.mean[m, ...]
+        std_square = self.std[m, ...] * self.std[m, ...]
+        new_mean = np.log(mean_square / np.sqrt(mean_square + std_square))
+        new_std = np.sqrt(np.log(1 + std_square / mean_square))
+        lt_ln = new_mean
+        sg_ln = new_std
+        # compute survival function
+        sf_m = scipy.stats.lognorm.sf(self._remaining_ages(m), s=sg_ln, loc=0, scale=np.exp(lt_ln))
+        return sf_m
 
 
 class WeibullLifetime(LifetimeModel):

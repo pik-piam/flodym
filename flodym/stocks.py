@@ -223,8 +223,8 @@ class StockDrivenDSM(DynamicStockModel):
 
     def _check_needed_arrays(self):
         super()._check_needed_arrays()
-        if np.allclose(self.inflow.values, np.zeros(self.shape)):
-            logging.warning("Inflow is zero. This will lead to a zero stock and outflow.")
+        if np.allclose(self.stock.values, np.zeros(self.shape)):
+            logging.warning("Stock is zero. This will lead to a zero inflow and outflow.")
 
     def compute(self):
         """Determine inflows and outflows and store values in the class instance."""
@@ -288,7 +288,7 @@ class StockDrivenDSM_NIC(StockDrivenDSM):
     def inflow_from_balance_correction(self, m: int) -> np.ndarray:
         """determine inflow from mass balance and correct negative inflow
 
-        NOTE: This method of negative inflow correction is only of of many plausible methods of increasing the
+        NOTE: This method of negative inflow correction is only one of many plausible methods of increasing the
         outflow to keep matching stock levels. It assumes that the surplus stock is removed in the year that
         it becomes obsolete. Each cohort loses the same fraction. Modellers need to try out whether this
         method leads to justifiable results. In some situations it is better to change the lifetime assumption

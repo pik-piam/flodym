@@ -5,6 +5,7 @@ from .data_writer import (
     convert_to_dict as convert_to_dict,
 )
 from .array_plotter import (
+    ArrayPlotter as ArrayPlotter,
     PlotlyArrayPlotter as PlotlyArrayPlotter,
     PyplotArrayPlotter as PyplotArrayPlotter,
 )
