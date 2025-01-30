@@ -122,8 +122,7 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
             self.subplot_titles = None
         else:
             n_subplots = self.array.dims[self.subplot_dim].len
-            self.nx = int(np.ceil(np.sqrt(n_subplots)))
-            self.ny = int(np.ceil(n_subplots / self.nx))
+            self.nx, self.ny = self._get_nx_ny_from_n(n_subplots)
             self.subplot_titles = [
                 f"{self.display_name(self.subplot_dim)}={self.display_name(item)}"
                 for item in self.array.dims[self.subplot_dim].items
@@ -163,7 +162,13 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
             self.set_ylabel(i_subplot, ylabel)
 
     def _index2d(self, i_subplot):
-        return i_subplot // self.ny, i_subplot % self.ny
+        return i_subplot // self.nx, i_subplot % self.nx
+
+    @staticmethod
+    def _get_nx_ny_from_n(n):
+        nx = int(np.ceil(np.sqrt(n)))
+        ny = int(np.ceil(n / nx))
+        return nx, ny
 
     @abstractmethod
     def save(self, save_path: str = None):
@@ -212,8 +217,8 @@ class PyplotArrayPlotter(ArrayPlotter):
     If None, a new figure is created.
     """
 
-    def save(self, save_path: str = None):
-        self.fig.write_image(save_path, width=2200, height=1300)
+    def save(self, save_path: str = None, **kwargs):
+        self.fig.savefig(save_path, **kwargs)
 
     def show(self):
         self.fig.show()
@@ -223,7 +228,7 @@ class PyplotArrayPlotter(ArrayPlotter):
         return fig
 
     def _get_nx_ny(self):
-        return self.ax.shape
+        return self._get_nx_ny_from_n(len(self.ax))
 
     def set_xlabel(self, i_subplot, label):
         self.ax[i_subplot].set_xlabel(label)
@@ -250,19 +255,20 @@ class PyplotArrayPlotter(ArrayPlotter):
 
 
 class PlotlyArrayPlotter(ArrayPlotter):
+
     fig: go.Figure = None
     """A previously created plotly figure object, for adding lines to an existing figure.
     If None, a new figure is created.
     """
 
-    def save(self, save_path: str = None):
-        self.fig.write_image(save_path, width=2200, height=1300)
+    def save(self, save_path: str = None, **kwargs):
+        self.fig.write_image(save_path, **kwargs)
 
     def show(self):
         self.fig.show()
 
     def get_fig(self):
-        fig = make_subplots(self.nx, self.ny, subplot_titles=self.subplot_titles)
+        fig = make_subplots(self.ny, self.nx, subplot_titles=self.subplot_titles)
         return fig
 
     def _fill_fig(self):
@@ -277,7 +283,7 @@ class PlotlyArrayPlotter(ArrayPlotter):
         grid_ref = self.fig._validate_get_grid_ref()
         nrows = len(grid_ref)
         ncols = len(grid_ref[0])
-        return nrows, ncols
+        return ncols, nrows
 
     def row(self, i_subplot):
         return self._index2d(i_subplot)[0] + 1
