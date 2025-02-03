@@ -346,6 +346,21 @@ class FlodymArray(PydanticBaseModel):
     def sign(self):
         return FlodymArray(dims=self.dims, values=np.sign(self.values))
 
+    def apply(self, func: callable, inplace: bool = False) -> Optional["FlodymArray"]:
+        """Apply a function to the values of the FlodymArray.
+
+        Args:
+            func (callable): Function to apply to the values. Must be a function that can be applied to a numpy array, and return a numpy array of the same shape.
+            inplace (bool, optional): Whether to apply the function in place. Defaults to False.
+
+        Returns:
+            FlodymArray: FlodymArray object with the values transformed by the function.
+        """
+        if inplace:
+            self.values = func(self.values)
+            return
+        return FlodymArray(dims=self.dims, values=func(self.values))
+
     def __neg__(self):
         return FlodymArray(dims=self.dims, values=-self.values)
 
