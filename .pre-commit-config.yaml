@@ -1,13 +1,13 @@
 repos:
   - repo: https://github.com/mwouts/jupytext
-    rev: v1.16.6
+    rev: v1.16.7
     hooks:
     - id: jupytext
       args: [--sync, --pipe, black]
       additional_dependencies:
         - black==24.10.0 # should match hook
   - repo: https://github.com/psf/black
-    rev: 24.10.0
+    rev: 25.1.0
     hooks:
       - id: black
         language_version: python3.12
