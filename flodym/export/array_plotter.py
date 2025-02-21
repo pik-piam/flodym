@@ -99,12 +99,6 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
         else:
             return {None: array}
 
-    @property
-    def _dims_after_slice(self):
-        original_dims = self.array.dims.letters
-        dims_removed = [d for d, v in self.slice_dict.items() if not isinstance(v, (list, tuple))]
-        return [d for d in original_dims if d not in dims_removed]
-
     def _plot_all_subplots(self, subplotlist_array, subplotlist_x_array):
         for i_subplot, (array_subplot, x_array_subplot) in enumerate(
             zip(subplotlist_array, subplotlist_x_array)
@@ -212,6 +206,7 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
 
 
 class PyplotArrayPlotter(ArrayPlotter):
+
     fig: plt.Figure = None
     """A previously created pyplot figure object, for adding lines to an existing figure.
     If None, a new figure is created.
@@ -260,6 +255,28 @@ class PlotlyArrayPlotter(ArrayPlotter):
     """A previously created plotly figure object, for adding lines to an existing figure.
     If None, a new figure is created.
     """
+    color_map: list[str] = plc.qualitative.Dark24
+    chart_type: str = "line"
+    line_type: str = "solid"
+    suppress_legend: bool = False
+
+    @model_validator(mode="after")
+    def check_chart_type(self):
+        if self.chart_type not in self._allowed_chart_types:
+            raise ValueError("chart_type must be either 'line' or 'scatter'.")
+        return self
+
+    @model_validator(mode="after")
+    def check_line_type(self):
+        if self.line_type not in ["solid", "dash", "dot", "dashdot"]:
+            raise ValueError("line_type must be one of 'solid', 'dash', 'dot', 'dashdot'.")
+        if self.chart_type != "line" and self.line_type != "solid":
+            raise ValueError("line_type is only applicable to chart_type 'line'.")
+        return self
+
+    @property
+    def _allowed_chart_types(self):
+        return ["line", "area", "scatter"]
 
     def save(self, save_path: str = None, **kwargs):
         self.fig.write_image(save_path, **kwargs)
@@ -302,9 +319,35 @@ class PlotlyArrayPlotter(ArrayPlotter):
 
     def add_line(self, i_subplot, x, y, label, i_line):
         i_color = i_line + self.n_previous_lines
-        color = plc.DEFAULT_PLOTLY_COLORS[i_color]
+        color = self.color_map[i_color]
+        common_dict = dict(
+            x=x,
+            y=y,
+            name=label,
+            showlegend=i_subplot == 0 and not self.suppress_legend,
+        )
+        if self.chart_type == "line":
+            trace = go.Scatter(
+                **common_dict,
+                line=dict(color=color, dash=self.line_type),
+            )
+        elif self.chart_type == "scatter":
+            trace = go.Scatter(
+                **common_dict,
+                mode="markers",
+                marker=dict(color=color),
+            )
+        elif self.chart_type == "area":
+            trace = go.Scatter(
+                **common_dict,
+                fill="tozeroy" if i_color == 0 else "tonexty",
+                fillcolor=color,
+                line=dict(color=color),
+            )
+        else:
+            raise ValueError("chart_type must be either 'line' or 'scatter'.")
         self.fig.add_trace(
-            go.Scatter(x=x, y=y, name=label, line=dict(color=color), showlegend=i_subplot == 0),
+            trace=trace,
             row=self.row(i_subplot),
             col=self.col(i_subplot),
         )

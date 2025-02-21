@@ -340,26 +340,42 @@ class FlodymArray(PydanticBaseModel):
         )
         return FlodymArray(dims=dims_out, values=values_out)
 
-    def abs(self):
-        return FlodymArray(dims=self.dims, values=np.abs(self.values))
-
-    def sign(self):
-        return FlodymArray(dims=self.dims, values=np.sign(self.values))
-
-    def apply(self, func: callable, inplace: bool = False) -> Optional["FlodymArray"]:
+    def apply(
+        self, func: callable, kwargs: dict = {}, inplace: bool = False
+    ) -> Optional["FlodymArray"]:
         """Apply a function to the values of the FlodymArray.
 
         Args:
             func (callable): Function to apply to the values. Must be a function that can be applied to a numpy array, and return a numpy array of the same shape.
+            kwargs (dict): Keyword argument dictionary to pass to the function.
             inplace (bool, optional): Whether to apply the function in place. Defaults to False.
 
         Returns:
             FlodymArray: FlodymArray object with the values transformed by the function.
         """
         if inplace:
-            self.values = func(self.values)
+            self.values = func(self.values, **kwargs)
             return
-        return FlodymArray(dims=self.dims, values=func(self.values))
+        return FlodymArray(dims=self.dims, values=func(self.values, **kwargs))
+
+    def abs(self, inplace: bool = False):
+        return self.apply(np.abs, inplace=inplace)
+
+    def sign(self, inplace: bool = False):
+        return self.apply(np.sign, inplace=inplace)
+
+    def cumsum(self, dim_letter: str, inplace: bool = False):
+        """Calculate the cumulative sum along a dimension.
+
+        Args:
+            dim_letter (str): Dimension letter to calculate the cumulative sum along.
+            inplace (bool, optional): Whether to apply the cumulative sum in place. Defaults to False.
+
+        Returns:
+            FlodymArray: FlodymArray object with the cumulative sum along the given dimension.
+        """
+        i_axis = self.dims.letters.index(dim_letter)
+        return self.apply(np.cumsum, kwargs={"axis": i_axis}, inplace=inplace)
 
     def __neg__(self):
         return FlodymArray(dims=self.dims, values=-self.values)
