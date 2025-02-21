@@ -340,7 +340,9 @@ class FlodymArray(PydanticBaseModel):
         )
         return FlodymArray(dims=dims_out, values=values_out)
 
-    def apply(self, func: callable, kwargs: dict = {}, inplace: bool = False) -> Optional["FlodymArray"]:
+    def apply(
+        self, func: callable, kwargs: dict = {}, inplace: bool = False
+    ) -> Optional["FlodymArray"]:
         """Apply a function to the values of the FlodymArray.
 
         Args:
