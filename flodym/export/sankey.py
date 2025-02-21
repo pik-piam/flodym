@@ -1,4 +1,4 @@
-from pydantic import BaseModel as PydanticBaseModel, model_validator, ConfigDict
+from pydantic import BaseModel as PydanticBaseModel, model_validator, ConfigDict, computed_field
 from typing import Optional, Any
 import numpy as np
 import plotly.graph_objects as go
@@ -11,43 +11,30 @@ from .helper import CustomNameDisplayer
 
 class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
 
-    model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow", protected_namespaces=())
+    model_config = ConfigDict(arbitrary_types_allowed=True, protected_namespaces=())
 
     mfa: MFASystem
     """MFA system to visualize."""
     slice_dict: Optional[dict] = {}
     """for selection of a subset of the data; all other dimensions are summed over"""
-    split_flows_by: Optional[str] = None
-    """dimension name to split and color flows by; if None, all flows are colored the same"""
-    color_scheme: Optional[str] = "blueish"
-    """used if split_flows_by is not None and splitting dimension is in flow."""
-    node_color: Optional[str] = "gray"
+    node_color_dict: Optional[dict] = {"default": "gray"}
     """color of the nodes (processes and stocks)"""
-    flow_color: Optional[str] = "hsl(230,20,70)"
-    """used if split_flows_by is None or splitting dimension not in flow."""
+    flow_color_dict: Optional[dict] = {"default": "hsl(230,20,70)"}
+    """dictionary of colors for flows.
+    Keys are flow names, values are either a single color or a tuple of the dimension names
+    to split the flow by, and a color scheme as a list of colors. There must be a "default" key
+    to resort to if a flow is not in the dictionary.
+    """
     exclude_processes: Optional[list[str]] = ["sysenv"]
     """processes that won't show up in the plot; neither will flows to and from them"""
     exclude_flows: Optional[list[str]] = []
     """flows that won't show up in the plot"""
-    __pydantic_extra__: dict[str, Any]
-
-    @model_validator(mode="after")
-    def check_colors(self):
-        if self.split_flows_by is None and self.color_scheme != "blueish":
-            raise ValueError(
-                "If flows are not split, color_scheme is not used. Use flow_color instead."
-            )
-        return self
 
     @model_validator(mode="after")
     def check_dims(self):
         for dim_letter in self.slice_dict.keys():
             if dim_letter not in self.mfa.dims.letters:
                 raise ValueError(f"Dimension {dim_letter} given in slice_dict not in DimensionSet.")
-        if self.split_flows_by is not None and self.split_flows_by not in self.mfa.dims.names:
-            raise ValueError(
-                f"Dimension {self.split_flows_by} given in split_flows_by not in DimensionSet"
-            )
         return self
 
     @model_validator(mode="after")
@@ -60,135 +47,144 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
                 raise ValueError(f"Flow {f} given in exclude_flows not in MFASystem.")
         return self
 
+    @model_validator(mode="after")
+    def check_flow_colors(self):
+        for f in self.shown_flows.values():
+            if "default" not in self.flow_color_dict:
+                raise ValueError(
+                    f"flow_color_dict must have a 'default' key to resort to if a flow is not in the dictionary"
+                )
+            if f.name not in self.flow_color_dict:
+                self.flow_color_dict[f.name] = self.flow_color_dict["default"]
+                fallback_str = " (not found in dict, using default color)"
+            else:
+                fallback_str = ""
+            self._check_flow_color(f, fallback_str)
+        return self
+
+    @model_validator(mode="after")
+    def check_node_colors(self):
+        for p in self.shown_processes:
+            if "default" not in self.node_color_dict:
+                raise ValueError(
+                    f"node_color_dict must have a 'default' key to resort to if a process is not in the dictionary"
+                )
+            if p.name not in self.node_color_dict:
+                self.node_color_dict[p.name] = self.node_color_dict["default"]
+                fallback_str = " (not found in dict, using default color)"
+            else:
+                fallback_str = ""
+            if not isinstance(self.node_color_dict[p.name], str):
+                raise ValueError(
+                    f"Color for process {p.name}{fallback_str} must be a string, not a {type(self.node_color_dict[p.name])}."
+                )
+        return self
+
+    def _check_flow_color(self, f: Flow, fallback_str):
+        color = self.flow_color_dict[f.name]
+        if isinstance(color, str):
+            return
+        elif not isinstance(color, tuple):
+            raise ValueError(
+                f"In flow_color_dict, the value for flow {f.name}{fallback_str} must be either a color string or a tuple of dimension name and color list"
+            )
+
+        if len(color) != 2:
+            raise ValueError(f"In flow_color_dict, color tuple for flow {f.name}{fallback_str} must have length 2.")
+        if color[0] not in f.dims:
+            raise ValueError(
+                f"In flow_color_dict, first element of color tuple for flow {f.name}{fallback_str} must be a dimension in flow {f.name}"
+            )
+        if not isinstance(color[1], list):
+            raise ValueError(
+                f"In flow_color_dict, second element of color tuple for flow {f.name}{fallback_str} must be a list of colors"
+            )
+        if len(color[1]) < self.mfa.dims[color[0]].len:
+            raise ValueError(
+                f"In flow_color_dict, list in second element of color tuple for flow {f.name}{fallback_str} must not be shorter than dimension {color[0]}"
+            )
+
+    @property
+    def shown_processes(self):
+        return [p for p in self.mfa.processes.values() if p.name not in self.exclude_processes]
+
+    @property
+    def excluded_process_ids(self):
+        return [p.id for p in self.mfa.processes.values() if p.name in self.exclude_processes]
+
+    @property
+    def shown_flows(self) -> dict[str, Flow]:
+        return {f.name: f for f in self.mfa.flows.values() if self._flow_is_shown(f)}
+
+    def _flow_is_shown(self, f: Flow):
+        return not (
+            (f.name in self.exclude_flows)
+            or (f.from_process_id in self.excluded_process_ids)
+            or (f.to_process_id in self.excluded_process_ids)
+        )
+
+    @property
+    def ids_in_sankey(self):
+        return {p.id: i for i, p in enumerate(self.shown_processes)}
+
     def plot(self):
-        self._get_nodes_and_links()
-        return self._get_fig()
+        links = self._get_links_dict()
+        nodes = self._get_nodes_dict()
+        return self._get_fig(links, nodes)
 
-    def _get_nodes_and_links(self):
+    def _get_links_dict(self):
+        links = DictOfLists(list_names = ["source", "target", "value", "label", "color"])
+        for f in self.shown_flows.values():
+            self._append_flow(f, links)
+        return links.dict
 
-        self.processes = [
-            p for p in self.mfa.processes.values() if p.name not in self.exclude_processes
-        ]
-        self.ids_in_sankey = {p.id: i for i, p in enumerate(self.processes)}
-        self.exclude_process_ids = [
-            p.id for p in self.mfa.processes.values() if p.name in self.exclude_processes
-        ]
-
-        self._get_link_list()
-        self.links = self.link_list.to_dict()
-        self.nodes = self._get_nodes_dict()
-
-    def _get_link_list(self):
-        self.link_list = LinkList()
-        for f in self.mfa.flows.values():
-            if (
-                (f.name in self.exclude_flows)
-                or (f.from_process_id in self.exclude_process_ids)
-                or (f.to_process_id in self.exclude_process_ids)
-            ):
-                continue
-            self._add_flow(f)
-
-    def _add_flow(self, f: Flow):
+    def _append_flow(self, f: Flow, links: 'DictOfLists'):
         source = self.ids_in_sankey[f.from_process.id]
         target = self.ids_in_sankey[f.to_process.id]
         label = self.display_name(f.name)
 
         slice_dict = {k: v for k, v in self.slice_dict.items() if k in f.dims.letters}
         f_slice = f[slice_dict]
-
-        if self.split_flows_by is not None and self.split_flows_by in f.dims.names:
-            splitting_letter_tuple = (self.mfa.dims[self.split_flows_by].letter,)
+        color = self.flow_color_dict[f.name]
+        if isinstance(color, tuple):
+            split_flows_by = color[0]
+            colors = color[1]
+            splitting_letter_tuple = (self.mfa.dims[split_flows_by].letter,)
             values = f_slice.sum_values_to(splitting_letter_tuple)
-            for v, c in zip(values, self._colors):
-                self.link_list.append(label=label, source=source, target=target, color=c, value=v)
+            for v, c in zip(values, colors):
+                links.append(label=label, source=source, target=target, color=c, value=v)
         else:
-            self.link_list.append(
+            links.append(
                 label=label,
                 source=source,
                 target=target,
-                color=self.flow_color,
+                color=color,
                 value=f_slice.sum_values(),
             )
 
     def _get_nodes_dict(self):
         return {
-            "label": [self.display_name(p.name) for p in self.processes],
-            "color": [self.node_color for p in self.processes],  # 'rgb(50, 50, 50)'
+            "label": [self.display_name(p.name) for p in self.shown_processes],
+            "color": [self.node_color_dict[p.name] for p in self.shown_processes],
             "pad": 10,
         }
 
-    def _get_fig(self):
+    def _get_fig(self, links: dict, nodes: dict) -> go.Figure:
         fig = go.Figure(
             go.Sankey(
                 arrangement="snap",
-                link=self.link_list.to_dict(),
-                node=self.nodes,
+                link=links,
+                node=nodes,
             )
         )
         return fig
 
-    @property
-    def _n_colors(self):
-        if self.split_flows_by is None:
-            return 1
-        else:
-            return self.mfa.dims[self.split_flows_by].len
 
-    @property
-    def _colors(self):
-        if self.color_scheme == "blueish":
-            n_max = 10
+class DictOfLists():
 
-            def colors(n_colors):
-                return [f"hsl({240 - 20 * i},70%,50%)" for i in range(n_colors)]
+    def __init__(self, list_names: list[str]):
+        self.dict = {l: [] for l in list_names}
 
-        elif self.color_scheme == "antique":
-            n_max = len(pl.colors.qualitative.Antique)
-
-            def colors(n_colors):
-                return pl.colors.qualitative.Antique[:n_colors]
-
-        elif self.color_scheme == "viridis":
-            n_max = np.inf
-
-            def colors(n_colors):
-                return pl.colors.sample_colorscale("Viridis", n_colors + 1, colortype="rgb")
-
-        else:
-            raise ValueError("invalid color scheme")
-
-        if self._n_colors > n_max:
-            raise ValueError(
-                f"Too many colors ({self._n_colors}) requested for color scheme {self.color_scheme}"
-            )
-
-        return colors(self._n_colors)
-
-
-class Link(PydanticBaseModel):
-
-    label: str
-    source: int
-    target: int
-    color: str
-    value: float
-
-
-class LinkList(PydanticBaseModel):
-
-    _links: Optional[list[Link]] = []
-
-    def append(self, label: str, source: int, target: int, color: str, value: float):
-        self._links.append(
-            Link(label=label, source=source, target=target, color=color, value=value)
-        )
-
-    def to_dict(self):
-        return {
-            "source": [link.source for link in self._links],
-            "target": [link.target for link in self._links],
-            "value": [link.value for link in self._links],
-            "label": [link.label for link in self._links],
-            "color": [link.color for link in self._links],
-        }
+    def append(self, **kwargs):
+        for k, v in kwargs.items():
+            self.dict[k].append(v)
