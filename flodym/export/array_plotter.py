@@ -59,7 +59,10 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
     def check_line_type(self):
         if self.line_type not in self._allowed_line_types:
             allowed_changes = {"dash": "dashed", "dot": "dotted", "dashed": "dash", "dotted": "dot"}
-            if self.line_type in allowed_changes and allowed_changes[self.line_type] in self._allowed_line_types:
+            if (
+                self.line_type in allowed_changes
+                and allowed_changes[self.line_type] in self._allowed_line_types
+            ):
                 self.line_type = allowed_changes[self.line_type]
             else:
                 raise ValueError(f"line_type must be one of {self._allowed_line_types}.")
