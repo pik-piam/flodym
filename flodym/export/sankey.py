@@ -90,7 +90,9 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
             )
 
         if len(color) != 2:
-            raise ValueError(f"In flow_color_dict, color tuple for flow {f.name}{fallback_str} must have length 2.")
+            raise ValueError(
+                f"In flow_color_dict, color tuple for flow {f.name}{fallback_str} must have length 2."
+            )
         if color[0] not in f.dims:
             raise ValueError(
                 f"In flow_color_dict, first element of color tuple for flow {f.name}{fallback_str} must be a dimension in flow {f.name}"
@@ -133,12 +135,12 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
         return self._get_fig(links, nodes)
 
     def _get_links_dict(self):
-        links = DictOfLists(list_names = ["source", "target", "value", "label", "color"])
+        links = DictOfLists(list_names=["source", "target", "value", "label", "color"])
         for f in self.shown_flows.values():
             self._append_flow(f, links)
         return links.dict
 
-    def _append_flow(self, f: Flow, links: 'DictOfLists'):
+    def _append_flow(self, f: Flow, links: "DictOfLists"):
         source = self.ids_in_sankey[f.from_process.id]
         target = self.ids_in_sankey[f.to_process.id]
         label = self.display_name(f.name)
@@ -180,7 +182,7 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
         return fig
 
 
-class DictOfLists():
+class DictOfLists:
 
     def __init__(self, list_names: list[str]):
         self.dict = {l: [] for l in list_names}
