@@ -13,6 +13,7 @@ from flodym import (
     FlowDefinition,
     StockDefinition,
     MFASystem,
+    SimpleFlowDrivenStock,
     make_empty_flows,
     make_empty_stocks,
     make_processes,
@@ -145,11 +146,13 @@ def get_example_mfa() -> ExampleMFA:
             name="landfills",
             process="landfills",
             dim_letters=("t", "e"),
+            subclass=SimpleFlowDrivenStock,
         ),
         StockDefinition(
             name="slag piles",
             process="slag piles",
             dim_letters=("t", "e"),
+            subclass=SimpleFlowDrivenStock,
         ),
     ]
     stocks = make_empty_stocks(stock_definitions, processes, dims)
