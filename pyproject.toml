@@ -1,10 +1,6 @@
-[build-system]
-requires = ["setuptools >= 61.0"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "flodym"
-version = "0.1.1"
+version = "0.2.0"
 authors = [
     {name = "Jakob Dürrwächter"},
     {name = "Sally Dacie"},
@@ -45,6 +41,10 @@ docs = [
     "jupyter>=1.1.1",
     "jupytext>=1.16.4",
 ]
+
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = ["flodym", "flodym.export"]
