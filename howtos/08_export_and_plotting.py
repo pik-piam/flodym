@@ -122,9 +122,16 @@ print("\n".join(os.listdir(export_dir)))
 
 # %%
 from flodym.export import PlotlySankeyPlotter
+from plotly.colors import qualitative
 
+# set up a dictionary of how to color the flows
+colors = {"default": "gray"}
+colorful_flows = [f for f in mfa.flows.values() if "Material" in f.dims.names]
+colors.update({f.name: ("Material", qualitative.Dark24) for f in colorful_flows})
+
+# plot
 plotter = PlotlySankeyPlotter(
-    mfa=mfa, split_flows_by="Material", slice_dict={"t": 2000}, color_scheme="antique"
+    mfa=mfa, split_flows_by="Material", slice_dict={"t": 2000}, flow_color_dict=colors
 )
 fig = plotter.plot()
 fig.show(renderer="notebook")
