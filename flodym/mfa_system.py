@@ -240,7 +240,7 @@ class MFASystem(PydanticBaseModel):
             if id_failed[p_name]
         ]
         if any(id_failed.values()):
-            raise RuntimeError(
+            raise ValueError(
                 f"Error, Mass Balance fails for processes {', '.join(messages_failed)}"
             )
         else:
@@ -248,3 +248,16 @@ class MFASystem(PydanticBaseModel):
                 f"Success - Mass balance of {self.__class__.__name__} object is consistent!"
             )
         return
+
+    def check_non_negative_flows(self, exceptions:list[str]=[], no_error:bool=False):
+        """Check if all flows are non-negative. Allowed exceptions can be passed as a list of strings. If no_error is True, a warning is logged instead of an error."""
+        for flow in self.flows.values():
+            if any([exception in flow.name for exception in exceptions]):
+                continue
+            if np.any(flow.values < 0):
+                if no_error:
+                    logging.warning(f"Error, negative flow in {flow.name}")
+                    return None
+                else:
+                    raise ValueError(f"Error, negative flow in {flow.name}")
+        logging.info(f"Success - No negative flows in {self.__class__.__name__}")
