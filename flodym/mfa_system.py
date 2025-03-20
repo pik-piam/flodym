@@ -249,7 +249,7 @@ class MFASystem(PydanticBaseModel):
             )
         return
 
-    def check_non_negative_flows(self, exceptions:list[str]=[], no_error:bool=False):
+    def check_non_negative_flows(self, exceptions: list[str] = [], no_error: bool = False):
         """Check if all flows are non-negative. Allowed exceptions can be passed as a list of strings. If no_error is True, a warning is logged instead of an error."""
         for flow in self.flows.values():
             if any([exception in flow.name for exception in exceptions]):
