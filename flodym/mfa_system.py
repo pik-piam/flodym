@@ -240,7 +240,7 @@ class MFASystem(PydanticBaseModel):
             if id_failed[p_name]
         ]
         if any(id_failed.values()):
-            raise ValueError(
+            raise RuntimeError(
                 f"Error, Mass Balance fails for processes {', '.join(messages_failed)}"
             )
         else:
