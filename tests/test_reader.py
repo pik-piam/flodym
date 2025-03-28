@@ -79,8 +79,6 @@ def test_dimensions():
         for dim in dimension_set:
             assert dim.items == dimension_items_expected[dim.name]
 
-    return
-
 
 def test_valid_parameter_reader():
 
@@ -111,8 +109,6 @@ def test_wrong_parameter_reader():
             with pytest.raises(ValueError):
                 reader.read_parameter_values(prm_def.name, dims.get_subset(prm_def.dim_letters))
 
-    return
-
 
 def test_allow_incomplete_data():
     incomplete_parameter_definitions = [
@@ -133,7 +129,6 @@ def test_allow_incomplete_data():
         parameters = reader.read_parameters(incomplete_parameter_definitions, dims)
         assert np.array_equal(parameters["e1"].values, [[4, 1], [5, 0], [6, 3]])
         assert np.array_equal(parameters["e4"].values, [0, 2, 3])
-    return
 
 
 def test_allow_excess_data():
@@ -160,7 +155,6 @@ def test_allow_excess_data():
         parameters = reader.read_parameters(excess_parameter_definitions, dims)
         assert np.array_equal(parameters["e2"].values, [1, 0, 3])
         assert np.array_equal(parameters["e3"].values, [1, 2, 3])
-    return
 
 
 def test_build_mfa_system():
@@ -196,5 +190,7 @@ if __name__ == "__main__":
     test_dimensions()
     test_valid_parameter_reader()
     test_wrong_parameter_reader()
+    test_allow_incomplete_data()
+    test_allow_excess_data()
     test_build_mfa_system()
     print("All tests passed.")
