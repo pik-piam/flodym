@@ -1,3 +1,4 @@
+import sys
 import logging
 import numpy as np
 import pandas as pd
@@ -28,10 +29,16 @@ class DataFrameToFlodymDataConverter:
     In case of errors, turning on debug logging might help to understand the process.
     """
 
-    def __init__(self, df: pd.DataFrame, flodym_array: "FlodymArray"):
+    def __init__(self, df: pd.DataFrame, flodym_array: "FlodymArray", allow_missing_values: bool = False, allow_excess_values: bool = False):
         self.df = df.copy()
         self.flodym_array = flodym_array
-        self.target_values = self.get_target_values()
+        self.allow_missing_values = allow_missing_values
+        self.allow_excess_values = allow_excess_values
+        try:
+            self.target_values = self.get_target_values()
+        except Exception as e:
+            # add error context to all errors to ease debugging
+            raise type(e)(f"{self.error_context} {str(e)}").with_traceback(sys.exc_info()[2])
 
     def get_target_values(self) -> np.ndarray:
         logging.debug(
@@ -42,9 +49,9 @@ class DataFrameToFlodymDataConverter:
         self._df_to_long_format()
         self._check_missing_dim_columns()
         self._convert_type()
-        self._sort_df()
-        self._check_data_complete()
-        return self.df[self.format.value_column].values.reshape(self.flodym_array.shape)
+        self._sort_columns()
+        values = self._check_data_complete()
+        return values
 
     def _reset_non_default_index(self):
         if isinstance(self.df.index, pd.MultiIndex):
@@ -144,7 +151,7 @@ class DataFrameToFlodymDataConverter:
             logging.debug(f"Value column name is {value_cols[0]}.")
         else:
             raise ValueError(
-                "More than one value columns. Could not find a dimension the items of which match the set of value column names. "
+                f"More than one value columns. Could not find a dimension the items of which match the set of value column names. "
                 f"Value columns: {value_cols}. Please check input data for format, typos, data types and missing items."
             )
 
@@ -179,43 +186,64 @@ class DataFrameToFlodymDataConverter:
                 self.df[dim.name] = self.df[dim.name].map(dim.dtype)
         self.df[self.format.value_column] = self.df[self.format.value_column].astype(np.float64)
 
-    def _sort_df(self):
+    def _sort_columns(self):
         """Sort the columns of the data frame according to the order of the dimensions in the
         FlodymArray.
-        Sort the rows of the data frame according to the order of the dimension items in the
-        FlodymArray.
         """
-        # sort columns
         self.df = self.df[list(self.flodym_array.dims.names) + [self.format.value_column]]
-        # sort rows
-        self.df = self.df.sort_values(
-            by=list(self.flodym_array.dims.names),
-            key=lambda x: x.map(lambda y: self.flodym_array.dims[x.name].items.index(y)),
-        )
 
     def _check_data_complete(self):
-        # Generate expected index tuples from FlodymArray dimensions
-        if self.flodym_array.dims.ndim == 0:
-            expected_index_tuples = set()
+        # check for double entries in the index columns
+        indices = self.df[list(self.flodym_array.dims.names)]
+        if indices.duplicated().any():
+            raise ValueError(f"The following index combinations occur more than once in the data: ", indices[indices.duplicated()])
+
+        # remove rows with excess values or throw error
+        if self.allow_excess_values:
+            for dim in self.flodym_array.dims:
+                self.df = self.df[self.df[dim.name].isin(dim.items)]
         else:
-            expected_index_tuples = set(
-                itertools.product(*(dim.items for dim in self.flodym_array.dims))
-            )
+            for dim in self.flodym_array.dims:
+                unique_items = set(self.df[dim.name].unique())
+                excess_items = unique_items - set(dim.items)
+                if excess_items:
+                    raise ValueError(
+                        f"Dimension column '{dim.name}' contains items that are not in the dimension: {excess_items}"
+                    )
 
-        # Generate actual index tuples from DataFrame columns
-        actual_index_tuples = set(
-            self.df.drop(columns=self.format.value_column).itertuples(index=False, name=None)
-        )
+        if self.allow_missing_values:
+            # fill na values with zeros
+            self.df[self.format.value_column].fillna(0, inplace=True)
+        else:
+            if len(self.df) != self.flodym_array.size:
+                # print warning first, as compiling expected index tuples may take long
+                logging.warning(
+                    f"{self.error_context} Detected missing values in the data, but "
+                    f"allow_missing_values is set to False. Expected {self.flodym_array.size} "
+                    f"rows, but only got {len(self.df)}. Computing missing values...."
+                )
+                expected_index_tuples = set(itertools.product(*[dim.items for dim in self.flodym_array.dims]))
+                indices = self.df[list(self.flodym_array.dims.names)]
+                actual_index_tuples = set(indices.itertuples(index=False, name=None))
+                unexpected_items = actual_index_tuples - expected_index_tuples
+                raise ValueError(
+                    f"Detected missing values in the data, but allow_missing_values is set to False. "
+                    f"Missing values for index combinations: {unexpected_items}."
+                )
+            if any(self.df[self.format.value_column].isna()):
+                raise ValueError("Empty cells/NaN values in value column!")
 
-        # Compare the two sets
-        if expected_index_tuples != actual_index_tuples:
-            missing_items = expected_index_tuples - actual_index_tuples
-            unexpected_items = actual_index_tuples - expected_index_tuples
-            raise ValueError(
-                f"Dataframe index mismatch! Missing items: {missing_items}, Unexpected items: {unexpected_items}"
-            )
-        if any(self.df[self.format.value_column].isna()):
-            raise ValueError("Empty cells/NaN values in value column!")
+        # for performance and memory reasons, we use numpy operations to convert the data to the numpy array
+        # replace non-value items in df with their index in dims.items
+        for dim in self.flodym_array.dims:
+            self.df[dim.name] = self.df[dim.name].map({item: i for i, item in enumerate(dim.items)})
+        # convert df to numpy index array: Take all non-value columns
+        fill_indices = self.df.values[:,:-1].T.astype(np.int16)
+        fill_values = self.df[self.format.value_column].values
+        # this is what ends up in the parameter; initialize with zeros
+        values = np.zeros(self.flodym_array.dims.shape())
+        values[tuple(fill_indices)] = fill_values
+        return values
 
     @staticmethod
     def same_items(arr: Iterable, dim: Dimension) -> bool:
@@ -225,3 +253,7 @@ class DataFrameToFlodymDataConverter:
             except ValueError:
                 return False
         return len(set(arr).symmetric_difference(set(dim.items))) == 0
+
+    @property
+    def error_context(self) -> str:
+        return f"While setting values of {self.flodym_array.__class__.__name__} '{self.flodym_array.name}' from DataFrame:"
