@@ -62,7 +62,9 @@ wrong_csv_parameter_files = {
     a.name: "tests/tests_data/parameter_" + a.name + ".csv" for a in wrong_parameter_definitions
 }
 wrong_excel_parameter_file = "tests/tests_data/parameters.xlsx"
-wrong_excel_parameter_files = {a.name: wrong_excel_parameter_file for a in wrong_parameter_definitions}
+wrong_excel_parameter_files = {
+    a.name: wrong_excel_parameter_file for a in wrong_parameter_definitions
+}
 wrong_sheet_names = {a.name: a.name for a in wrong_parameter_definitions}
 
 
@@ -121,7 +123,9 @@ def test_allow_incomplete_data():
     ]
 
     incomplete_csv_reader = CSVParameterReader(wrong_csv_parameter_files, allow_missing_values=True)
-    incomplete_excel_reader = ExcelParameterReader(wrong_excel_parameter_files, wrong_sheet_names, allow_missing_values=True)
+    incomplete_excel_reader = ExcelParameterReader(
+        wrong_excel_parameter_files, wrong_sheet_names, allow_missing_values=True
+    )
 
     dims = CSVDimensionReader(csv_dimension_files).read_dimensions(dimension_definitions)
 
@@ -140,8 +144,15 @@ def test_allow_excess_data():
         ParameterDefinition(name="e3", dim_letters=["t"]),
     ]
 
-    excess_csv_reader = CSVParameterReader(wrong_csv_parameter_files, allow_missing_values=True, allow_excess_values=True)
-    excess_excel_reader = ExcelParameterReader(wrong_excel_parameter_files, wrong_sheet_names, allow_missing_values=True, allow_excess_values=True)
+    excess_csv_reader = CSVParameterReader(
+        wrong_csv_parameter_files, allow_missing_values=True, allow_excess_values=True
+    )
+    excess_excel_reader = ExcelParameterReader(
+        wrong_excel_parameter_files,
+        wrong_sheet_names,
+        allow_missing_values=True,
+        allow_excess_values=True,
+    )
 
     dims = CSVDimensionReader(csv_dimension_files).read_dimensions(dimension_definitions)
 
@@ -179,6 +190,7 @@ def test_build_mfa_system():
         dimension_sheets=dimension_sheet_names,
         parameter_sheets=parameter_sheet_names,
     )
+
 
 if __name__ == "__main__":
     test_dimensions()

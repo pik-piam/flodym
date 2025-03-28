@@ -102,7 +102,14 @@ class FlodymArray(PydanticBaseModel):
         return cls(dims=dims, **kwargs)
 
     @classmethod
-    def from_df(cls, dims: DimensionSet, df: pd.DataFrame, allow_missing_values: bool=False, allow_excess_values: bool=False, **kwargs) -> "FlodymArray":
+    def from_df(
+        cls,
+        dims: DimensionSet,
+        df: pd.DataFrame,
+        allow_missing_values: bool = False,
+        allow_excess_values: bool = False,
+        **kwargs,
+    ) -> "FlodymArray":
         """Create a FlodymArray object from a DataFrame.
 
         Parameters:
@@ -130,7 +137,9 @@ class FlodymArray(PydanticBaseModel):
             FlodymArray: FlodymArray object with the values from the DataFrame
         """
         flodym_array = cls(dims=dims, **kwargs)
-        flodym_array.set_values_from_df(df, allow_missing_values=allow_missing_values, allow_excess_values=allow_excess_values)
+        flodym_array.set_values_from_df(
+            df, allow_missing_values=allow_missing_values, allow_excess_values=allow_excess_values
+        )
         return flodym_array
 
     def _sub_array_handler(self, definition) -> "SubArrayHandler":
@@ -451,7 +460,12 @@ class FlodymArray(PydanticBaseModel):
             df.reset_index(inplace=True)
         return df
 
-    def set_values_from_df(self, df_in: pd.DataFrame, allow_missing_values: bool = False, allow_excess_values: bool = False):
+    def set_values_from_df(
+        self,
+        df_in: pd.DataFrame,
+        allow_missing_values: bool = False,
+        allow_excess_values: bool = False,
+    ):
         """Set the values of the FlodymArray from a pandas DataFrame.
 
         Parameters:
@@ -478,7 +492,7 @@ class FlodymArray(PydanticBaseModel):
             df_in,
             self,
             allow_missing_values=allow_missing_values,
-            allow_excess_values=allow_excess_values
+            allow_excess_values=allow_excess_values,
         )
         self.set_values(converter.target_values)
 

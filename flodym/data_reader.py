@@ -161,7 +161,13 @@ class CSVParameterReader(ParameterReader):
             raise ValueError("No parameter files specified.")
         datasets_path = self.parameter_filenames[parameter_name]
         data = pd.read_csv(datasets_path, **self.read_csv_kwargs)
-        return Parameter.from_df(dims=dims, name=parameter_name, df=data, allow_missing_values=self.allow_missing_values, allow_excess_values=self.allow_excess_values)
+        return Parameter.from_df(
+            dims=dims,
+            name=parameter_name,
+            df=data,
+            allow_missing_values=self.allow_missing_values,
+            allow_excess_values=self.allow_excess_values,
+        )
 
 
 class ExcelParameterReader(ParameterReader):
@@ -209,7 +215,13 @@ class ExcelParameterReader(ParameterReader):
         else:
             sheet_name = self.parameter_sheets[parameter_name]
         data = pd.read_excel(datasets_path, sheet_name=sheet_name, **self.read_excel_kwargs)
-        return Parameter.from_df(dims=dims, name=parameter_name, df=data, allow_missing_values=self.allow_missing_values, allow_excess_values=self.allow_excess_values)
+        return Parameter.from_df(
+            dims=dims,
+            name=parameter_name,
+            df=data,
+            allow_missing_values=self.allow_missing_values,
+            allow_excess_values=self.allow_excess_values,
+        )
 
 
 class CompoundDataReader(DataReader):

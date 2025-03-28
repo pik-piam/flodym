@@ -29,7 +29,13 @@ class DataFrameToFlodymDataConverter:
     In case of errors, turning on debug logging might help to understand the process.
     """
 
-    def __init__(self, df: pd.DataFrame, flodym_array: "FlodymArray", allow_missing_values: bool = False, allow_excess_values: bool = False):
+    def __init__(
+        self,
+        df: pd.DataFrame,
+        flodym_array: "FlodymArray",
+        allow_missing_values: bool = False,
+        allow_excess_values: bool = False,
+    ):
         self.df = df.copy()
         self.flodym_array = flodym_array
         self.allow_missing_values = allow_missing_values
@@ -196,7 +202,10 @@ class DataFrameToFlodymDataConverter:
         # check for double entries in the index columns
         indices = self.df[list(self.flodym_array.dims.names)]
         if indices.duplicated().any():
-            raise ValueError(f"The following index combinations occur more than once in the data: ", indices[indices.duplicated()])
+            raise ValueError(
+                f"The following index combinations occur more than once in the data: ",
+                indices[indices.duplicated()],
+            )
 
         # remove rows with excess values or throw error
         if self.allow_excess_values:
@@ -222,7 +231,9 @@ class DataFrameToFlodymDataConverter:
                     f"allow_missing_values is set to False. Expected {self.flodym_array.size} "
                     f"rows, but only got {len(self.df)}. Computing missing values...."
                 )
-                expected_index_tuples = set(itertools.product(*[dim.items for dim in self.flodym_array.dims]))
+                expected_index_tuples = set(
+                    itertools.product(*[dim.items for dim in self.flodym_array.dims])
+                )
                 indices = self.df[list(self.flodym_array.dims.names)]
                 actual_index_tuples = set(indices.itertuples(index=False, name=None))
                 unexpected_items = actual_index_tuples - expected_index_tuples
@@ -238,7 +249,7 @@ class DataFrameToFlodymDataConverter:
         for dim in self.flodym_array.dims:
             self.df[dim.name] = self.df[dim.name].map({item: i for i, item in enumerate(dim.items)})
         # convert df to numpy index array: Take all non-value columns
-        fill_indices = self.df.values[:,:-1].T.astype(np.int16)
+        fill_indices = self.df.values[:, :-1].T.astype(np.int16)
         fill_values = self.df[self.format.value_column].values
         # this is what ends up in the parameter; initialize with zeros
         values = np.zeros(self.flodym_array.dims.shape())
