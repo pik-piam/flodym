@@ -130,7 +130,7 @@ parameters = reader.read_parameters(parameter_definitions=parameter_definitions,
 # Setting it to False is good for avoiding errors such as typos in the input data. Setting it to True is necessary for sparse data.
 # The default is False.
 #
-# Similarly, you can specify whether or not to throw an error if there are unknown dimension items in the input data via the `allow_excess_values` argument.
+# Similarly, you can specify whether or not to throw an error if there are unknown dimension items in the input data via the `allow_extra_values` argument.
 # Setting it to False is good for avoiding errors such as typos in the input data.
 # Setting it to True is necessary if you'd like to be able to run the model with a subset of the items in the input data, e.g. a shorter time period, without changing the input data.
 # The default is False.

@@ -34,12 +34,12 @@ class DataFrameToFlodymDataConverter:
         df: pd.DataFrame,
         flodym_array: "FlodymArray",
         allow_missing_values: bool = False,
-        allow_excess_values: bool = False,
+        allow_extra_values: bool = False,
     ):
         self.df = df.copy()
         self.flodym_array = flodym_array
         self.allow_missing_values = allow_missing_values
-        self.allow_excess_values = allow_excess_values
+        self.allow_extra_values = allow_extra_values
         try:
             self.target_values = self.get_target_values()
         except Exception as e:
@@ -207,17 +207,17 @@ class DataFrameToFlodymDataConverter:
                 indices[indices.duplicated()],
             )
 
-        # remove rows with excess values or throw error
-        if self.allow_excess_values:
+        # remove rows with extra values or throw error
+        if self.allow_extra_values:
             for dim in self.flodym_array.dims:
                 self.df = self.df[self.df[dim.name].isin(dim.items)]
         else:
             for dim in self.flodym_array.dims:
                 unique_items = set(self.df[dim.name].unique())
-                excess_items = unique_items - set(dim.items)
-                if excess_items:
+                extra_items = unique_items - set(dim.items)
+                if extra_items:
                     raise ValueError(
-                        f"Dimension column '{dim.name}' contains items that are not in the dimension: {excess_items}"
+                        f"Dimension column '{dim.name}' contains items that are not in the dimension: {extra_items}"
                     )
 
         if self.allow_missing_values:

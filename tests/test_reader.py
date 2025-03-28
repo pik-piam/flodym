@@ -131,28 +131,28 @@ def test_allow_incomplete_data():
         assert np.array_equal(parameters["e4"].values, [0, 2, 3])
 
 
-def test_allow_excess_data():
-    excess_parameter_definitions = [
+def test_allow_extra_data():
+    extra_parameter_definitions = [
         # wrong dim item
         ParameterDefinition(name="e2", dim_letters=["t"]),
         # additional dim item
         ParameterDefinition(name="e3", dim_letters=["t"]),
     ]
 
-    excess_csv_reader = CSVParameterReader(
-        wrong_csv_parameter_files, allow_missing_values=True, allow_excess_values=True
+    extra_csv_reader = CSVParameterReader(
+        wrong_csv_parameter_files, allow_missing_values=True, allow_extra_values=True
     )
-    excess_excel_reader = ExcelParameterReader(
+    extra_excel_reader = ExcelParameterReader(
         wrong_excel_parameter_files,
         wrong_sheet_names,
         allow_missing_values=True,
-        allow_excess_values=True,
+        allow_extra_values=True,
     )
 
     dims = CSVDimensionReader(csv_dimension_files).read_dimensions(dimension_definitions)
 
-    for reader in [excess_csv_reader, excess_excel_reader]:
-        parameters = reader.read_parameters(excess_parameter_definitions, dims)
+    for reader in [extra_csv_reader, extra_excel_reader]:
+        parameters = reader.read_parameters(extra_parameter_definitions, dims)
         assert np.array_equal(parameters["e2"].values, [1, 0, 3])
         assert np.array_equal(parameters["e3"].values, [1, 2, 3])
 
@@ -191,6 +191,6 @@ if __name__ == "__main__":
     test_valid_parameter_reader()
     test_wrong_parameter_reader()
     test_allow_incomplete_data()
-    test_allow_excess_data()
+    test_allow_extra_data()
     test_build_mfa_system()
     print("All tests passed.")

@@ -107,7 +107,7 @@ class FlodymArray(PydanticBaseModel):
         dims: DimensionSet,
         df: pd.DataFrame,
         allow_missing_values: bool = False,
-        allow_excess_values: bool = False,
+        allow_extra_values: bool = False,
         **kwargs,
     ) -> "FlodymArray":
         """Create a FlodymArray object from a DataFrame.
@@ -129,7 +129,7 @@ class FlodymArray(PydanticBaseModel):
             allow_missing_values (bool, optional): Whether to allow missing values in the DataFrame.
                 This includes both missing rows, and NaN values in the value column.
                 Defaults to False.
-            allow_excess_values (bool, optional): Whether to allow excess rows in the DataFrame,
+            allow_extra_values (bool, optional): Whether to allow extra rows in the DataFrame,
                 i.e. tows with index items not present in the FlodymArray dimension items.
                 Defaults to False.
 
@@ -138,7 +138,7 @@ class FlodymArray(PydanticBaseModel):
         """
         flodym_array = cls(dims=dims, **kwargs)
         flodym_array.set_values_from_df(
-            df, allow_missing_values=allow_missing_values, allow_excess_values=allow_excess_values
+            df, allow_missing_values=allow_missing_values, allow_extra_values=allow_extra_values
         )
         return flodym_array
 
@@ -464,7 +464,7 @@ class FlodymArray(PydanticBaseModel):
         self,
         df_in: pd.DataFrame,
         allow_missing_values: bool = False,
-        allow_excess_values: bool = False,
+        allow_extra_values: bool = False,
     ):
         """Set the values of the FlodymArray from a pandas DataFrame.
 
@@ -484,7 +484,7 @@ class FlodymArray(PydanticBaseModel):
             allow_missing_values (bool, optional): Whether to allow missing values in the DataFrame.
                 This includes both missing rows, and NaN values in the value column.
                 Defaults to False.
-            allow_excess_values (bool, optional): Whether to allow excess rows in the DataFrame,
+            allow_extra_values (bool, optional): Whether to allow extra rows in the DataFrame,
                 i.e. tows with index items not present in the FlodymArray dimension items.
                 Defaults to False.
         """
@@ -492,7 +492,7 @@ class FlodymArray(PydanticBaseModel):
             df_in,
             self,
             allow_missing_values=allow_missing_values,
-            allow_excess_values=allow_excess_values,
+            allow_extra_values=allow_extra_values,
         )
         self.set_values(converter.target_values)
 

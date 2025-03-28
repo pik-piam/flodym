@@ -136,7 +136,7 @@ class CSVParameterReader(ParameterReader):
         allow_missing_values (bool, optional): Whether to allow missing values in the DataFrame.
             This includes both missing rows, and NaN values in the value column.
             Defaults to False.
-        allow_excess_values (bool, optional): Whether to allow excess rows in the DataFrame,
+        allow_extra_values (bool, optional): Whether to allow extra rows in the DataFrame,
             i.e. tows with index items not present in the FlodymArray dimension items.
             Defaults to False.
         read_csv_kwargs: Additional keyword arguments passed to pandas.read_csv.
@@ -148,12 +148,12 @@ class CSVParameterReader(ParameterReader):
         self,
         parameter_files: dict = None,
         allow_missing_values: bool = False,
-        allow_excess_values: bool = False,
+        allow_extra_values: bool = False,
         **read_csv_kwargs,
     ):
         self.parameter_filenames = parameter_files  # {parameter_name: file_path, ...}
         self.allow_missing_values = allow_missing_values
-        self.allow_excess_values = allow_excess_values
+        self.allow_extra_values = allow_extra_values
         self.read_csv_kwargs = read_csv_kwargs
 
     def read_parameter_values(self, parameter_name: str, dims):
@@ -166,7 +166,7 @@ class CSVParameterReader(ParameterReader):
             name=parameter_name,
             df=data,
             allow_missing_values=self.allow_missing_values,
-            allow_excess_values=self.allow_excess_values,
+            allow_extra_values=self.allow_extra_values,
         )
 
 
@@ -186,7 +186,7 @@ class ExcelParameterReader(ParameterReader):
         allow_missing_values (bool, optional): Whether to allow missing values in the DataFrame.
             This includes both missing rows, and NaN values in the value column.
             Defaults to False.
-        allow_excess_values (bool, optional): Whether to allow excess rows in the DataFrame,
+        allow_extra_values (bool, optional): Whether to allow extra rows in the DataFrame,
             i.e. tows with index items not present in the FlodymArray dimension items.
             Defaults to False.
         read_excel_kwargs: Additional keyword arguments passed to pandas.read_excel.
@@ -199,13 +199,13 @@ class ExcelParameterReader(ParameterReader):
         parameter_files: dict,
         parameter_sheets: dict = None,
         allow_missing_values: bool = False,
-        allow_excess_values: bool = False,
+        allow_extra_values: bool = False,
         **read_excel_kwargs,
     ):
         self.parameter_files = parameter_files
         self.parameter_sheets = parameter_sheets
         self.allow_missing_values = allow_missing_values
-        self.allow_excess_values = allow_excess_values
+        self.allow_extra_values = allow_extra_values
         self.read_excel_kwargs = read_excel_kwargs
 
     def read_parameter_values(self, parameter_name: str, dims):
@@ -220,7 +220,7 @@ class ExcelParameterReader(ParameterReader):
             name=parameter_name,
             df=data,
             allow_missing_values=self.allow_missing_values,
-            allow_excess_values=self.allow_excess_values,
+            allow_extra_values=self.allow_extra_values,
         )
 
 
