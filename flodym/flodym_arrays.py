@@ -485,7 +485,7 @@ class FlodymArray(PydanticBaseModel):
                 This includes both missing rows, and NaN values in the value column.
                 Defaults to False.
             allow_excess_values (bool, optional): Whether to allow excess rows in the DataFrame,
-                i.e. tows with index items not present in the FlodymArray dimension items.
+                i.e. rows with index items not present in the FlodymArray dimension items.
                 Defaults to False.
         """
         converter = DataFrameToFlodymDataConverter(
