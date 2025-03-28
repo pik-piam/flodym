@@ -59,20 +59,20 @@ class CSVDimensionReader(DimensionReader):
 
     Args:
         dimension_files (dict): {dimension_name: file_path, ...}
-        read_csv_kwargs: Additional keyword arguments passed to pandas.read_csv. The default is {"header": None}. Not encouraged to use, since it may not lead to the intended DataFrame format. Sticking to recommended csv file format is preferred.
+        read_csv_kwargs: Additional keyword arguments passed to pandas.read_csv.
+            The default is {"header": None}. Not encouraged to use, since it may not lead to the
+            intended DataFrame format. Sticking to recommended csv file format is preferred.
     """
 
     def __init__(
         self,
-        dimension_files: dict = None,
+        dimension_files,
         **read_csv_kwargs,
     ):
-        self.dimension_files = dimension_files  # {dimension_name: file_path, ...}
+        self.dimension_files = dimension_files
         self.read_csv_kwargs = read_csv_kwargs
 
     def read_dimension(self, definition: DimensionDefinition):
-        if self.dimension_files is None:
-            raise ValueError("No dimension files specified.")
         path = self.dimension_files[definition.name]
         if "header" not in self.read_csv_kwargs:
             self.read_csv_kwargs["header"] = None
@@ -86,22 +86,22 @@ class ExcelDimensionReader(DimensionReader):
     Args:
         dimension_files (dict): {dimension_name: file_path, ...}
         dimension_sheets (dict): {dimension_name: sheet_name, ...}
-        ead_excel_kwargs: Additional keyword arguments passed to pandas.read_excel. The default is {"header": None}. Not encouraged to use, since it may not lead to the intended DataFrame format. Sticking to recommended excel file format is preferred.
+        ead_excel_kwargs: Additional keyword arguments passed to pandas.read_excel.
+            The default is {"header": None}. Not encouraged to use, since it may not lead to the
+            intended DataFrame format. Sticking to recommended excel file format is preferred.
     """
 
     def __init__(
         self,
-        dimension_files: dict = None,
+        dimension_files: dict,
         dimension_sheets: dict = None,
         **read_excel_kwargs,
     ):
-        self.dimension_files = dimension_files  # {dimension_name: file_path, ...}
+        self.dimension_files = dimension_files
         self.dimension_sheets = dimension_sheets
         self.read_excel_kwargs = read_excel_kwargs
 
     def read_dimension(self, definition: DimensionDefinition):
-        if self.dimension_files is None:
-            raise ValueError("No dimension files specified.")
         path = self.dimension_files[definition.name]
         # load data from excel
         if self.dimension_sheets is None:
@@ -131,16 +131,29 @@ class CSVParameterReader(ParameterReader):
     For further detail on expected format, see :py:meth:`flodym.FlodymArray.from_df`.
 
     Args:
-        parameter_files (dict): {parameter_name: file_path, ...}
-        read_csv_kwargs: Additional keyword arguments passed to pandas.read_csv. Not encouraged to use, since it may not lead to the intended DataFrame format. Sticking to recommended csv file format is preferred
+        parameter_files (dict): Mapping of parameter names to file paths.
+            Format: {parameter_name: file_path, ...}
+        allow_missing_values (bool, optional): Whether to allow missing values in the DataFrame.
+            This includes both missing rows, and NaN values in the value column.
+            Defaults to False.
+        allow_extra_values (bool, optional): Whether to allow extra rows in the DataFrame,
+            i.e. tows with index items not present in the FlodymArray dimension items.
+            Defaults to False.
+        read_csv_kwargs: Additional keyword arguments passed to pandas.read_csv.
+            Not encouraged to use, since it may not lead to the intended DataFrame format.
+            Sticking to recommended csv file format is preferred.
     """
 
     def __init__(
         self,
         parameter_files: dict = None,
+        allow_missing_values: bool = False,
+        allow_extra_values: bool = False,
         **read_csv_kwargs,
     ):
         self.parameter_filenames = parameter_files  # {parameter_name: file_path, ...}
+        self.allow_missing_values = allow_missing_values
+        self.allow_extra_values = allow_extra_values
         self.read_csv_kwargs = read_csv_kwargs
 
     def read_parameter_values(self, parameter_name: str, dims):
@@ -148,7 +161,13 @@ class CSVParameterReader(ParameterReader):
             raise ValueError("No parameter files specified.")
         datasets_path = self.parameter_filenames[parameter_name]
         data = pd.read_csv(datasets_path, **self.read_csv_kwargs)
-        return Parameter.from_df(dims=dims, name=parameter_name, df=data)
+        return Parameter.from_df(
+            dims=dims,
+            name=parameter_name,
+            df=data,
+            allow_missing_values=self.allow_missing_values,
+            allow_extra_values=self.allow_extra_values,
+        )
 
 
 class ExcelParameterReader(ParameterReader):
@@ -157,31 +176,52 @@ class ExcelParameterReader(ParameterReader):
     For further detail on expected format, see :py:meth:`flodym.FlodymArray.from_df`.
 
     Args:
-        parameter_files (dict): {parameter_name: file_path, ...}
-        parameter_sheets (dict): {parameter_name: sheet_name, ...}
-        read_excel_kwargs: Additional keyword arguments passed to pandas.read_excel. Not encouraged to use, since it may not lead to the intended DataFrame format. Sticking to recommended excel file format is preferred
+        parameter_files (dict): Mapping of parameter names to file paths.
+            Can be the same file for multiple parameters if the sheets are different.
+            Format: {parameter_name: file_path, ...}
+        parameter_sheets (dict): Mapping of parameter names to sheet names in the excel file.
+            If None, the first sheet is used.
+            Format: {parameter_name: sheet_name, ...}
+            Defaults to None.
+        allow_missing_values (bool, optional): Whether to allow missing values in the DataFrame.
+            This includes both missing rows, and NaN values in the value column.
+            Defaults to False.
+        allow_extra_values (bool, optional): Whether to allow extra rows in the DataFrame,
+            i.e. tows with index items not present in the FlodymArray dimension items.
+            Defaults to False.
+        read_excel_kwargs: Additional keyword arguments passed to pandas.read_excel.
+            Not encouraged to use, since it may not lead to the intended DataFrame format.
+            Sticking to recommended excel file format is preferred
     """
 
     def __init__(
         self,
-        parameter_files: dict = None,
+        parameter_files: dict,
         parameter_sheets: dict = None,
+        allow_missing_values: bool = False,
+        allow_extra_values: bool = False,
         **read_excel_kwargs,
     ):
-        self.parameter_files = parameter_files  # {parameter_name: file_path, ...}
-        self.parameter_sheets = parameter_sheets  # {parameter_name: sheet_name, ...}
+        self.parameter_files = parameter_files
+        self.parameter_sheets = parameter_sheets
+        self.allow_missing_values = allow_missing_values
+        self.allow_extra_values = allow_extra_values
         self.read_excel_kwargs = read_excel_kwargs
 
     def read_parameter_values(self, parameter_name: str, dims):
-        if self.parameter_files is None:
-            raise ValueError("No parameter files specified.")
         datasets_path = self.parameter_files[parameter_name]
         if self.parameter_sheets is None:
             sheet_name = None
         else:
             sheet_name = self.parameter_sheets[parameter_name]
         data = pd.read_excel(datasets_path, sheet_name=sheet_name, **self.read_excel_kwargs)
-        return Parameter.from_df(dims=dims, name=parameter_name, df=data)
+        return Parameter.from_df(
+            dims=dims,
+            name=parameter_name,
+            df=data,
+            allow_missing_values=self.allow_missing_values,
+            allow_extra_values=self.allow_extra_values,
+        )
 
 
 class CompoundDataReader(DataReader):

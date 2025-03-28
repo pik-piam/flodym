@@ -102,7 +102,14 @@ class FlodymArray(PydanticBaseModel):
         return cls(dims=dims, **kwargs)
 
     @classmethod
-    def from_df(cls, dims: DimensionSet, df: pd.DataFrame, **kwargs) -> "FlodymArray":
+    def from_df(
+        cls,
+        dims: DimensionSet,
+        df: pd.DataFrame,
+        allow_missing_values: bool = False,
+        allow_extra_values: bool = False,
+        **kwargs,
+    ) -> "FlodymArray":
         """Create a FlodymArray object from a DataFrame.
 
         Parameters:
@@ -119,12 +126,20 @@ class FlodymArray(PydanticBaseModel):
                 must be complete and exactly match those of the FlodymArray.
                 Dimensions with only one item do not need to be given in the DataFrame.
                 Supersets of dimensions (i.e. additional values) will lead to an error.
+            allow_missing_values (bool, optional): Whether to allow missing values in the DataFrame.
+                This includes both missing rows, and NaN values in the value column.
+                Defaults to False.
+            allow_extra_values (bool, optional): Whether to allow extra rows in the DataFrame,
+                i.e. tows with index items not present in the FlodymArray dimension items.
+                Defaults to False.
 
         Returns:
             FlodymArray: FlodymArray object with the values from the DataFrame
         """
         flodym_array = cls(dims=dims, **kwargs)
-        flodym_array.set_values_from_df(df)
+        flodym_array.set_values_from_df(
+            df, allow_missing_values=allow_missing_values, allow_extra_values=allow_extra_values
+        )
         return flodym_array
 
     def _sub_array_handler(self, definition) -> "SubArrayHandler":
@@ -134,6 +149,11 @@ class FlodymArray(PydanticBaseModel):
     def shape(self) -> tuple[int]:
         """The shape of the array, determined by the dimensions."""
         return self.dims.shape()
+
+    @property
+    def size(self) -> int:
+        """The number of elements in the array."""
+        return np.prod(self.shape)
 
     def set_values(self, values: np.ndarray):
         """Set the values of the FlodymArray and check if the shape is correct.
@@ -440,7 +460,12 @@ class FlodymArray(PydanticBaseModel):
             df.reset_index(inplace=True)
         return df
 
-    def set_values_from_df(self, df_in: pd.DataFrame):
+    def set_values_from_df(
+        self,
+        df_in: pd.DataFrame,
+        allow_missing_values: bool = False,
+        allow_extra_values: bool = False,
+    ):
         """Set the values of the FlodymArray from a pandas DataFrame.
 
         Parameters:
@@ -456,8 +481,20 @@ class FlodymArray(PydanticBaseModel):
                 must be complete and exactly match those of the FlodymArray.
                 Dimensions with only one item do not need to be given in the DataFrame.
                 Supersets of dimensions (i.e. additional values) will lead to an error.
+            allow_missing_values (bool, optional): Whether to allow missing values in the DataFrame.
+                This includes both missing rows, and NaN values in the value column.
+                Defaults to False.
+            allow_extra_values (bool, optional): Whether to allow extra rows in the DataFrame,
+                i.e. rows with index items not present in the FlodymArray dimension items.
+                Defaults to False.
         """
-        self.set_values(DataFrameToFlodymDataConverter(df_in, self).target_values)
+        converter = DataFrameToFlodymDataConverter(
+            df_in,
+            self,
+            allow_missing_values=allow_missing_values,
+            allow_extra_values=allow_extra_values,
+        )
+        self.set_values(converter.target_values)
 
     def split(self, dim_letter: str) -> dict:
         """Reverse the flodym_array_stack, returns a dictionary of FlodymArray objects

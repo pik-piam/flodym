@@ -89,6 +89,8 @@ class MFASystem(PydanticBaseModel):
         definition: MFADefinition,
         dimension_files: dict,
         parameter_files: dict,
+        allow_missing_parameter_values: bool = False,
+        allow_extra_parameter_values: bool = False,
     ):
         """Define and set up the MFA system and load all required data from CSV files.
         Initialises stocks and flows with all zero values.
@@ -100,6 +102,8 @@ class MFASystem(PydanticBaseModel):
         :param definition: The MFA definition object
         :param dimension_files: A dictionary mapping dimension names to CSV files
         :param parameter_files: A dictionary mapping parameter names to CSV files
+        :param allow_missing_parameter_values: Whether to allow missing values in the parameter data (missing rows or empty value cells)
+        :param allow_extra_parameter_values: Whether to allow extra values in the parameter data
         """
 
         dimension_reader = CSVDimensionReader(
@@ -107,6 +111,8 @@ class MFASystem(PydanticBaseModel):
         )
         parameter_reader = CSVParameterReader(
             parameter_files=parameter_files,
+            allow_missing_values=allow_missing_parameter_values,
+            allow_extra_values=allow_extra_parameter_values,
         )
         data_reader = CompoundDataReader(
             dimension_reader=dimension_reader,
@@ -122,6 +128,8 @@ class MFASystem(PydanticBaseModel):
         parameter_files: dict,
         dimension_sheets: dict = None,
         parameter_sheets: dict = None,
+        allow_missing_parameter_values: bool = False,
+        allow_extra_parameter_values: bool = False,
     ):
         """Define and set up the MFA system and load all required data from Excel files.
         Initialises stocks and flows with all zero values.
@@ -136,6 +144,8 @@ class MFASystem(PydanticBaseModel):
         :param parameter_files: A dictionary mapping parameter names to Excel files
         :param dimension_sheets: A dictionary mapping dimension names to sheet names in the Excel files
         :param parameter_sheets: A dictionary mapping parameter names to sheet names in the Excel files
+        :param allow_missing_parameter_values: Whether to allow missing values in the parameter data (missing rows or empty value cells)
+        :param allow_extra_parameter_values: Whether to allow extra values in the parameter data
         """
         dimension_reader = ExcelDimensionReader(
             dimension_files=dimension_files,
@@ -144,6 +154,8 @@ class MFASystem(PydanticBaseModel):
         parameter_reader = ExcelParameterReader(
             parameter_files=parameter_files,
             parameter_sheets=parameter_sheets,
+            allow_missing_values=allow_missing_parameter_values,
+            allow_extra_values=allow_extra_parameter_values,
         )
         data_reader = CompoundDataReader(
             dimension_reader=dimension_reader,
