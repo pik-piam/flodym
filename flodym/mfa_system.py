@@ -298,5 +298,5 @@ class MFASystem(PydanticBaseModel):
                     return
                 else:
                     raise ValueError("Error - " + message)
-                
+
         logging.info(f"Success - No negative flows or NaN values in {self.__class__.__name__}")
