@@ -249,15 +249,38 @@ class MFASystem(PydanticBaseModel):
             )
         return
 
-    def check_non_negative_flows(self, exceptions: list[str] = [], no_error: bool = False):
-        """Check if all flows are non-negative. Allowed exceptions can be passed as a list of strings. If no_error is True, a warning is logged instead of an error."""
+    def check_flows(self, exceptions: list[str] = [], no_error: bool = False):
+        """Check if all flows are non-negative.
+
+        Args:
+            exceptions (list[str]): A list of strings representing flow names to be excluded from the check.
+            no_error (bool): If True, logs a warning instead of raising an error for negative flows.
+
+        Raises:
+            ValueError: If a negative flow is found and `no_error` is False.
+
+        Logs:
+            Warning: If a negative flow is found and `no_error` is True.
+            Info: If no negative flows are found.
+        """
         for flow in self.flows.values():
             if any([exception in flow.name for exception in exceptions]):
                 continue
-            if np.any(flow.values < 0):
+
+            if np.any(np.isnan(flow.values)):
+                message = f"Error, NaN values found in {flow.name}"
                 if no_error:
-                    logging.warning(f"Error, negative flow in {flow.name}")
-                    return None
+                    logging.warning(message)
+                    return
                 else:
-                    raise ValueError(f"Error, negative flow in {flow.name}")
-        logging.info(f"Success - No negative flows in {self.__class__.__name__}")
+                    raise ValueError(message)
+
+            # Check for negative values
+            if np.any(flow.values < 0):
+                message = f"Error, negative flow in {flow.name}"
+                if no_error:
+                    logging.warning(message)
+                    return
+                else:
+                    raise ValueError(message)
+        logging.info(f"Success - No negative flows or NaN values in {self.__class__.__name__}")
