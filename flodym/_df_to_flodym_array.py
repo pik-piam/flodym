@@ -221,8 +221,7 @@ class DataFrameToFlodymDataConverter:
                     )
 
         if self.allow_missing_values:
-            # fill na values with zeros
-            self.df[self.format.value_column].fillna(0, inplace=True)
+            self.df[self.format.value_column] = self.df[self.format.value_column].fillna(0)
         else:
             if len(self.df) != self.flodym_array.size:
                 # print warning first, as compiling expected index tuples may take long
