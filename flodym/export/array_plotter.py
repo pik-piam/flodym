@@ -25,21 +25,21 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
     """Name of the dimension along which lines are plotted (if no x_array is given, this is also the x-axis)."""
     x_array: Optional[Union[FlodymArray, None]] = None
     """Array with x-values for each line. Must have the same dimensions as array, or a subset of them. If None, the intra_line_dim is used as x-axis."""
-    subplot_dim: str = None
+    subplot_dim: Optional[str] = None
     """Name of the dimension by which to split the array into subplots. If None, the array is plotted in a single subplot."""
-    linecolor_dim: str = None
+    linecolor_dim: Optional[str] = None
     """Name of the dimension along which to split the array into several lines within each subplot. If None, only one line is plotted per subplot."""
     fig: Any = None
     """Pre-existing figure to plot on. If None, a new figure is created."""
-    line_label: str = None
+    line_label: Optional[str] = None
     """Custom label for the line. If None, the respective item along linecolor_dim is used as label."""
-    xlabel: str = None
+    xlabel: Optional[str] = None
     """Custom label for the x-axis. If None, the name of the x_array or intra_line_dim is used."""
-    ylabel: str = None
+    ylabel: Optional[str] = None
     """Custom label for the y-axis. If None, the name of the array is used."""
-    title: str = None
+    title: Optional[str] = None
     """Title of the plot, if desired."""
-    color_map: list[str] = None
+    color_map: Optional[list[str]] = None
     """List of colors to use for the lines. If None, a default color map is used."""
     chart_type: str = "line"
     """Type of chart to plot. Can be 'line', 'scatter', or 'area'."""

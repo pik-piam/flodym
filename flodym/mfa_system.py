@@ -260,3 +260,43 @@ class MFASystem(PydanticBaseModel):
                 f"Success - Mass balance of {self.__class__.__name__} object is consistent!"
             )
         return
+
+    def check_flows(self, exceptions: list[str] = [], no_error: bool = False):
+        """Check if all flows are non-negative.
+
+        Args:
+            exceptions (list[str]): A list of strings representing flow names to be excluded from the check.
+            no_error (bool): If True, logs a warning instead of raising an error for negative flows.
+
+        Raises:
+            ValueError: If a negative flow is found and `no_error` is False.
+
+        Logs:
+            Warning: If a negative flow is found and `no_error` is True.
+            Info: If no negative flows are found.
+        """
+        logging.info("Checking flows for NaN and negative values...")
+
+        for flow in self.flows.values():
+            if any([exception in flow.name for exception in exceptions]):
+                continue
+
+            # Check for NaN values
+            if np.any(np.isnan(flow.values)):
+                message = f"NaN values found in flow {flow.name}!"
+                if no_error:
+                    logging.warning("Warning - " + message)
+                    return
+                else:
+                    raise ValueError("Errpr - " + message)
+
+            # Check for negative values
+            if np.any(flow.values < 0):
+                message = f"Negative value in flow {flow.name}!"
+                if no_error:
+                    logging.warning("Warning - " + message)
+                    return
+                else:
+                    raise ValueError("Error - " + message)
+
+        logging.info(f"Success - No negative flows or NaN values in {self.__class__.__name__}")
