@@ -268,7 +268,7 @@ class MFASystem(PydanticBaseModel):
         for flow in self.flows.values():
             if any([exception in flow.name for exception in exceptions]):
                 continue
-            
+
             # Check for NaN values
             if np.any(np.isnan(flow.values)):
                 message = f"NaN values found in flow {flow.name}!"
