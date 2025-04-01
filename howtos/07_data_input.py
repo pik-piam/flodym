@@ -126,6 +126,16 @@ reader = ExcelParameterReader(
 parameters = reader.read_parameters(parameter_definitions=parameter_definitions, dims=dims)
 
 # %% [markdown]
+# You can specify for csv and excel readers whether or not to throw an error if items are missing or not via the `allow_missing_values` argument.
+# Setting it to False is good for avoiding errors such as typos in the input data. Setting it to True is necessary for sparse data.
+# The default is False.
+#
+# Similarly, you can specify whether or not to throw an error if there are unknown dimension items in the input data via the `allow_extra_values` argument.
+# Setting it to False is good for avoiding errors such as typos in the input data.
+# Setting it to True is necessary if you'd like to be able to run the model with a subset of the items in the input data, e.g. a shorter time period, without changing the input data.
+# The default is False.
+
+# %% [markdown]
 # ## MFASystem `from_excel()` and `from_csv`
 #
 # If you wish to do your dat input using either excel or csv files as shown above, you can list all definitions, combine that into an MFADefinition object, and pass that into the `MFASystem.from_excel()` or `from_csv()` class methods together with the dictionaries for file paths (and sheet names for excel).

@@ -45,6 +45,29 @@ excel_parameter_files = {a.name: excel_parameter_file for a in parameter_definit
 parameter_sheet_names = {a.name: a.name for a in parameter_definitions}
 
 
+wrong_parameter_definitions = [
+    # missing row
+    ParameterDefinition(name="e1", dim_letters=["t", "a"]),
+    # wrong dim item
+    ParameterDefinition(name="e2", dim_letters=["t"]),
+    # additional dim item
+    ParameterDefinition(name="e3", dim_letters=["t"]),
+    # empty cell
+    ParameterDefinition(name="e4", dim_letters=["t"]),
+    # missing dim
+    ParameterDefinition(name="e5", dim_letters=["t", "a"]),
+]
+
+wrong_csv_parameter_files = {
+    a.name: "tests/tests_data/parameter_" + a.name + ".csv" for a in wrong_parameter_definitions
+}
+wrong_excel_parameter_file = "tests/tests_data/parameters.xlsx"
+wrong_excel_parameter_files = {
+    a.name: wrong_excel_parameter_file for a in wrong_parameter_definitions
+}
+wrong_sheet_names = {a.name: a.name for a in wrong_parameter_definitions}
+
+
 def test_dimensions():
 
     csv_reader = CSVDimensionReader(csv_dimension_files)
@@ -55,8 +78,6 @@ def test_dimensions():
 
         for dim in dimension_set:
             assert dim.items == dimension_items_expected[dim.name]
-
-    return
 
 
 def test_valid_parameter_reader():
@@ -78,37 +99,62 @@ def test_valid_parameter_reader():
 
 def test_wrong_parameter_reader():
 
-    parameter_definitions = [
-        # missing row
-        ParameterDefinition(name="e1", dim_letters=["t", "a"]),
-        # wrong dim item
-        ParameterDefinition(name="e2", dim_letters=["t"]),
-        # additional dim item
-        ParameterDefinition(name="e3", dim_letters=["t"]),
-        # empty cell
-        ParameterDefinition(name="e4", dim_letters=["t"]),
-        # missing dim
-        ParameterDefinition(name="e5", dim_letters=["t", "a"]),
-    ]
-
-    csv_parameter_files = {
-        a.name: "tests/tests_data/parameter_" + a.name + ".csv" for a in parameter_definitions
-    }
-    excel_parameter_file = "tests/tests_data/parameters.xlsx"
-    excel_parameter_files = {a.name: excel_parameter_file for a in parameter_definitions}
-    sheet_names = {a.name: a.name for a in parameter_definitions}
-
-    wrong_csv_reader = CSVParameterReader(csv_parameter_files)
-    wrong_excel_reader = ExcelParameterReader(excel_parameter_files, sheet_names)
+    wrong_csv_reader = CSVParameterReader(wrong_csv_parameter_files)
+    wrong_excel_reader = ExcelParameterReader(wrong_excel_parameter_files, wrong_sheet_names)
 
     dims = CSVDimensionReader(csv_dimension_files).read_dimensions(dimension_definitions)
 
     for reader in [wrong_csv_reader, wrong_excel_reader]:
-        for prm_def in parameter_definitions:
+        for prm_def in wrong_parameter_definitions:
             with pytest.raises(ValueError):
                 reader.read_parameter_values(prm_def.name, dims.get_subset(prm_def.dim_letters))
 
-    return
+
+def test_allow_incomplete_data():
+    incomplete_parameter_definitions = [
+        # missing row
+        ParameterDefinition(name="e1", dim_letters=["t", "a"]),
+        # empty cell
+        ParameterDefinition(name="e4", dim_letters=["t"]),
+    ]
+
+    incomplete_csv_reader = CSVParameterReader(wrong_csv_parameter_files, allow_missing_values=True)
+    incomplete_excel_reader = ExcelParameterReader(
+        wrong_excel_parameter_files, wrong_sheet_names, allow_missing_values=True
+    )
+
+    dims = CSVDimensionReader(csv_dimension_files).read_dimensions(dimension_definitions)
+
+    for reader in [incomplete_csv_reader, incomplete_excel_reader]:
+        parameters = reader.read_parameters(incomplete_parameter_definitions, dims)
+        assert np.array_equal(parameters["e1"].values, [[4, 1], [5, 0], [6, 3]])
+        assert np.array_equal(parameters["e4"].values, [0, 2, 3])
+
+
+def test_allow_extra_data():
+    extra_parameter_definitions = [
+        # wrong dim item
+        ParameterDefinition(name="e2", dim_letters=["t"]),
+        # additional dim item
+        ParameterDefinition(name="e3", dim_letters=["t"]),
+    ]
+
+    extra_csv_reader = CSVParameterReader(
+        wrong_csv_parameter_files, allow_missing_values=True, allow_extra_values=True
+    )
+    extra_excel_reader = ExcelParameterReader(
+        wrong_excel_parameter_files,
+        wrong_sheet_names,
+        allow_missing_values=True,
+        allow_extra_values=True,
+    )
+
+    dims = CSVDimensionReader(csv_dimension_files).read_dimensions(dimension_definitions)
+
+    for reader in [extra_csv_reader, extra_excel_reader]:
+        parameters = reader.read_parameters(extra_parameter_definitions, dims)
+        assert np.array_equal(parameters["e2"].values, [1, 0, 3])
+        assert np.array_equal(parameters["e3"].values, [1, 2, 3])
 
 
 def test_build_mfa_system():
@@ -138,3 +184,13 @@ def test_build_mfa_system():
         dimension_sheets=dimension_sheet_names,
         parameter_sheets=parameter_sheet_names,
     )
+
+
+if __name__ == "__main__":
+    test_dimensions()
+    test_valid_parameter_reader()
+    test_wrong_parameter_reader()
+    test_allow_incomplete_data()
+    test_allow_extra_data()
+    test_build_mfa_system()
+    print("All tests passed.")
