@@ -263,25 +263,27 @@ class MFASystem(PydanticBaseModel):
             Warning: If a negative flow is found and `no_error` is True.
             Info: If no negative flows are found.
         """
+        logging.info("Checking flows for NaN and negative values...")
+
         for flow in self.flows.values():
             if any([exception in flow.name for exception in exceptions]):
                 continue
             
             # Check for NaN values
             if np.any(np.isnan(flow.values)):
-                message = f"Error, NaN values found in {flow.name}"
+                message = f"NaN values found in flow {flow.name}!"
                 if no_error:
-                    logging.warning(message)
+                    logging.warning("Warning - " + message)
                     return
                 else:
-                    raise ValueError(message)
+                    raise ValueError("Errpr - " + message)
 
             # Check for negative values
             if np.any(flow.values < 0):
-                message = f"Error, negative flow in {flow.name}"
+                message = f"Negative value in flow {flow.name}!"
                 if no_error:
-                    logging.warning(message)
+                    logging.warning("Warning - " + message)
                     return
                 else:
-                    raise ValueError(message)
+                    raise ValueError("Error - " + message)
         logging.info(f"Success - No negative flows or NaN values in {self.__class__.__name__}")
