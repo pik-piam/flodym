@@ -27,9 +27,7 @@ def test_stocks():
     pass
 
 
-
 def test_wrong_parameter_reader():
 
     with pytest.raises(ValueError):
         pass
-

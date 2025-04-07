@@ -216,6 +216,7 @@ class InflowDrivenDSM(DynamicStockModel):
         )
         self.stock.values[...] = self._stock_by_cohort.sum(axis=1)
 
+
 class StockDrivenDSM(DynamicStockModel):
     """Stock driven model.
     Given total stock and lifetime distribution, calculate inflows and outflows.
@@ -238,22 +239,29 @@ class StockDrivenDSM(DynamicStockModel):
         sf = self.lifetime_model.sf
         for m in range(self._n_t):
             # 1)
-            self._stock_by_cohort[m, m, ...] = self.stock.values[m, ...] - self._stock_by_cohort[m, 0:m, ...].sum(axis=0)
+            self._stock_by_cohort[m, m, ...] = self.stock.values[m, ...] - self._stock_by_cohort[
+                m, 0:m, ...
+            ].sum(axis=0)
             # 2)
             # self.inflow.values[0, ...] = self._stock_by_cohort[m, m, ...] / sf[m, m, ...],
             # the rest is just safety
             if np.any(np.logical_and(sf[m, m, ...] == 0, self._stock_by_cohort[m, m, ...] != 0)):
-                raise ValueError(f"Survival function sf of lifetime model for stock {self.name} "
-                                 f"contains zeros where stock by cohort does not. This would lead "
-                                 f"to infinite inflow. year/cohort index: {m}; year/cohort item: "
-                                 f"{self.dims[self.time_letter].items[m]}")
+                raise ValueError(
+                    f"Survival function sf of lifetime model for stock {self.name} "
+                    f"contains zeros where stock by cohort does not. This would lead "
+                    f"to infinite inflow. year/cohort index: {m}; year/cohort item: "
+                    f"{self.dims[self.time_letter].items[m]}"
+                )
             self.inflow.values[0, ...] = np.where(
                 self._stock_by_cohort[m, m, ...] != 0,
                 self._stock_by_cohort[m, m, ...] / sf[m, m, ...],
                 0.0,
             )
             # 3)
-            self._stock_by_cohort[m + 1:, m, ...] = self.inflow.values[0, ...] * sf[m + 1:, m, ...]
+            self._stock_by_cohort[m + 1 :, m, ...] = (
+                self.inflow.values[0, ...] * sf[m + 1 :, m, ...]
+            )
+
 
 class StockDrivenDSM_InvertSF(StockDrivenDSM):
     """Comparable to StockDrivenDSM, but uses a scipy function to invert the survival function,
@@ -266,6 +274,4 @@ class StockDrivenDSM_InvertSF(StockDrivenDSM):
         the method builds the stock by cohort and the inflow."""
         sf = self.lifetime_model.sf
         for i in np.ndindex(self._shape_no_t):
-            self.inflow[:, i] = solve_triangular(
-                sf[:, :, i], self.stock.values[:, i], lower=True
-            )
+            self.inflow[:, i] = solve_triangular(sf[:, :, i], self.stock.values[:, i], lower=True)

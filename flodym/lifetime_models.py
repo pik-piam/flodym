@@ -114,7 +114,7 @@ class LifetimeModel(PydanticBaseModel):
 
     def _remaining_ages(self, m, eta):
         t = eta * self.t_bounds[m + 1] + (1 - eta) * self.t_bounds[m]
-        return self._tile(self.t_bounds[m + 1:] - t)
+        return self._tile(self.t_bounds[m + 1 :] - t)
 
     def compute_survival_factor(self):
         """Survival table self.sf(m,n) denotes the share of an inflow in year n (age-cohort) still
@@ -167,12 +167,14 @@ class LifetimeModel(PydanticBaseModel):
         pass
 
     def compute_t_bounds(self):
-        middle = (np.array(self.t[:-1]) + np.array(self.t[1:]))/2.
-        self._t_bounds = np.concatenate((
-            [middle[0] - (middle[1] - middle[0])],
-            middle,
-            [middle[-1] + (middle[-1] - middle[-2])]
-        ))
+        middle = (np.array(self.t[:-1]) + np.array(self.t[1:])) / 2.0
+        self._t_bounds = np.concatenate(
+            (
+                [middle[0] - (middle[1] - middle[0])],
+                middle,
+                [middle[-1] + (middle[-1] - middle[-2])],
+            )
+        )
 
     def cast_any_to_np_array(self, prm_in):
         if isinstance(prm_in, FlodymArray):
@@ -221,7 +223,6 @@ class StandardDeviationLifetimeModel(LifetimeModel):
     def set_prms(self, mean: FlodymArray, std: FlodymArray):
         self.mean = self.cast_any_to_np_array(mean)
         self.std = self.cast_any_to_np_array(std)
-
 
 
 class NormalLifetime(StandardDeviationLifetimeModel):
