@@ -194,24 +194,21 @@ def test_dimension_subsets():
 
 def test_to_df():
     fda = deepcopy(space_animals)
-    fda.values[...] = 0.
-    fda.values[0,1,0] = 1.
+    fda.values[...] = 0.0
+    fda.values[0, 1, 0] = 1.0
 
     df = fda.to_df()
 
     assert df.shape == (24, 1)
-    assert df.loc[("Earth", 2000, "cat"), "value"] == 1.
-    assert df.loc[("Earth", 2000, "mouse"), "value"] == 0.
-
+    assert df.loc[("Earth", 2000, "cat"), "value"] == 1.0
+    assert df.loc[("Earth", 2000, "mouse"), "value"] == 0.0
 
     df = fda.to_df(sparse=True)
 
     assert df.shape == (1, 1)
-    assert df.loc[("Earth", 2000, "cat"), "value"] == 1.
+    assert df.loc[("Earth", 2000, "cat"), "value"] == 1.0
     with pytest.raises(KeyError):
         df.loc[("Earth", 2000, "mouse"), "value"]
-
-
 
 
 if __name__ == "__main__":
