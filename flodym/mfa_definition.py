@@ -95,10 +95,10 @@ class StockDefinition(DefinitionWithDimLetters):
     def check_lifetime_model(self):
         if (
             self.lifetime_model_class is not None
-            and "lifetime_model" not in self.subclass.__fields__
+            and "lifetime_model" not in self.subclass.model_fields
         ):
             raise ValueError(f"Lifetime model is given, but not used in subclass {self.subclass}.")
-        elif self.lifetime_model_class is None and "lifetime_model" in self.subclass.__fields__:
+        elif self.lifetime_model_class is None and "lifetime_model" in self.subclass.model_fields:
             raise ValueError(
                 f"Lifetime model class must be part of definition for given subclass {self.subclass}"
             )
