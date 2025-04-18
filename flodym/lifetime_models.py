@@ -48,18 +48,18 @@ class LifetimeModel(PydanticBaseModel):
 
     @model_validator(mode="after")
     def cast_prms(self):
-        for prm_name, prm in self.prms:
+        for prm_name, prm in self.prms.items():
             if prm is not None:
                 setattr(self, prm_name, self.cast_any_to_np_array(prm))
         return self
 
-    @abstractmethod
     @property
-    def prms(self):
+    @abstractmethod
+    def prms(self) -> dict[str, np.ndarray | None]:
         raise NotImplementedError
 
     def _check_prms_set(self):
-        for prm_name, prm in self.prms:
+        for prm_name, prm in self.prms.items():
             if prm is None:
                 raise ValueError(f"Lifetime {prm_name} must be set before use.")
 
@@ -156,10 +156,6 @@ class LifetimeModel(PydanticBaseModel):
 
     @abstractmethod
     def _survival_by_year_id(m, **kwargs):
-        pass
-
-    @abstractmethod
-    def _check_prms_set(self):
         pass
 
     @abstractmethod

@@ -3,7 +3,7 @@ import pytest
 
 from flodym.dimensions import Dimension, DimensionSet
 from flodym.flodym_arrays import StockArray
-from flodym.stocks import InflowDrivenDSM, StockDrivenDSM
+from flodym.stocks import InflowDrivenDSM, StockDrivenDSM, StockDrivenDSM_InvertSF
 from flodym.lifetime_models import LogNormalLifetime
 from flodym.export import PlotlyArrayPlotter
 
@@ -31,7 +31,7 @@ def test_stocks():
     inflow_values = np.stack([inflow_values, inflow_values]).T
     inflow = StockArray(dims=dims, values=inflow_values)
 
-    lifetime_model = LogNormalLifetime(dims=dims, mean=60, std=25)
+    lifetime_model = LogNormalLifetime(dims=dims, time_letter="t", mean=60, std=25)
     inflow_driven_dsm = InflowDrivenDSM(
         dims=dims,
         inflow=inflow,
@@ -40,6 +40,7 @@ def test_stocks():
     )
     inflow_driven_dsm.compute()
     stock_fda = inflow_driven_dsm.stock
+
     stock_driven_dsm = StockDrivenDSM(
         dims=dims,
         stock=stock_fda,
@@ -50,9 +51,20 @@ def test_stocks():
     inflow_post = stock_driven_dsm.inflow
     assert np.allclose(inflow.values, inflow_post.values)
 
+    stock_driven_dsm = StockDrivenDSM_InvertSF(
+        dims=dims,
+        stock=stock_fda,
+        lifetime_model=lifetime_model,
+        time_letter="t",
+    )
+    stock_driven_dsm.compute()
+    inflow_post_invert = stock_driven_dsm.inflow
+    assert np.allclose(inflow.values, inflow_post_invert.values)
+    # return inflow, inflow_post, inflow_post_invert
+
 
 # if __name__ == "__main__":
-#     inflow, inflow_post = test_stocks()
+#     inflow, inflow_post, inflow_post_invert = test_stocks()
 #     plotter = PlotlyArrayPlotter(
 #         array=inflow["automotive"],
 #         intra_line_dim="time",
@@ -63,6 +75,13 @@ def test_stocks():
 #         array=inflow_post["automotive"],
 #         intra_line_dim="time",
 #         line_label="Post",
+#         fig=fig,
+#     )
+#     fig = plotter.plot()
+#     plotter = PlotlyArrayPlotter(
+#         array=inflow_post_invert["automotive"],
+#         intra_line_dim="time",
+#         line_label="Post Invert",
 #         fig=fig,
 #     )
 #     fig = plotter.plot()

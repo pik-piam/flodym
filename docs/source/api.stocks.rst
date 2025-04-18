@@ -13,7 +13,7 @@ Stocks and Lifetime Models
 .. autopydantic_model:: flodym::StockDrivenDSM
    :inherited-members: BaseModel
 
-.. autopydantic_model:: flodym::StockDrivenDSM_NIC
+.. autopydantic_model:: flodym::StockDrivenDSM_InvertSF
    :inherited-members: BaseModel
 
 .. autopydantic_model:: flodym::LifetimeModel
