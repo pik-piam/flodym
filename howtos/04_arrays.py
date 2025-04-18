@@ -116,13 +116,24 @@ show_array(reduced)
 # %%
 sum_with_scalar = flow_a + 0.4
 
-print("SUm with scalar:")
+print("Sum with scalar:")
 show_array(sum_with_scalar)
+
+# %% [markdown]
+# ### using the apply method
+# For math operations on a single array, you can use the `FlodymArray.apply()` method.
+
+# %%
+log_flow_a = flow_a.apply(np.log)
+print("Log of flow_a:")
+show_array(log_flow_a)
+
 
 # %% [markdown]
 # ### Using just the `values` array
 #
-# When a mathematical operation is not implemented, you can still work with the `values` array manually, which is a numpy array. We recommend using either the numpy ellipsis slice `[...]` or the `FlodymArray.set_values()` method, which both ensure keeping the correct shape of the array.
+# When a mathematical operation is not implemented, you can still work with the `values` array manually, which is a numpy array.
+# We recommend using either the numpy ellipsis slice `[...]` or the `FlodymArray.set_values()` method, which both ensure keeping the correct shape of the array.
 
 # %%
 flow_a.values[...] = 0.3
@@ -187,6 +198,13 @@ show_array(flows["predefined_flow"])
 flows["predefined_flow"] = flows["flow_a"] * parameters["parameter_a"]
 print("WRONG predefined_flow:")
 show_array(flows["predefined_flow"])
+
+# %% [markdown]
+# If you perform an operation of the form `flow_a[...] = foo`,
+# `foo` can be a FlodymArray, a numpy array or a scalar.
+# Whenever possible, is is safest if `foo` is a FlodymArray.
+# While the above code will check for the correct shape of foo even if it is a numpy array,
+# it will not, for example, recognize, if two dimensions of the same size are swapped in `foo`.
 
 # %% [markdown]
 # ## Slicing

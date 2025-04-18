@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel as PydanticBaseModel, ConfigDict, model_validator
 from typing import Optional, Union
+from copy import copy
 
 from .processes import Process
 from .dimensions import DimensionSet, Dimension
@@ -158,13 +159,18 @@ class FlodymArray(PydanticBaseModel):
     def set_values(self, values: np.ndarray):
         """Set the values of the FlodymArray and check if the shape is correct.
 
-        For safety reasons, using scalars or broadcasting smaller arrays is not allowed,
+        For safety reasons, broadcasting smaller arrays is not allowed,
         i.e. the shape of the values must match the shape of the FlodymArray.
 
-        As a less safe but more flexible alternative, you can use e.g. flodym_array.values[...] = 3.5 to set the values directly.
+        As a less safe but more flexible alternative, you can use e.g. flodym_array.values[...] = foo to set the values directly.
         """
-        self.values = values
-        self._check_value_format()
+        if isinstance(values, (np.ndarray, FlodymArray)):
+            # FlodymArray will actually throw an error in _check_value_format.
+            # It is not explicitly checked in this routine to avoid duplicating the error message.
+            self.values = values
+            self._check_value_format()
+        else:
+            self.values[...] = values
 
     def sum_values(self):
         """Return the sum of all values in the FlodymArray."""
@@ -427,12 +433,14 @@ class FlodymArray(PydanticBaseModel):
         i.e. 'foo[bar] = baz' For allowed values in the square brackets (bar), see the docstring of the SubArrayHandler
         class.
 
-        The RHS (baz) is required here to be a FlodymArray.
-        If you want to set the values of a FlodymArray object directly to a numpy array, use the syntax
-        'foo.values[...] = bar'."""
-        assert isinstance(item, FlodymArray), "Item on RHS of assignment must be a FlodymArray"
-        slice_obj = self._sub_array_handler(keys)
-        self.values[slice_obj.ids] = item.sum_values_to(slice_obj.dim_letters)
+        The RHS (baz) is either a FlodymArray, a numpy array of correct shape, or a scalar.
+        If it is a numpy array, a copy is used to avoid modifying the original array.
+        """
+        if isinstance(item, FlodymArray):
+            slice_obj = self._sub_array_handler(keys)
+            self.values[slice_obj.ids] = item.sum_values_to(slice_obj.dim_letters)
+        else:
+            self.set_values(copy(item))
         return
 
     def to_df(self, index: bool = True, dim_to_columns: str = None) -> pd.DataFrame:
