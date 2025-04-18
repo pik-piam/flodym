@@ -251,7 +251,7 @@ class DataFrameToFlodymDataConverter:
         fill_indices = self.df.values[:, :-1].T.astype(np.int16)
         fill_values = self.df[self.format.value_column].values
         # this is what ends up in the parameter; initialize with zeros
-        values = np.zeros(self.flodym_array.dims.shape())
+        values = np.zeros(self.flodym_array.dims.shape)
         values[tuple(fill_indices)] = fill_values
         return values
 

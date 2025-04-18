@@ -89,7 +89,7 @@ print("Stock values for Vehicles:", my_dsm.stock["Vehicles"].values)
 from flodym import StockArray
 
 lifetime_model = NormalLifetime(dims=dims, mean=lifetime_mean, std=0.3 * lifetime_mean)
-inflow = StockArray(dims=dims, name="in-use-dsm_inflows", values=0.1 * np.ones(dims.shape()))
+inflow = StockArray(dims=dims, name="in-use-dsm_inflows", values=0.1 * np.ones(dims.shape))
 my_dsm = InflowDrivenDSM(
     dims=dims,
     name="in-use-dsm",

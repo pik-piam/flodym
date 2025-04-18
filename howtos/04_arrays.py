@@ -48,7 +48,7 @@ parameter_a = FlodymArray(dims=dims["r", "p"], values=0.5 * np.ones((3, 2)))
 # %%
 def show_array(arr: FlodymArray):
     print(f"  dimensions: {arr.dims.letters}")
-    print(f"  shape: {arr.dims.shape()}")
+    print(f"  shape: {arr.dims.shape}")
     print(f"  name: {arr.name}")
     print(f"  values mean: {np.mean(arr.values):.3f}")
     print(f"  values sum: {arr.values.sum():.3f}")

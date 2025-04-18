@@ -64,7 +64,7 @@ class FlodymArray(PydanticBaseModel):
     @model_validator(mode="after")
     def validate_values(self):
         if self.values is None:
-            self.values = np.zeros(self.dims.shape())
+            self.values = np.zeros(self.dims.shape)
         self._check_value_format()
         return self
 
@@ -76,10 +76,10 @@ class FlodymArray(PydanticBaseModel):
         elif self.dims.ndim == 0 and isinstance(self.values, np.generic):
             self.values = np.array(self.values)
 
-        if self.values.shape != self.dims.shape():
+        if self.values.shape != self.dims.shape:
             raise ValueError(
                 f"Values passed to {self.__class__.__name__} must have the same shape as the DimensionSet.\n"
-                f"Array shape: {self.dims.shape()}\n"
+                f"Array shape: {self.dims.shape}\n"
                 f"Values shape: {self.values.shape}\n"
             )
 
@@ -148,7 +148,7 @@ class FlodymArray(PydanticBaseModel):
     @property
     def shape(self) -> tuple[int]:
         """The shape of the array, determined by the dimensions."""
-        return self.dims.shape()
+        return self.dims.shape
 
     @property
     def size(self) -> int:
