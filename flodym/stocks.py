@@ -274,5 +274,11 @@ class StockDrivenDSM_InvertSF(StockDrivenDSM):
         the method builds the stock by cohort and the inflow."""
         sf = self.lifetime_model.sf
         for i in np.ndindex(self._shape_no_t):
-            values = solve_triangular(sf[:, :, i].reshape((self._n_t, self._n_t)), self.stock.values[:, i].flatten(), lower=True)
-            self.inflow.values[:, i] = values[(slice(None),) + (np.newaxis,) * len(self._shape_no_t)]
+            values = solve_triangular(
+                sf[:, :, i].reshape((self._n_t, self._n_t)),
+                self.stock.values[:, i].flatten(),
+                lower=True,
+            )
+            self.inflow.values[:, i] = values[
+                (slice(None),) + (np.newaxis,) * len(self._shape_no_t)
+            ]

@@ -27,7 +27,7 @@ dims = DimensionSet(dim_list=dim_list)
 
 def test_stocks():
 
-    inflow_values = np.exp(-np.linspace(-2, 2, 201)**2)
+    inflow_values = np.exp(-np.linspace(-2, 2, 201) ** 2)
     inflow_values = np.stack([inflow_values, inflow_values]).T
     inflow = StockArray(dims=dims, values=inflow_values)
 
@@ -86,4 +86,3 @@ def test_stocks():
 #     )
 #     fig = plotter.plot()
 #     fig.show()
-
