@@ -17,6 +17,11 @@ df = array.to_df()
 df.head()
 
 # %% [markdown]
+# The method has some options to customize the format of the resulting data frame.
+# For example, only non-zero values can be exported. This is useful if the array is large and only a few values are non-zero.
+# For details, see the method's API reference.
+
+# %% [markdown]
 #
 # ### MFA system to dictionary and pickle file
 #
