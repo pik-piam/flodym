@@ -182,7 +182,7 @@ class DimensionSet(PydanticBaseModel):
 
     @property
     def shape(self) -> tuple[int]:
-        """shape of the array that would be created with the dimensions in the set """
+        """shape of the array that would be created with the dimensions in the set"""
         return tuple(self.size(dim) for dim in self.letters)
 
     @property
