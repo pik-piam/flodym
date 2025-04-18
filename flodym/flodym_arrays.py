@@ -435,7 +435,9 @@ class FlodymArray(PydanticBaseModel):
         self.values[slice_obj.ids] = item.sum_values_to(slice_obj.dim_letters)
         return
 
-    def to_df(self, index: bool = True, dim_to_columns: str = None, sparse: bool = False) -> pd.DataFrame:
+    def to_df(
+        self, index: bool = True, dim_to_columns: str = None, sparse: bool = False
+    ) -> pd.DataFrame:
         """Export the FlodymArray to a pandas DataFrame.
 
         Args:
@@ -453,14 +455,16 @@ class FlodymArray(PydanticBaseModel):
                 dim = self.dims[i]
                 ids = non_zero_ids[i]
                 return np.array(dim.items)[ids]
+
             multiindex = pd.MultiIndex.from_arrays(
-                arrays=[to_index(i) for i in range(self.dims.ndim)],
-                names=self.dims.names
+                arrays=[to_index(i) for i in range(self.dims.ndim)], names=self.dims.names
             )
             df = pd.DataFrame({"value": self.values[non_zero_ids].flatten()})
             df = df.set_index(multiindex)
         else:
-            multiindex = pd.MultiIndex.from_product([d.items for d in self.dims], names=self.dims.names)
+            multiindex = pd.MultiIndex.from_product(
+                [d.items for d in self.dims], names=self.dims.names
+            )
             df = pd.DataFrame({"value": self.values.flatten()})
             df = df.set_index(multiindex)
         if dim_to_columns is not None:
