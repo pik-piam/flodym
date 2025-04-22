@@ -5,8 +5,7 @@ import time
 from flodym.dimensions import Dimension, DimensionSet
 from flodym.flodym_arrays import StockArray
 from flodym.stocks import InflowDrivenDSM, StockDrivenDSM
-from flodym.lifetime_models import NormalLifetime, LogNormalLifetime
-from flodym.export import PlotlyArrayPlotter
+from flodym.lifetime_models import LogNormalLifetime
 
 dim_list = [
     Dimension(
