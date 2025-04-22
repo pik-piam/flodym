@@ -5,13 +5,40 @@ import numpy as np
 import scipy.stats
 from pydantic import BaseModel as PydanticBaseModel, model_validator
 from typing import Any
-from chaospy import Uniform, quad_gauss_lobatto
 
 # from scipy.special import gammaln, logsumexp
 # from scipy.optimize import root_scalar
 
-from .dimensions import DimensionSet
+from .dimensions import DimensionSet, Dimension
 from .flodym_arrays import FlodymArray
+from .gauss_lobatto import gl_nodes, gl_weights
+
+
+class UnevenTimeDim(PydanticBaseModel):
+
+    dim: Dimension
+    _bounds: np.ndarray = None
+
+    @property
+    def bounds(self):
+        if self._bounds is None:
+            self.compute_t_bounds()
+        return self._bounds
+
+    @property
+    def interval_lengths(self):
+        """Returns the length of the time intervals, i.e. the difference between the bounds."""
+        return np.diff(self.bounds)
+
+    def compute_t_bounds(self):
+        middle = (np.array(self.dim.items[:-1]) + np.array(self.dim.items[1:])) / 2.0
+        self._bounds = np.concatenate(
+            (
+                [middle[0] - (middle[1] - middle[0])],
+                middle,
+                [middle[-1] + (middle[-1] - middle[-2])],
+            )
+        )
 
 
 class LifetimeModel(PydanticBaseModel):
@@ -23,22 +50,22 @@ class LifetimeModel(PydanticBaseModel):
     """If no quadrature is used, all inflow happens at one point in time, either at the beginning
     of the time period (start), in the middle (middle) or at the end (end).
     """
-    quad_order: int = 0
+    n_pts_per_interval: int = 1
     """Inflow into the stock is in reality quite uniform over time, while survival factors only
     take into account a single point in time. This can be alleviated here by using numerical integration
-    over each inflow time period with order quad_order. A quad order of 0 means that the inflow
+    over each inflow time period with n points. A value of 1 means that the inflow
     is only evaluated once, depending on the inflow_at parameter. This is the default and should be used
     for long life times, e.g. >> 1 year.
-    For quad_order > 0, the inflow is evaluated at quad_order points in time within the time period.
+    For n_pts > 1, the inflow is evaluated at n points in time within the time period.
     inflow_at is ignored in this case.
-    A quad_order of 1 means evaluation at the beginning and end of the time period, while higher
-    orders additionally evaluate at more points within the time period.
-    Higher orders are only needed for short life times, e.g. < 1 year.
-    Default is 0, meaning that the inflow is evaluated only once per time period.
+    A value of 2 means evaluation at the beginning and end of the time period, while higher
+    values additionally evaluate at more points within the time period.
+    Higher point numbers are only needed for short life times, e.g. < 1 year.
+    Default is 1, meaning that the inflow is evaluated only once per time period.
     """
     _sf: np.ndarray = None
     _pdf: np.ndarray = None
-    _t_bounds: np.ndarray = None
+    _t: UnevenTimeDim = None
 
     @model_validator(mode="after")
     def check_inflow_at(self):
@@ -53,6 +80,11 @@ class LifetimeModel(PydanticBaseModel):
                 setattr(self, prm_name, self.cast_any_to_np_array(prm))
         return self
 
+    @model_validator(mode="after")
+    def init_t(self):
+        self._t = UnevenTimeDim(dim = self.dims[self.time_letter])
+        return self
+
     @property
     @abstractmethod
     def prms(self) -> dict[str, np.ndarray | None]:
@@ -64,16 +96,12 @@ class LifetimeModel(PydanticBaseModel):
                 raise ValueError(f"Lifetime {prm_name} must be set before use.")
 
     @property
-    def t(self):
-        return np.array(self.dims[self.time_letter].items)
-
-    @property
     def shape(self):
         return self.dims.shape()
 
     @property
     def _n_t(self):
-        return len(self.t)
+        return self._t.dim.len
 
     @property
     def _shape_cohort(self):
@@ -97,24 +125,23 @@ class LifetimeModel(PydanticBaseModel):
             self.compute_outflow_pdf()
         return self._pdf
 
-    @property
-    def t_bounds(self):
-        if self._t_bounds is None:
-            self.compute_t_bounds()
-        return self._t_bounds
-
-    @property
-    def t_diag_indices(self):
-        return np.diag_indices(self._n_t) + (slice(None),) * len(self._shape_no_t)
-
     def _tile(self, a: np.ndarray) -> np.ndarray:
+        """tiles the input array a to the shape of the lifetime model, by adding non-time dimensions
+
+        Args:
+            a (np.ndarray): either of shape (n_t,) or (n_t, n_t), where the second dimension
+                corresponds to the age cohort
+
+        Returns:
+            np.ndarray: the tiled array
+        """
         index = (slice(None),) * a.ndim + (np.newaxis,) * len(self._shape_no_t)
         out = a[index]
         return np.tile(out, self._shape_no_t)
 
     def _remaining_ages(self, m, eta):
-        t = eta * self.t_bounds[m + 1] + (1 - eta) * self.t_bounds[m]
-        return self._tile(self.t_bounds[m + 1 :] - t)
+        t = eta * self._t.bounds[m + 1] + (1 - eta) * self._t.bounds[m]
+        return self._tile(self._t.bounds[m + 1 :] - t)
 
     def compute_survival_factor(self):
         """Survival table self.sf(m,n) denotes the share of an inflow in year n (age-cohort) still
@@ -137,15 +164,19 @@ class LifetimeModel(PydanticBaseModel):
         self._check_prms_set()
         quad_eta, quad_weights = self.get_quad_points_and_weights()
         for m in range(0, self._n_t):  # cohort index
-            for eta, weight in zip(quad_eta, quad_weights):
+            width = self._t.bounds[m + 1] - self._t.bounds[m]
+            for eta, weight in zip(list(quad_eta), list(quad_weights)):
                 t = self._remaining_ages(m, eta)
-                self._sf[m::, m, ...] += weight * self._survival_by_year_id(t, m)
+                self._sf[m::, m, ...] += weight * width * self._survival_by_year_id(t, m)
 
     def get_quad_points_and_weights(self):
         """Returns the quadrature points and weights for the inflow time periods."""
-        if self.quad_order > 0:
-            quad_eta, quad_weights = quad_gauss_lobatto(self.quad_order, Uniform(0, 1))
-            return quad_eta, quad_weights
+        if self.n_pts_per_interval > 10:
+            raise ValueError("quad_order must be between 0 and 9.")
+        if self.n_pts_per_interval > 1:
+            nodes = [(x + 1)/2 for x in gl_nodes[self.n_pts_per_interval]]
+            weights = [w/2 for w in gl_weights[self.n_pts_per_interval]]
+            return nodes, weights
         else:
             if self.inflow_at == "start":
                 return [0], [1]
@@ -162,16 +193,6 @@ class LifetimeModel(PydanticBaseModel):
     def set_prms(self):
         pass
 
-    def compute_t_bounds(self):
-        middle = (np.array(self.t[:-1]) + np.array(self.t[1:])) / 2.0
-        self._t_bounds = np.concatenate(
-            (
-                [middle[0] - (middle[1] - middle[0])],
-                middle,
-                [middle[-1] + (middle[-1] - middle[-2])],
-            )
-        )
-
     def cast_any_to_np_array(self, prm_in):
         if isinstance(prm_in, FlodymArray):
             prm_out = prm_in.cast_to(target_dims=self.dims).values
@@ -184,7 +205,8 @@ class LifetimeModel(PydanticBaseModel):
         """Returns an array year-by-cohort of the probability that an item
         added to stock in year m (aka cohort m) leaves in in year n. This value equals pdf(n,m).
         """
-        self._pdf[self.t_diag_indices] = 1.0 - np.moveaxis(self.sf.diagonal(0, 0, 1), -1, 0)
+        t_diag_indices = np.diag_indices(self._n_t) + (slice(None),) * len(self._shape_no_t)
+        self._pdf[t_diag_indices] = 1.0 - np.moveaxis(self.sf.diagonal(0, 0, 1), -1, 0)
         for m in range(0, self._n_t):
             self._pdf[m + 1 :, m, ...] = -1 * np.diff(self.sf[m:, m, ...], axis=0)
 

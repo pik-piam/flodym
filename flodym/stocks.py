@@ -10,9 +10,9 @@ from typing import Optional, Union
 import logging
 
 from .processes import Process
-from .flodym_arrays import StockArray
+from .flodym_arrays import StockArray, FlodymArray
 from .dimensions import DimensionSet
-from .lifetime_models import LifetimeModel
+from .lifetime_models import LifetimeModel, UnevenTimeDim
 
 
 class Stock(PydanticBaseModel):
@@ -117,7 +117,7 @@ class Stock(PydanticBaseModel):
 
 
 class SimpleFlowDrivenStock(Stock):
-    """Given inflows and outflows, the stock can be calculated."""
+    """Given inflows and outflows, the stock can be calculated without a lifetime model or cohorts."""
 
     def _check_needed_arrays(self):
         if (
@@ -128,7 +128,11 @@ class SimpleFlowDrivenStock(Stock):
 
     def compute(self):
         self._check_needed_arrays()
-        self.stock.values[...] = np.cumsum(self.inflow.values - self.outflow.values, axis=0)
+        annual_net_inflow = self.inflow - self.outflow
+        t = UnevenTimeDim(dim = self.dims[self.time_letter])
+        int_len = FlodymArray(dims = self.dims[self.time_letter,], values = t.interval_lengths)
+        net_inflow = annual_net_inflow * int_len
+        self.stock[...] = net_inflow.apply(np.cumsum, kwargs={"axis": 0})
 
 
 class DynamicStockModel(Stock):
@@ -220,7 +224,21 @@ class InflowDrivenDSM(DynamicStockModel):
 class StockDrivenDSM(DynamicStockModel):
     """Stock driven model.
     Given total stock and lifetime distribution, calculate inflows and outflows.
+    This involves solving the lower triangular equation system A*x=b,
+    where A is the survival function matrix, x is the inflow vector, and b is the stock vector.
     """
+    solver: str = "manual"
+    """Algorithm to use for solving the equation system.  Options are: "manual" (default), which uses
+    an own python implementation, and "lapack", which calls the lapack trtrs routine via scipy.
+    The lapack implementation may be more precise. Speed depends on the dimensionality,
+    but the manual implementation is usually faster.
+    """
+
+    @model_validator(mode="after")
+    def init_solver(self):
+        if self.solver not in ["manual", "lapack"]:
+            raise ValueError("Solver must be either 'manual' or 'lapack'.")
+        return self
 
     def _check_needed_arrays(self):
         super()._check_needed_arrays()
@@ -233,46 +251,43 @@ class StockDrivenDSM(DynamicStockModel):
         self._compute_cohorts_and_inflow()
         self._compute_outflow()
 
-    def _compute_cohorts_and_inflow(self) -> tuple[np.ndarray]:
+    def _compute_cohorts_and_inflow(self):
         """With given total stock and lifetime distribution,
-        the method builds the stock by cohort and the inflow."""
+        the method builds the stock by cohort and the inflow.
+        This involves solving the lower triangular equation system A*x=b,
+        where A is the survival function matrix, x is the inflow vector, and b is the stock vector.
+        """
+        if self.solver == "manual":
+            self._compute_cohorts_and_inflow_manual()
+        elif self.solver == "lapack":
+            self._compute_cohorts_and_inflow_lapack()
+        else:
+            raise ValueError(f"Unknown engine: {self.solver}")
+
+    def _compute_cohorts_and_inflow_manual(self) -> tuple[np.ndarray]:
+        """With given total stock and lifetime distribution,
+        the method builds the stock by cohort and the inflow,
+        using a manual algorithm for solving of the equation system (see "engine" doc for details).
+        """
         sf = self.lifetime_model.sf
         for m in range(self._n_t):
-            # 1)
             self._stock_by_cohort[m, m, ...] = self.stock.values[m, ...] - self._stock_by_cohort[
                 m, 0:m, ...
             ].sum(axis=0)
-            # 2)
-            # self.inflow.values[0, ...] = self._stock_by_cohort[m, m, ...] / sf[m, m, ...],
-            # the rest is just safety
-            if np.any(np.logical_and(sf[m, m, ...] == 0, self._stock_by_cohort[m, m, ...] != 0)):
-                raise ValueError(
-                    f"Survival function sf of lifetime model for stock {self.name} "
-                    f"contains zeros where stock by cohort does not. This would lead "
-                    f"to infinite inflow. year/cohort index: {m}; year/cohort item: "
-                    f"{self.dims[self.time_letter].items[m]}"
-                )
-            self.inflow.values[0, ...] = np.where(
-                self._stock_by_cohort[m, m, ...] != 0,
-                self._stock_by_cohort[m, m, ...] / sf[m, m, ...],
-                0.0,
-            )
-            # 3)
+            self.inflow.values[m, ...] = self._stock_by_cohort[m, m, ...] / sf[m, m, ...]
             self._stock_by_cohort[m + 1 :, m, ...] = (
-                self.inflow.values[0, ...] * sf[m + 1 :, m, ...]
+                self.inflow.values[m, ...] * sf[m + 1 :, m, ...]
             )
 
-
-class StockDrivenDSM_InvertSF(StockDrivenDSM):
-    """Comparable to StockDrivenDSM, but uses a scipy function to invert the survival function,
-    instead of doing it manually in a loop. Will have lower numerical errors, but may be slower
-    for large non-time and non-cohort dimensions.
-    """
-
-    def _compute_cohorts_and_inflow(self) -> tuple[np.ndarray]:
+    def _compute_cohorts_and_inflow_lapack(self) -> tuple[np.ndarray]:
         """With given total stock and lifetime distribution,
-        the method builds the stock by cohort and the inflow."""
+        the method builds the stock by cohort and the inflow,
+        using lapack for solving of the equation system (see "engine" doc for details).
+        """
         sf = self.lifetime_model.sf
+        slt = (slice(None),)
         for i in np.ndindex(self._shape_no_t):
-            values = solve_triangular(sf[:, :, i].reshape((self._n_t, self._n_t)), self.stock.values[:, i].flatten(), lower=True)
-            self.inflow.values[:, i] = values[(slice(None),) + (np.newaxis,) * len(self._shape_no_t)]
+            self.inflow.values[slt + i] = solve_triangular(
+                sf[2 * slt + i], self.stock.values[slt + i], lower=True
+            )
+        self._stock_by_cohort = np.einsum("c...,tc...->tc...", self.inflow.values, sf)
