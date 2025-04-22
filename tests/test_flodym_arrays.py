@@ -2,6 +2,7 @@ import numpy as np
 from numpy.testing import assert_almost_equal, assert_array_almost_equal, assert_array_equal
 from pydantic_core import ValidationError
 import pytest
+from copy import deepcopy
 
 from flodym import FlodymArray, DimensionSet, Dimension
 
@@ -189,3 +190,26 @@ def test_dimension_subsets():
 
     with pytest.raises(ValueError):
         historic_space_animals[{"h": time}]  # index is not a subset
+
+
+def test_to_df():
+    fda = deepcopy(space_animals)
+    fda.values[...] = 0.0
+    fda.values[0, 1, 0] = 1.0
+
+    df = fda.to_df()
+
+    assert df.shape == (24, 1)
+    assert df.loc[("Earth", 2000, "cat"), "value"] == 1.0
+    assert df.loc[("Earth", 2000, "mouse"), "value"] == 0.0
+
+    df = fda.to_df(sparse=True)
+
+    assert df.shape == (1, 1)
+    assert df.loc[("Earth", 2000, "cat"), "value"] == 1.0
+    with pytest.raises(KeyError):
+        df.loc[("Earth", 2000, "mouse"), "value"]
+
+
+if __name__ == "__main__":
+    test_to_df()

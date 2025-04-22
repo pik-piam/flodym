@@ -443,19 +443,38 @@ class FlodymArray(PydanticBaseModel):
             self.set_values(copy(item))
         return
 
-    def to_df(self, index: bool = True, dim_to_columns: str = None) -> pd.DataFrame:
+    def to_df(
+        self, index: bool = True, dim_to_columns: str = None, sparse: bool = False
+    ) -> pd.DataFrame:
         """Export the FlodymArray to a pandas DataFrame.
 
         Args:
             index (bool, optional): Whether to include the dimension items as a Multi-Index (True) or as columns of the DataFrame (False). Defaults to True.
             dim_to_columns (str, optional): Name of the dimension the items of which are to form the columns of the DataFrame. If not given, the DataFrame is returned in long format with a single 'value' column.
+            sparse (bool, optional): Whether to return a sparse DataFrame with only non-zero values. Defaults to False.
 
         Returns:
             pd.DataFrame: DataFrame representation of the FlodymArray.
         """
-        multiindex = pd.MultiIndex.from_product([d.items for d in self.dims], names=self.dims.names)
-        df = pd.DataFrame({"value": self.values.flatten()})
-        df = df.set_index(multiindex)
+        if sparse:
+            non_zero_ids = np.nonzero(self.values)
+
+            def to_index(i):
+                dim = self.dims[i]
+                ids = non_zero_ids[i]
+                return np.array(dim.items)[ids]
+
+            multiindex = pd.MultiIndex.from_arrays(
+                arrays=[to_index(i) for i in range(self.dims.ndim)], names=self.dims.names
+            )
+            df = pd.DataFrame({"value": self.values[non_zero_ids].flatten()})
+            df = df.set_index(multiindex)
+        else:
+            multiindex = pd.MultiIndex.from_product(
+                [d.items for d in self.dims], names=self.dims.names
+            )
+            df = pd.DataFrame({"value": self.values.flatten()})
+            df = df.set_index(multiindex)
         if dim_to_columns is not None:
             if dim_to_columns not in self.dims:
                 raise ValueError(f"Dimension name {dim_to_columns} not found in flodym_array.dims")
