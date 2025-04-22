@@ -129,8 +129,8 @@ class SimpleFlowDrivenStock(Stock):
     def compute(self):
         self._check_needed_arrays()
         annual_net_inflow = self.inflow - self.outflow
-        t = UnevenTimeDim(dim = self.dims[self.time_letter])
-        int_len = FlodymArray(dims = self.dims[self.time_letter,], values = t.interval_lengths)
+        t = UnevenTimeDim(dim=self.dims[self.time_letter])
+        int_len = FlodymArray(dims=self.dims[self.time_letter,], values=t.interval_lengths)
         net_inflow = annual_net_inflow * int_len
         self.stock[...] = net_inflow.apply(np.cumsum, kwargs={"axis": 0})
 
@@ -227,6 +227,7 @@ class StockDrivenDSM(DynamicStockModel):
     This involves solving the lower triangular equation system A*x=b,
     where A is the survival function matrix, x is the inflow vector, and b is the stock vector.
     """
+
     solver: str = "manual"
     """Algorithm to use for solving the equation system.  Options are: "manual" (default), which uses
     an own python implementation, and "lapack", which calls the lapack trtrs routine via scipy.

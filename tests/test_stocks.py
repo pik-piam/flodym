@@ -26,7 +26,7 @@ dims = DimensionSet(dim_list=dim_list)
 
 
 def test_stocks():
-    inflow_values = np.exp(-np.linspace(-2, 2, 201)**2)
+    inflow_values = np.exp(-np.linspace(-2, 2, 201) ** 2)
     inflow_values = np.stack([inflow_values, inflow_values]).T
     inflow = StockArray(dims=dims, values=inflow_values)
 
@@ -93,17 +93,27 @@ def test_lifetime_quadrature():
 
 
 def get_stocks_by_quadrature(mean, std):
-    inflow_values = np.exp(-np.linspace(-2, 2, 201)**2)
+    inflow_values = np.exp(-np.linspace(-2, 2, 201) ** 2)
     inflow_values = np.stack([inflow_values, inflow_values]).T
     inflow_values = np.ones_like(inflow_values)
     inflow = StockArray(dims=dims, values=inflow_values)
 
     lifetime_models = {
-        "ltm_start": LogNormalLifetime(dims=dims, time_letter="t", mean=mean, std=std, inflow_at="start"),
-        "ltm_end": LogNormalLifetime(dims=dims, time_letter="t", mean=mean, std=std, inflow_at="end"),
-        "ltm_middle": LogNormalLifetime(dims=dims, time_letter="t", mean=mean, std=std, inflow_at="middle"),
-        "ltm_2": LogNormalLifetime(dims=dims, time_letter="t", mean=mean, std=std, n_pts_per_interval=2),
-        "ltm_6": LogNormalLifetime(dims=dims, time_letter="t", mean=mean, std=std, n_pts_per_interval=6),
+        "ltm_start": LogNormalLifetime(
+            dims=dims, time_letter="t", mean=mean, std=std, inflow_at="start"
+        ),
+        "ltm_end": LogNormalLifetime(
+            dims=dims, time_letter="t", mean=mean, std=std, inflow_at="end"
+        ),
+        "ltm_middle": LogNormalLifetime(
+            dims=dims, time_letter="t", mean=mean, std=std, inflow_at="middle"
+        ),
+        "ltm_2": LogNormalLifetime(
+            dims=dims, time_letter="t", mean=mean, std=std, n_pts_per_interval=2
+        ),
+        "ltm_6": LogNormalLifetime(
+            dims=dims, time_letter="t", mean=mean, std=std, n_pts_per_interval=6
+        ),
     }
     stocks = {}
     for name, lifetime_model in lifetime_models.items():
@@ -119,8 +129,7 @@ def get_stocks_by_quadrature(mean, std):
 
 
 def test_unequal_time_steps():
-    """Unequal time step lengths should not influence the development of the stock apart from numerical errors.
-    """
+    """Unequal time step lengths should not influence the development of the stock apart from numerical errors."""
     # case with all years
     t_all = Dimension(
         name="time",
@@ -139,7 +148,9 @@ def test_unequal_time_steps():
     stocks = []
     for t in t_all, t_select:
         dims = DimensionSet(dim_list=[t])
-        lifetime_model = LogNormalLifetime(dims=dims, time_letter=t.letter, mean=5, std=2, n_pts_per_interval=6)
+        lifetime_model = LogNormalLifetime(
+            dims=dims, time_letter=t.letter, mean=5, std=2, n_pts_per_interval=6
+        )
         inflow_values = np.ones(t.len)
         inflow = StockArray(dims=dims, values=inflow_values)
         inflow_driven_dsm = InflowDrivenDSM(

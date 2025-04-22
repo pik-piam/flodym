@@ -82,7 +82,7 @@ class LifetimeModel(PydanticBaseModel):
 
     @model_validator(mode="after")
     def init_t(self):
-        self._t = UnevenTimeDim(dim = self.dims[self.time_letter])
+        self._t = UnevenTimeDim(dim=self.dims[self.time_letter])
         return self
 
     @property
@@ -174,8 +174,8 @@ class LifetimeModel(PydanticBaseModel):
         if self.n_pts_per_interval > 10:
             raise ValueError("quad_order must be between 0 and 9.")
         if self.n_pts_per_interval > 1:
-            nodes = [(x + 1)/2 for x in gl_nodes[self.n_pts_per_interval]]
-            weights = [w/2 for w in gl_weights[self.n_pts_per_interval]]
+            nodes = [(x + 1) / 2 for x in gl_nodes[self.n_pts_per_interval]]
+            weights = [w / 2 for w in gl_weights[self.n_pts_per_interval]]
             return nodes, weights
         else:
             if self.inflow_at == "start":

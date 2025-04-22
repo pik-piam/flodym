@@ -130,7 +130,7 @@ print("Stock values for Vehicles:", stocks["in-use"].stock["Vehicles"].values)
 # For an example of how to use stock definitions in the `MFASystem.from_data_reader()` method, see Example 5.
 
 # %% [markdown]
-
+#
 # ## Lifetime model inflow time
 # The DSMs consist of discrete time steps (the items of the time dimension), leading to
 # numerical errors.
@@ -143,8 +143,8 @@ print("Stock values for Vehicles:", stocks["in-use"].stock["Vehicles"].values)
 # To avoid this, several points in time can be used per time interval.
 # This is more accurate, but also slower. The number can be set with the `n_pts_per_interval`
 # attribute of the lifetime model.
-
-## Uneven time spacing
+#
+# # Uneven time spacing
 # The items of the time dimension can be non-contiguous and even unevenly spaced.
 # For example, only select years can be used.
 # If the time steps are not contiguous, the flows are assumed to be annual flows.
