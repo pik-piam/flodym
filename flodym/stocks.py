@@ -84,7 +84,7 @@ class Stock(PydanticBaseModel):
     @property
     def shape(self) -> tuple:
         """Shape of the stock, inflow, outflow arrays, defined by the dimensions."""
-        return self.dims.shape()
+        return self.dims.shape
 
     @property
     def process_id(self) -> int:

@@ -97,7 +97,7 @@ class LifetimeModel(PydanticBaseModel):
 
     @property
     def shape(self):
-        return self.dims.shape()
+        return self.dims.shape
 
     @property
     def _n_t(self):
