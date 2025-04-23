@@ -20,7 +20,6 @@ from flodym.stocks import (
     DynamicStockModel as DynamicStockModel,
     InflowDrivenDSM as InflowDrivenDSM,
     StockDrivenDSM as StockDrivenDSM,
-    StockDrivenDSM_NIC as StockDrivenDSM_NIC,
 )
 from flodym.lifetime_models import (
     LifetimeModel as LifetimeModel,

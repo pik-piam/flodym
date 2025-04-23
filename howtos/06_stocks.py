@@ -128,3 +128,36 @@ print("Stock values for Vehicles:", stocks["in-use"].stock["Vehicles"].values)
 
 # %% [markdown]
 # For an example of how to use stock definitions in the `MFASystem.from_data_reader()` method, see Example 5.
+
+# %% [markdown]
+#
+# ## Lifetime model inflow time
+# The DSMs consist of discrete time steps (the items of the time dimension), leading to
+# numerical errors.
+# The standard implementation assumes all inflow of a time step to occur at one point in time.
+# The inflow can be set with the `inflow_at` attribute of the lifetime model to occur at the
+# beginning, end, or middle of the time step.
+# The default is the middle, which is generally the most accurate.
+# For short lifetimes (similar length or shorter than the time step), all these methods will yield
+# large discrepancies between the inflow and the stock.
+# To avoid this, several points in time can be used per time interval.
+# This corresponds to a numerical integration over the time step.
+# It is more accurate than a single point, but also slower. The number can be set with the
+# `n_pts_per_interval` attribute of the lifetime model. Up to 10 points can be used.
+#
+# # Uneven time spacing
+# The items of the time dimension can be non-contiguous and even unevenly spaced.
+# For example, only select years can be used.
+# If the time steps are not contiguous, the flows are assumed to be annual flows.
+# So a stock inflow of 1 within a time step of 5 years will lead to a stock increase of 5.
+#
+# If the spacing is uneven, the interval lengths are calculated as follows:
+# Each given time step is assumed to be within a time interval.
+# The interval bounds are in the center between two time steps.
+# The interval length of the first and last time step is assumed to be the same as the second and
+# second-to-last time step, respectively.
+# For example, if the given items of the time dimension are `[2000, 2005, 2010, 2020, 2030]`,
+# Then the interval bounds are `[1997.5, 2002.5, 2007.5, 2015, 2025]`, and the interval lengths
+# thus `[5, 5, 7.5, 10, 10]`.
+# This means that a constant inflow of 1 (neglecting outflow for simplicity) will lead to a stock
+# increase of 5, 5, 7.5, 10, and 10 in the respective time steps.
