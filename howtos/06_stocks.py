@@ -141,8 +141,9 @@ print("Stock values for Vehicles:", stocks["in-use"].stock["Vehicles"].values)
 # For short lifetimes (similar length or shorter than the time step), all these methods will yield
 # large discrepancies between the inflow and the stock.
 # To avoid this, several points in time can be used per time interval.
-# This is more accurate, but also slower. The number can be set with the `n_pts_per_interval`
-# attribute of the lifetime model.
+# This corresponds to a numerical integration over the time step.
+# It is more accurate than a single point, but also slower. The number can be set with the
+# `n_pts_per_interval` attribute of the lifetime model. Up to 10 points can be used.
 #
 # # Uneven time spacing
 # The items of the time dimension can be non-contiguous and even unevenly spaced.
