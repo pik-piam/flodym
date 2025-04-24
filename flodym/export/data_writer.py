@@ -171,6 +171,11 @@ def convert_array_to_iamc_df(
         output = generate_variable_name(**prm_dict)
         if isinstance(output, Iterable):
             output = "|".join(output)
+        if not isinstance(output, str):
+            raise ValueError(
+                f"generate_variable_name must return a string or an iterable of strings. "
+                f"Found type: {type(output)}."
+            )
         return output
 
     df["Variable"] = df.apply(row_func, axis=1)
