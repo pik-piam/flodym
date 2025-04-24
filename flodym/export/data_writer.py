@@ -229,3 +229,14 @@ def _inspect_varname_func_signature(
             "function (caution: summing removes the array name). "
         )
     return used_prms
+
+
+def write_iamc_dfs_to_excel(dfs: Iterable, file_name: str):
+    """Concatenate a list of IAMC DataFrames and write them to an Excel file.
+
+    Args:
+        dfs (Iterable): List of DataFrames to be written to the Excel file.
+        file_name (str): Name of the Excel file.
+    """
+    df = pd.concat(dfs, ignore_index=True)
+    df.to_excel(file_name, index=False)

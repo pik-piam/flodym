@@ -4,6 +4,7 @@ from .data_writer import (
     export_mfa_to_pickle as export_mfa_to_pickle,
     convert_to_dict as convert_to_dict,
     convert_array_to_iamc_df as convert_array_to_iamc_df,
+    write_iamc_dfs_to_excel as write_iamc_dfs_to_excel,
 )
 from .array_plotter import (
     ArrayPlotter as ArrayPlotter,
