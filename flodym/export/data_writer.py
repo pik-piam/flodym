@@ -112,15 +112,15 @@ def _convert_to_dict_by_func(mfa: MFASystem, convert_func: Callable) -> dict:
 
 
 def convert_array_to_iamc_df(
-        array: FlodymArray,
-        model_name: str,
-        unit: str,
-        generate_variable_name: Callable,
-        scenario: str = None,
-        scenario_letter: str = None,
-        time_letter: str = "t",
-        region_letter: str = "r",
-    ) -> pd.DataFrame:
+    array: FlodymArray,
+    model_name: str,
+    unit: str,
+    generate_variable_name: Callable,
+    scenario: str = None,
+    scenario_letter: str = None,
+    time_letter: str = "t",
+    region_letter: str = "r",
+) -> pd.DataFrame:
     """Convert a FlodymArray to a DataFrame in IAMC format.
     Args:
         array (FlodymArray): The FlodymArray to be converted.
@@ -146,21 +146,21 @@ def convert_array_to_iamc_df(
 
     df = array.to_df(index=False, dim_to_columns=array.dims[time_letter].name)
 
-    df['Model'] = model_name
-    df['Unit'] = unit
-    df.rename(columns={array.dims[region_letter].name: 'Region'}, inplace=True)
-    df['name'] = array.name
+    df["Model"] = model_name
+    df["Unit"] = unit
+    df.rename(columns={array.dims[region_letter].name: "Region"}, inplace=True)
+    df["name"] = array.name
 
     if (scenario is None) == (scenario_letter is None):
         raise ValueError("Either scenario or scenario_letter must be given, but not both.")
     elif scenario is not None:
-        df['Scenario'] = scenario
+        df["Scenario"] = scenario
     else:
         if scenario_letter not in array.dims.letters:
             raise ValueError(
                 f"Scenario dimension '{scenario_letter}' not found in FlodymArray dimensions."
             )
-        df.rename(columns={array.dims[scenario_letter].name: 'Scenario'}, inplace=True)
+        df.rename(columns={array.dims[scenario_letter].name: "Scenario"}, inplace=True)
 
     used_prms = _inspect_varname_func_signature(
         array, generate_variable_name, time_letter, region_letter
@@ -173,28 +173,32 @@ def convert_array_to_iamc_df(
             output = "|".join(output)
         return output
 
-    df['Variable'] = df.apply(row_func, axis=1)
+    df["Variable"] = df.apply(row_func, axis=1)
 
-    df = df[['Model', 'Scenario', 'Region', 'Variable', 'Unit'] + array.dims[time_letter].items]
+    df = df[["Model", "Scenario", "Region", "Variable", "Unit"] + array.dims[time_letter].items]
 
     return df
 
+
 def _inspect_varname_func_signature(
-        array: FlodymArray, generate_variable_name: Callable, time_letter: str, region_letter: str
-    ) -> list[str]:
+    array: FlodymArray, generate_variable_name: Callable, time_letter: str, region_letter: str
+) -> list[str]:
     """Inspect the signature of the generate_variable_name function, checking if the arguments
     match the requirements for exporting the FlodymArray to the IAMC format.
     """
     prms = inspect.signature(generate_variable_name).parameters.values()
-    non_keyword = [prm for prm in prms if prm.kind not in
-                    (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)]
+    non_keyword = [
+        prm
+        for prm in prms
+        if prm.kind not in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+    ]
     if len(non_keyword) > 0:
         raise ValueError(
             f"generate_variable_name must have keyword arguments only. Found: {non_keyword}"
         )
     all_prms = [prm.name for prm in prms]
     required_prms = [prm.name for prm in prms if prm.default == prm.empty]
-    available_columns = array.dims.names + ('name',)
+    available_columns = array.dims.names + ("name",)
     if any(prm not in available_columns for prm in required_prms):
         raise ValueError(
             "generate_variable_name has keyword arguments without default which are not "
