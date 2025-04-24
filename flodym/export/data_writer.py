@@ -116,10 +116,11 @@ def convert_array_to_iamc_df(
     model_name: str,
     unit: str,
     generate_variable_name: Callable,
+    time_letter: str = "t",
+    region: str = None,
+    region_letter: str = None,
     scenario: str = None,
     scenario_letter: str = None,
-    time_letter: str = "t",
-    region_letter: str = "r",
 ) -> pd.DataFrame:
     """Convert a FlodymArray to a DataFrame in IAMC format.
     Args:
@@ -131,25 +132,34 @@ def convert_array_to_iamc_df(
             The function can build the dimension items or the array name into the variable name.
             To do this, the function can have arguments with the same names as the dimensions,
             or an argument 'name' to access the name of the FlodymArray.
+        time_letter (str): Letter of the time dimension. Default is 't'.
+        region (str): Name of the region dimension. If not given, the region dimension letter must be given.
+        region_letter (str): Letter of the region dimension. If not given, the region name must be given.
         scenario (str, optional): Scenario name. If not given, the scenario dimension letter must be given.
         scenario_letter (str, optional): Letter of the scenario dimension. If not given, the scenario name must be given.
-        time_letter (str): Letter of the time dimension. Default is 't'.
-        region_letter (str): Letter of the region dimension. Default is 'r'.
     Returns:
         pd.DataFrame: DataFrame in IAMC format.
     """
 
     if time_letter not in array.dims.letters:
         raise ValueError(f"Time dimension '{time_letter}' not found in FlodymArray dimensions.")
-    if region_letter not in array.dims.letters:
-        raise ValueError(f"Region dimension '{region_letter}' not found in FlodymArray dimensions.")
 
     df = array.to_df(index=False, dim_to_columns=array.dims[time_letter].name)
 
     df["Model"] = model_name
     df["Unit"] = unit
-    df.rename(columns={array.dims[region_letter].name: "Region"}, inplace=True)
     df["name"] = array.name
+
+    if (region is None) == (region_letter is None):
+        raise ValueError("Either region or region_letter must be given, but not both.")
+    elif region is not None:
+        df["Region"] = region
+    else:
+        if region_letter not in array.dims.letters:
+            raise ValueError(
+                f"Region dimension '{region_letter}' not found in FlodymArray dimensions."
+            )
+        df.rename(columns={array.dims[region_letter].name: "Region"}, inplace=True)
 
     if (scenario is None) == (scenario_letter is None):
         raise ValueError("Either scenario or scenario_letter must be given, but not both.")
