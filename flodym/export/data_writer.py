@@ -121,6 +121,7 @@ def convert_array_to_iamc_df(
     region_letter: str = None,
     scenario: str = None,
     scenario_letter: str = None,
+    sparse: bool = False,
 ) -> pd.DataFrame:
     """Convert a FlodymArray to a DataFrame in IAMC format.
     Args:
@@ -137,6 +138,7 @@ def convert_array_to_iamc_df(
         region_letter (str): Letter of the region dimension. If not given, the region name must be given.
         scenario (str, optional): Scenario name. If not given, the scenario dimension letter must be given.
         scenario_letter (str, optional): Letter of the scenario dimension. If not given, the scenario name must be given.
+        sparse (bool): If True, only non-zero values are included in the DataFrame.
     Returns:
         pd.DataFrame: DataFrame in IAMC format.
     """
@@ -144,7 +146,7 @@ def convert_array_to_iamc_df(
     if time_letter not in array.dims.letters:
         raise ValueError(f"Time dimension '{time_letter}' not found in FlodymArray dimensions.")
 
-    df = array.to_df(index=False, dim_to_columns=array.dims[time_letter].name)
+    df = array.to_df(index=False, dim_to_columns=array.dims[time_letter].name, sparse=sparse)
 
     df["Model"] = model_name
     df["Unit"] = unit
