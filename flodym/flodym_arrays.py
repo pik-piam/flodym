@@ -350,6 +350,16 @@ class FlodymArray(PydanticBaseModel):
         )
         return FlodymArray(dims=dims_out, values=values_out)
 
+    def __pow__(self, power):
+        power = self._prepare_other(power)
+        if any(l not in self.dims.letters for l in power.dims.letters):
+            raise ValueError(
+                "Power must only contain dimensions also present in the base array."
+            )
+        power = power.cast_to(self.dims)
+        values_out = self.values ** power.values
+        return FlodymArray(dims=self.dims, values=values_out)
+
     def minimum(self, other):
         other = self._prepare_other(other)
         dims_out = self.dims.intersect_with(other.dims)
