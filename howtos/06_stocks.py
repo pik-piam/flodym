@@ -13,7 +13,7 @@
 # If you do not pass the three arrays to the constructor, they are created and initialized to zero.
 # If you do pass them, they must have the same `dims` as the stock object.
 #
-# You can attach stocks to a process (which is needed for example for `MFASystem.check_mass_baance`), but you don't have to.
+# You can attach stocks to a process (which is needed for example for `MFASystem.check_mass_balance`), but you don't have to.
 #
 # ## Simple, from constructor
 #
