@@ -550,6 +550,14 @@ class FlodymArray(PydanticBaseModel):
         return self / self.sum_over(sum_over_dims=dim_letters)
 
     def items_where(self, condition: Callable) -> np.array:
+        """Get the dimension item tuples of all entries where a condition is met.
+
+        Args:
+            condition (Callable): A function that takes the values of the FlodymArray and returns a boolean array.
+
+        Returns:
+            np.array: A 2d numpy array of strings, where each row corresponds to a dimension item tuple
+        """
         indices = np.argwhere(condition(self.values))
         # map dim items to indices
         items = [
