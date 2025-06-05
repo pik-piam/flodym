@@ -9,7 +9,7 @@ from collections import defaultdict
 import numpy as np
 import pandas as pd
 from pydantic import BaseModel as PydanticBaseModel, ConfigDict, model_validator
-from typing import Optional, Union
+from typing import Optional, Union, Callable
 from copy import copy
 
 from .processes import Process
@@ -216,7 +216,7 @@ class FlodymArray(PydanticBaseModel):
         values = np.tile(values, multiple)
         return values
 
-    def cast_to(self, target_dims: DimensionSet):
+    def cast_to(self, target_dims: DimensionSet) -> "FlodymArray":
         """Cast the FlodymArray to a new set of dimensions.
 
         Args:
@@ -332,7 +332,7 @@ class FlodymArray(PydanticBaseModel):
             values=self.sum_values_to(dims_out.letters) - other.sum_values_to(dims_out.letters),
         )
 
-    def __mul__(self, other):
+    def __mul__(self, other) -> "FlodymArray":
         other = self._prepare_other(other)
         dims_out = self.dims.union_with(other.dims)
         values_out = np.einsum(
@@ -423,14 +423,14 @@ class FlodymArray(PydanticBaseModel):
     def __rsub__(self, other):
         return -self + other
 
-    def __rmul__(self, other):
+    def __rmul__(self, other) -> "FlodymArray":
         return self * other
 
-    def __rtruediv__(self, other):
+    def __rtruediv__(self, other) -> "FlodymArray":
         inv_self = FlodymArray(dims=self.dims, values=1 / self.values)
         return inv_self * other
 
-    def __getitem__(self, keys):
+    def __getitem__(self, keys) -> "FlodymArray":
         """Defines what is returned when the object with square brackets stands on the right-hand side of an assignment,
         e.g. foo = foo = bar[{'e': 'C'}] Here, it is solely used for slicing, the the input tot the square brackets must
         be a dictionary defining the slice."""
@@ -548,6 +548,12 @@ class FlodymArray(PydanticBaseModel):
             return self / self.sum_values()
 
         return self / self.sum_over(sum_over_dims=dim_letters)
+
+    def items_where(self, condition: Callable) -> np.array:
+        indices = np.argwhere(condition(self.values))
+        # map dim items to indices
+        items = [np.array(self.dims[letter].items)[indices[:, i]] for i, letter in enumerate(self.dims.letters)]
+        return np.array(items).transpose()
 
 
 class SubArrayHandler:

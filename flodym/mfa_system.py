@@ -180,11 +180,15 @@ class MFASystem(PydanticBaseModel):
         dims = self.dims.get_subset(dim_letters)
         return FlodymArray(dims=dims, **kwargs)
 
-    def _get_mass_contributions(self):
-        """List all contributions to the mass balance of each process:
-        - all flows entering are positive
-        - all flows leaving are negative
-        - the stock change of the process
+    def _get_mass_balance(self) -> Dict[str, FlodymArray]:
+        """Calculate the mass balance for each process, by summing the contributions.
+        - all flows entering (positive)
+        - all flows leaving (negative)
+        - the stock change of the process (negative)
+
+        Returns:
+            A dictionary mapping process names to their mass balance contributions.
+            Each contribution is a :py:class:`flodym.FlodymArray` with dimensions common to all contributions.
         """
         contributions = {p: [] for p in self.processes.keys()}
 
@@ -197,106 +201,105 @@ class MFASystem(PydanticBaseModel):
         for stock in self.stocks.values():
             if stock.process is None:  # not connected to a process
                 continue
-            # add/subtract stock changes to processes
-            contributions[stock.process.name].append(-stock.inflow)
-            contributions[stock.process.name].append(stock.outflow)
-            # add/subtract stock changes in system boundary for mass balance of whole system
-            contributions["sysenv"].append(stock.inflow)
-            contributions["sysenv"].append(-stock.outflow)
+            stock_change = stock.inflow - stock.outflow
+            #    sum(flows_to) - sum(flows_from) = stock_change
+            # => sum(flows_to) - sum(flows_from) - stock_change = 0
+            # => stock_change is subtracted from the process
+            contributions[stock.process.name].append(-stock_change)
+            # system_mass_change = sum(stock_changes),
+            # where the sysenv process mass balance is the negative system_mass_change:
+            # system_mass_change = flows_into_system - flows_out_of_system
+            #                    = sum(flows_from_sysenv) - sum(flows_to_sysenv)
+            # So stock change is accounted to sysenv process with opposite sign as to other
+            # processes => added instead of subtracted.
+            contributions["sysenv"].append(stock_change)
 
-        return contributions
-
-    def _get_mass_balance(self, contributions: dict = {}):
-        """Calculate the mass balance for each process, by summing the contributions.
-        The sum returns a :py:class:`flodym.FlodymArray`,
-        with the dimensions common to all contributions.
-        """
-        if not contributions:
-            contributions = self._get_mass_contributions()
         return {p_name: sum(parts) for p_name, parts in contributions.items()}
 
-    def _get_mass_totals(self, contributions: dict = {}):
-        """Calculate the total mass of a process by summing the absolute values of all
-        the contributions.
+    @property
+    def _absolute_float_precision(self) -> float:
+        """The numpy float precision, multiplied by the maximum absolute flow or stock value.
         """
-        if not contributions:
-            contributions = self._get_mass_contributions()
-        return {
-            p_name: sum([abs(part) for part in parts]) for p_name, parts in contributions.items()
-        }
+        max_flow_value = max([np.max(np.abs(f.values)) for f in self.flows.values()])
+        max_stock_value = max([np.max(np.abs(s.stock.values)) for s in self.stocks.values()])
+        epsilon = np.finfo(next(iter(self.flows.values())).values.dtype).eps
+        return epsilon * max(max_flow_value, max_stock_value)
 
-    def _get_relative_mass_balance(self, epsilon=1e-9):
-        """Determines a relative mass balance for each process of the MFA system,
-        by dividing the mass balances by the mass totals.
-        """
-        mass_contributions = self._get_mass_contributions()
-        balances = self._get_mass_balance(contributions=mass_contributions)
-        totals = self._get_mass_totals(contributions=mass_contributions)
-
-        relative_balance = {
-            p_name: (balances[p_name] / (totals[p_name] + epsilon)).values
-            for p_name in self.processes
-        }
-        return relative_balance
-
-    def check_mass_balance(self, tolerance=1e-4):
+    def check_mass_balance(self, tolerance=None, raise_error: bool = True):
         """Compute mass balance, and check whether it is within a certain tolerance.
-        Throw an error if it isn't."""
+        Throw an error if it isn't.
+
+        Args:
+            tolerance (float, optional): The tolerance for the mass balance check.
+                If None, defaults to 100 times the numpy float precision,
+                multiplied by the maximum absolute flow or stock value.
+            raise_error (bool): If True, raises an error if the mass balance check fails.
+                Else, logs a warning and continues execution.
+        """
+
+        logging.info(f"Checking mass balance of {self.__class__.__name__} object...")
+
+        if tolerance is None:
+            tolerance = 100 * self._absolute_float_precision
 
         # returns array with dim [t, process, e]
-        relative_balance = self._get_relative_mass_balance()  # assume no error if total sum is 0
-        id_failed = {p_name: np.any(rb > tolerance) for p_name, rb in relative_balance.items()}
-        messages_failed = [
-            f"{p_name} ({np.max(relative_balance[p_name])*100:.2f}% error)"
-            for p_name in self.processes.keys()
-            if id_failed[p_name]
-        ]
-        if any(id_failed.values()):
-            raise RuntimeError(
-                f"Error, Mass Balance fails for processes {', '.join(messages_failed)}"
-            )
+        balances = self._get_mass_balance()
+        max_errors = {p_name: np.max(np.abs(b.values)) for p_name, b in balances.items()}
+        failed = {p_name: e for p_name, e in max_errors.items() if e > tolerance}
+        if failed:
+            info = ', '.join(f"{p_name} (max error: {e})" for p_name, e in failed.items())
+            message = "Mass balance check failed for the following processes: " + info
+            self._error_or_warning(message, raise_error)
         else:
-            logging.info(
-                f"Success - Mass balance of {self.__class__.__name__} object is consistent!"
-            )
-        return
+            logging.info(f"Success - Mass balance is consistent!")
 
-    def check_flows(self, exceptions: list[str] = [], no_error: bool = False):
+    def check_flows(self, exceptions: list[str] = [], raise_error: bool = False, verbose: bool = False):
         """Check if all flows are non-negative.
 
         Args:
             exceptions (list[str]): A list of strings representing flow names to be excluded from the check.
-            no_error (bool): If True, logs a warning instead of raising an error for negative flows.
+            raise_error (bool): If True, raises an error instead of logging warnings.
+            verbose (bool): If True, logs detailed information about negative flows.
 
         Raises:
-            ValueError: If a negative flow is found and `no_error` is False.
+            ValueError: If a negative flow is found and `raise_error` is True.
 
         Logs:
-            Warning: If a negative flow is found and `no_error` is True.
+            Warning: If a negative flow is found and `raise_error` is False.
             Info: If no negative flows are found.
         """
         logging.info("Checking flows for NaN and negative values...")
 
-        for flow in self.flows.values():
-            if any([exception in flow.name for exception in exceptions]):
-                continue
+        flows = [f for f in self.flows.values() if f.name not in exceptions]
+        flows = [f for f in flows if f.from_process.name not in exceptions and f.to_process.name not in exceptions]
 
-            # Check for NaN values
+        all_good = True
+        # Check for NaN values
+        for flow in flows:
             if np.any(np.isnan(flow.values)):
                 message = f"NaN values found in flow {flow.name}!"
-                if no_error:
-                    logging.warning("Warning - " + message)
-                    return
-                else:
-                    raise ValueError("Errpr - " + message)
+                self._error_or_warning(message, raise_error)
+                all_good = False
 
-            # Check for negative values
-            if np.any(flow.values < 0):
+        # Check for negative values
+        tolerance = 10 * self._absolute_float_precision
+        for flow in flows:
+            if np.any(flow.values < -tolerance):
                 message = f"Negative value in flow {flow.name}!"
-                if no_error:
-                    logging.warning("Warning - " + message)
-                    return
-                else:
-                    raise ValueError("Error - " + message)
+                if verbose:
+                    message += f"\n Items:"
+                    indices = flow.items_where(lambda x: x < -tolerance)
+                    for index in indices:
+                        message += "\n  " + ", ".join(index)
+                self._error_or_warning(message, raise_error)
+                all_good = False
 
-        logging.info(f"Success - No negative flows or NaN values in {self.__class__.__name__}")
+        if all_good:
+            logging.info(f"Success - No negative flows or NaN values in {self.__class__.__name__}")
+
+    @staticmethod
+    def _error_or_warning(message: str, raise_error: bool) -> bool:
+        if raise_error:
+            raise ValueError(message)
+        else:
+            logging.warning(message)
