@@ -218,8 +218,7 @@ class MFASystem(PydanticBaseModel):
 
     @property
     def _absolute_float_precision(self) -> float:
-        """The numpy float precision, multiplied by the maximum absolute flow or stock value.
-        """
+        """The numpy float precision, multiplied by the maximum absolute flow or stock value."""
         max_flow_value = max([np.max(np.abs(f.values)) for f in self.flows.values()])
         max_stock_value = max([np.max(np.abs(s.stock.values)) for s in self.stocks.values()])
         epsilon = np.finfo(next(iter(self.flows.values())).values.dtype).eps
@@ -247,13 +246,15 @@ class MFASystem(PydanticBaseModel):
         max_errors = {p_name: np.max(np.abs(b.values)) for p_name, b in balances.items()}
         failed = {p_name: e for p_name, e in max_errors.items() if e > tolerance}
         if failed:
-            info = ', '.join(f"{p_name} (max error: {e})" for p_name, e in failed.items())
+            info = ", ".join(f"{p_name} (max error: {e})" for p_name, e in failed.items())
             message = "Mass balance check failed for the following processes: " + info
             self._error_or_warning(message, raise_error)
         else:
             logging.info(f"Success - Mass balance is consistent!")
 
-    def check_flows(self, exceptions: list[str] = [], raise_error: bool = False, verbose: bool = False):
+    def check_flows(
+        self, exceptions: list[str] = [], raise_error: bool = False, verbose: bool = False
+    ):
         """Check if all flows are non-negative.
 
         Args:
@@ -271,7 +272,11 @@ class MFASystem(PydanticBaseModel):
         logging.info("Checking flows for NaN and negative values...")
 
         flows = [f for f in self.flows.values() if f.name not in exceptions]
-        flows = [f for f in flows if f.from_process.name not in exceptions and f.to_process.name not in exceptions]
+        flows = [
+            f
+            for f in flows
+            if f.from_process.name not in exceptions and f.to_process.name not in exceptions
+        ]
 
         all_good = True
         # Check for NaN values

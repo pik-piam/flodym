@@ -552,7 +552,10 @@ class FlodymArray(PydanticBaseModel):
     def items_where(self, condition: Callable) -> np.array:
         indices = np.argwhere(condition(self.values))
         # map dim items to indices
-        items = [np.array(self.dims[letter].items)[indices[:, i]] for i, letter in enumerate(self.dims.letters)]
+        items = [
+            np.array(self.dims[letter].items)[indices[:, i]]
+            for i, letter in enumerate(self.dims.letters)
+        ]
         return np.array(items).transpose()
 
 
