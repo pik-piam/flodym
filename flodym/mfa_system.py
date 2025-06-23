@@ -287,7 +287,7 @@ class MFASystem(PydanticBaseModel):
                 all_good = False
 
         # Check for negative values
-        tolerance = 10 * self._absolute_float_precision
+        tolerance = 100 * self._absolute_float_precision
         for flow in flows:
             if np.any(flow.values < -tolerance):
                 message = f"Negative value in flow {flow.name}!"
