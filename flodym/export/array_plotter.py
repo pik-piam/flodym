@@ -246,7 +246,7 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
 
 class PyplotArrayPlotter(ArrayPlotter):
 
-    fig: plt.Figure = None
+    fig: Optional[plt.Figure] = None
     """A previously created pyplot figure object, for adding lines to an existing figure.
     If None, a new figure is created.
     """
@@ -306,7 +306,7 @@ class PyplotArrayPlotter(ArrayPlotter):
 
 class PlotlyArrayPlotter(ArrayPlotter):
 
-    fig: go.Figure = None
+    fig: Optional[go.Figure] = None
     """A previously created plotly figure object, for adding lines to an existing figure.
     If None, a new figure is created.
     """
