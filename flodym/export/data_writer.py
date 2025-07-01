@@ -55,7 +55,7 @@ def export_mfa_stocks_to_csv(mfa: MFASystem, export_directory: str, with_in_and_
             path_out = os.path.join(
                 export_directory, f"{to_valid_file_name(stock_name)}_{attribute_name}.csv"
             )
-            df.to_csv(path_out, index=False)
+            df.to_csv(path_out)
     logging.info(f"Data saved in directory {export_directory}")
 
 

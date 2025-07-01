@@ -180,14 +180,10 @@ class DimensionSet(PydanticBaseModel):
         """
         return self._dict[key].len
 
-    def shape(self, keys: tuple = None):
-        """get the shape of the array that would be created with the dimensions in the set
-
-        Args:
-            keys (tuple, optional): the names or letters of the dimensions to get the shape of. If None, all dimensions are used. Defaults to None.
-        """
-        keys = keys if keys else self.letters
-        return tuple(self.size(key) for key in keys)
+    @property
+    def shape(self) -> tuple[int]:
+        """shape of the array that would be created with the dimensions in the set"""
+        return tuple(self.size(dim) for dim in self.letters)
 
     @property
     def ndim(self):

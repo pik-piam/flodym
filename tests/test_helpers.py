@@ -26,7 +26,7 @@ def test_flodym_array_stack(new_dim_length):
     additional_dim = Dimension(name="extra", letter="x", items=list(range(new_dim_length)))
     stacked = flodym_array_stack(flodym_arrays, additional_dim)
 
-    assert stacked.shape[:-1] == dimension_set.shape()
+    assert stacked.shape[:-1] == dimension_set.shape
     assert stacked.dims.dim_list[:-1] == dimension_set.dim_list
 
     for i in range(new_dim_length):
