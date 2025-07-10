@@ -8,8 +8,6 @@ authors:
     corresponding: true
     orcid: 0000-0001-8961-5340
     affiliation: 1
-  - name: Sally Dacie
-    affiliation: 1
   - name: Merlin Hosak
     affiliation: 1
   - name: Bennet Weiß
@@ -26,61 +24,39 @@ bibliography: paper.bib
 
 # Summary
 
-The forces on stars, galaxies, and dark matter under external gravitational
-fields lead to the dynamical evolution of structures in the universe. The orbits
-of these bodies are therefore key to understanding the formation, history, and
-future state of galaxies. The field of "galactic dynamics," which aims to model
-the gravitating components of galaxies to study their structure and evolution,
-is now well-established, commonly taught, and frequently used in astronomy.
-Aside from toy problems and demonstrations, the majority of problems require
-efficient numerical tools, many of which require the same base code (e.g., for
-performing numerical orbit integration).
+Dynamic material flow analysis (MFA) systematically tracks and quantifies the time-dependent mass flows of materials through a system (such as a country's society) throughout different stages of their life cycle, as well as their accumulation in stocks. Algorithmically, this boils down to simple arithmetic operations between multidimensional arrays. The dimensions of these arrays are taken from a common superset of dimensions present for the whole system, but the subset of each array can be different.
+
+flodym (Flexible Open Dynamic Material Systems Model) is a library of objects and functions needed to build dynamic MFA. It implements the `FlodymArray` class, which internally manages operations of one or several such multi-dimensional arrays. Flows, stocks, and parameters all inherit from this class. Stocks include lifetime models for dynamic stock modelling. For dimension management, each arrays are stored in `DimensionSet` object consisting of several `Dimension` objects. The whole MFA system is realized with an abstract parent class, that users can implement a subclass of. flodym includes functionality for efficient read-in and export via `pandas`, as well as visualization routines, and sanity checks for the system.
+
+flodym is based on on the concepts of ODYM [@odym]. It can be seen as a re-implementation with added functionality.
 
 # Statement of need
 
-Test citation ODYM [@odym].
+MFA is a widespread modelling tool in industrial ecology and related research fields, which makes general, accessible MFA tools vital for a large target group in academia and beyond. There are several existing MFA software packages. In the following, they are listed together with information on what flodym adds to this.
 
-`Gala` is an Astropy-affiliated Python package for galactic dynamics. Python
-enables wrapping low-level languages (e.g., C) for speed without losing
-flexibility or ease-of-use in the user-interface. The API for `Gala` was
-designed to provide a class-based and user-friendly interface to fast (C or
-Cython-optimized) implementations of common operations such as gravitational
-potential and force evaluation, orbit integration, dynamical transformations,
-and chaos indicators for nonlinear dynamics. `Gala` also relies heavily on and
-interfaces well with the implementations of physical units and astronomical
-coordinate systems in the `Astropy` package [@astropy] (`astropy.units` and
-`astropy.coordinates`).
-
-`Gala` was designed to be used by both astronomical researchers and by
-students in courses on gravitational dynamics or astronomy. It has already been
-used in a number of scientific publications [@Pearson:2017] and has also been
-used in graduate courses on Galactic dynamics to, e.g., provide interactive
-visualizations of textbook material [@Binney:2008]. The combination of speed,
-design, and support for Astropy functionality in `Gala` will enable exciting
-scientific explorations of forthcoming data releases from the *Gaia* mission
-[@gaia] by students and experts alike.
-
-# Mathematics
-
-Single dollars ($) are required for inline mathematics e.g. $f(x) = e^{\pi/x}$
-
-Double dollars make self-standing equations:
-
-$$\Theta(x) = \left\{\begin{array}{l}
-0\textrm{ if } x < 0\cr
-1\textrm{ else}
-\end{array}\right.$$
-
-You can also use plain \LaTeX for equations
-\begin{equation}\label{eq:fourier}
-\hat f(\omega) = \int_{-\infty}^{\infty} f(x) e^{i\omega x} dx
-\end{equation}
-and refer to \autoref{eq:fourier} from text.
-
+- ODYM [@odym] is by far the most prominent one. The structure is similar to flodym, however flodym adds the following aspects:
+  - Internal dimension management in operations of multi-dimensional arrays. For example, the ODYM code
+    ```
+    waste = np.einsum('trp,pw->trw', end_of_life_products, waste_share)
+    ```
+    reduces to
+    ```
+    waste[...] = end_of_life_products * waste_share
+    ```
+    This allows to write simpler code and reduces errors, as for example, dimensions of the same size could simply be switched in the `einsum` statement, which yields wrong results but goes unnoticed by the code. More importantly, it makes the code flexible (hence the name flodym) and extensible. Since the dimensions of each object are not explicitly given in the source code, but only once in the array definition, dimensions can be added, removed or re-ordered later without having to go through the whole source code. Similarly, slicing is eased in a similar way. If, for example, only the values of the `waste` array for the `C` (carbon) entry of the `element` dimension are needed, the ODYM syntax `waste.Values[:,0,:,:]` simplifies to `waste['C']`. Again, this allows for adding or removing dimensions later, or changing the position of the `C` entry in the `element` dimension.
+  - The treatment of material stocks is improved. Stocks are made objects with dedicated inflow, outflow and stock values, as well as a lifetime model. These objects are  multi-dimensional and integrated into the mfa system class, such that the interaction with them is seamless. This is opposed to one-dimensional (apart from time) and separate dynamic stock model objects in ODYM, which where cumbersome to attach to an MFA, and could be slow due to looping over one-dimensional objects.
+  - Data read-in and initialization as well as export are more flexible and general, through the use of `pandas`. Users can either use pre-built read-in functions, or write their own, and generate objects from data frames. On data read-in, flodym also performs checks on the data, detecting errors early on. Data read-in is performance-optimized especially for sparse arrays, since the full array size is only used after converting the input pandas data frame to a numpy array.
+  - General visualization routines are implemented for pyplot and plotly visualization.
+  - There are various functional extensions. For example, stock models can handle non-evenly-spaced time step vectors or TODO.
+  - The whole code follows PEP8 formatting and principles of software development (such as github actions for tests, documentation building and formatting) and clean code, easing future collaboration and extension.
+  - The code is extensively documented, including docstings, type hints, an API reference, howtos and examples.
+- TODO
 
 # Acknowledgements
 
-We acknowledge contributions from Brigitta Sipocz, Syrtis Major, and Semyeong
-Oh, and support from Kathryn Johnston during the genesis of this project.
+Thank you to Stefan Pauliuk and other authors of ODYM [@odym], which forms the conceptual basis for flodym.
+
+The development of flodym was conducted within the TRANSIENCE project, grant number 101137606, funded by the European Commission within the Horizon Europe Research and Innovation Programme.
+
 
 # References
