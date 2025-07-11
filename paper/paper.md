@@ -35,12 +35,14 @@ flodym is based on on the concepts of ODYM [@odym]. It can be seen as a re-imple
 
 MFA is a widespread modelling tool in industrial ecology and related research fields, which makes general, accessible MFA tools vital for a large target group in academia and beyond. There are several existing open source MFA software packages.
 
-ODYM [@odym] is, to the knowledge of the authors, the only general and flexible open-source MFA library, meaning that it is the only package allowing users to write their own MFA with the full flexibility of an own code. ODYM is therefore used widely in the industrial ecology community and beyond. The success of ODYM is owed to it building on an abstraction of the principles and structures of MFAs, such as:
+ODYM [@odym] is, to the knowledge of the authors, the only general and flexible open-source MFA library, meaning that it is the only package allowing users to write their own MFA with the full flexibility of an own code. ODYM is therefore used widely in the industrial ecology community and beyond. One of ODYM's strengths is that it builds on an abstraction of the principles and structures of MFAs, such as:
+
 - formalizing a system definition and establishing mass conservation checks
-- formalizing dynamic stock models, such as done in [@Lauinger2021]
+- formalizing dynamic stock models, such as done in [@Lauinger21]
 - translating the abstract concepts of processes, stocks, flows, and parameters into a general library, without prescribing the superset of dimensions that each MFA system is built from.
 
 Since flodym is based on the concepts of ODYM, its structure and scope are similar to ODYM. However, flodym aims to add value in the following aspects, setting it apart from the original:
+
 - flodym features complete internal dimension management in operations of multi-dimensional arrays. For example, the ODYM code
   ```
   waste = np.einsum('trp,pw->trw', end_of_life_products, waste_share)
