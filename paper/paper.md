@@ -15,6 +15,9 @@ authors:
   - name: Falko Ueckerdt
     affiliation: 1
     orcid: 0000-0001-5585-030X
+  - name: Gunnar Luderer
+    affiliation: 1
+    orcid: 0000-0002-9057-6155
 affiliations:
  - name: Potsdam Institute for Climate Impact Research, Energy Transition Lab, Potsdam, Germany
    index: 1
