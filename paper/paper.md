@@ -69,11 +69,18 @@ Since flodym is based on the concepts of ODYM, its structure and scope are simil
 
 Other existing open MFA packages such as OMAT [@OMAT] or STAN [@STAN] are different in scope: They are no libraries, but rather comprehensive tools, which eases their use, but limits the flexibility for using them in non-standard ways like flodym allows. The same applies to the pymfa [@pymfa2.1] and PMFA [@PMFA] packages, which are moreover focused on probabilistic MFA as an extension or special case of MFA.
 
+# Applications
+
+So far, flodym is used in-house for the REMIND-MFA [@remind-mfa] and the external TRANSIENCE EU MFA [@eu-mfa].
+Further external applications are currently in early development stage.
+
 # Acknowledgements
 
 Thank you to Stefan Pauliuk and other contributors to ODYM [@odym], which forms the conceptual basis for flodym.
 
 The development of flodym was conducted within the TRANSIENCE project, grant number 101137606, funded by the European Commission within the Horizon Europe Research and Innovation Programme.
+
+
 
 
 # References
