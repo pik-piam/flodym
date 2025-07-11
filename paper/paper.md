@@ -29,7 +29,7 @@ Dynamic material flow analysis (MFA) is one of the core methods in the field of 
 flodym (Flexible Open Dynamic Material Systems Model) is a library of objects and functions needed to build dynamic MFA.
 It implements the `FlodymArray` class, which internally manages operations of one or several such multi-dimensional arrays. Objects representing flows, stocks, and parameters all inherit from this class. Stocks include lifetime models for dynamic stock modelling, i.e. for calculating the relation of material flows entering a stock and the mass and age structure of that stock over time. The whole MFA system is realized with an abstract parent class, that users can implement a subclass of. flodym includes functionality for efficient read-in and export via pandas (@pandas1, @pandas2), as well as visualization routines, and sanity checks for the system.
 
-flodym is based on on the concepts of ODYM [@odym]. It can be seen as a re-implementation with added functionality.
+flodym is based on on the concepts of the Open Dynamic Material Systems Model (ODYM) [@odym]. It can be seen as a re-implementation with added functionality.
 
 # Statement of need
 
@@ -61,11 +61,11 @@ Since flodym is based on the concepts of ODYM, its structure and scope are simil
   ```
   Again, this allows for adding or removing dimensions later, or changing the position of the `C` entry in the `element` dimension.
   Apart from these functionalities, `FlodymArrays` feature a large range of built-in methods for dimension manipulation, such as `sum_over`, `cast_to` or `get_shares_over`
-- Data read-in and initialization as well as export are more flexible and general, through the use of pandas. Users can either use pre-built read-in functions, or write their own, and generate objects from data frames. On data read-in, flodym also performs checks on the data, detecting errors early on. Data read-in is performance-optimized especially for sparse arrays, since the full array size is only used after converting the input pandas data frame to a numpy array. Redundancy is strictly avoided in system definition, and input data is type-checked through the use of pydantic [@pydantic].
+- Data read-in and initialization as well as export are more flexible and general, through the use of pandas. Users can either use pre-built read-in functions, or write their own, and generate objects from data frames. On data read-in, flodym also performs checks on the data, detecting errors early on. Data read-in is performance-optimized especially for sparse arrays, since the full array size is only used after converting the input pandas data frame to a numpy array. Data is type-checked through the use of pydantic [@pydantic], adding robustness to the code.
 - General visualization routines are implemented for pyplot [@pyplot] and plotly [@plotly] visualization.
 - The treatment of material stocks is simplified and integrated with the rest of the MFA. This is realized through `Stock` objects containing `FlodymArray` objects for inflow, outflow and stock arrays, as well as a lifetime model and compute functions. Both stock and lifetime model are multi-dimensional and part of the mfa system class, such that the interaction with them is seamless.
 - There are various smaller functional extensions. For example, stock models can handle non-evenly-spaced time step vectors, or sub-year lifetimes while still returning the correct stock-to-flow ratio.
-- The whole code follows PEP8 formatting and incorporates principles of software development (such as github actions for tests, documentation building and formatting) and clean code, easing future collaboration and extension. The code is extensively documented, including docstings, type hints, an API reference, howtos and examples.
+- The whole code incorporates principles of software development (such as github actions for tests, documentation building and formatting) and clean code, easing future collaboration and extension. The code is extensively documented, including docstings, type hints, an API reference, howtos and examples.
 
 Other existing open MFA packages such as OMAT [@OMAT] or STAN [@STAN] are different in scope: They are no libraries, but rather comprehensive tools, which eases their use, but limits the flexibility for using them in non-standard ways like flodym allows. The same applies to the pymfa [@pymfa2.1] and PMFA [@PMFA] packages, which are moreover focused on probabilistic MFA as an extension or special case of MFA.
 
