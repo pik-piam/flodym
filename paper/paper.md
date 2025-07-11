@@ -18,7 +18,7 @@ authors:
 affiliations:
  - name: Potsdam Institute for Climate Impact Research, Energy Transition Lab, Potsdam, Germany
    index: 1
-date: 13 May 2025
+date: 14 July 2025
 bibliography: paper.bib
 ---
 
@@ -27,7 +27,7 @@ bibliography: paper.bib
 Dynamic material flow analysis (MFA) is one of the core methods in the field of industrial ecology. It systematically tracks and quantifies the time-dependent mass flows of materials through a system (such as a country's society) throughout different stages of their life cycle, as well as their accumulation in stocks, such as in the in-use stock representing all mass of a material contained in goods that are in use at a given point in time. Such analyses can be used for resource management, for assessing environmental impacts, and investigating circular economy measures. This assists in policy advice, in urban and regional planning, and in sustainable product design.
 
 flodym (Flexible Open Dynamic Material Systems Model) is a library of objects and functions needed to build dynamic MFA.
-It implements the `FlodymArray` class, which internally manages operations of one or several such multi-dimensional arrays. Objects representing flows, stocks, and parameters all inherit from this class. Stocks include lifetime models for dynamic stock modelling, i.e. for calculating the relation of material flows entering a stock and the mass and age structure of that stock over time. The whole MFA system is realized with an abstract parent class, that users can implement a subclass of. flodym includes functionality for efficient read-in and export via pandas (@pandas1, @pandas2), as well as visualization routines, and sanity checks for the system.
+It implements the `FlodymArray` class, which internally manages operations of one or several such multi-dimensional arrays. Objects representing flows, stocks, and parameters all inherit from this class. Stocks include lifetime models for dynamic stock modelling, i.e. for calculating the relation of material flows entering a stock and the mass and age structure of that stock over time. The whole MFA system is realized with an abstract parent class including sanity checks for the system, that users can implement a subclass of. flodym includes functionality for efficient read-in and export via pandas (@pandas1, @pandas2), as well as visualization routines.
 
 flodym is based on on the concepts of the Open Dynamic Material Systems Model (ODYM) [@odym]. It can be seen as a re-implementation with added functionality.
 
@@ -79,8 +79,6 @@ Further external applications are currently in early development stage.
 Thank you to Stefan Pauliuk and other contributors to ODYM [@odym], which forms the conceptual basis for flodym.
 
 The development of flodym was conducted within the TRANSIENCE project, grant number 101137606, funded by the European Commission within the Horizon Europe Research and Innovation Programme.
-
-
 
 
 # References
