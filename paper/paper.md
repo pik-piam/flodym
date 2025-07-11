@@ -39,11 +39,11 @@ ODYM [@odym] is, to the knowledge of the authors, the only general and flexible 
 
 - formalizing a system definition and establishing mass conservation checks
 - formalizing dynamic stock models, such as done in [@Lauinger21]
-- translating the abstract concepts of processes, stocks, flows, and parameters into a general library, without prescribing the superset of dimensions that each MFA system is built from.
+- translating the abstract concepts of processes, stocks, flows, and parameters into a general library, without prescribing any details anout the MFA structure, such as its dimensions.
 
 Since flodym is based on the concepts of ODYM, its structure and scope are similar to ODYM. However, flodym aims to add value in the following aspects, setting it apart from the original:
 
-- flodym features complete internal dimension management in operations of multi-dimensional arrays. For example, the ODYM code
+- flodym features complete internal dimension management in operations of multi-dimensional arrays. For example, the ODYM-based code
   ```
   waste = np.einsum('trp,pw->trw', end_of_life_products, waste_share)
   ```
@@ -51,7 +51,8 @@ Since flodym is based on the concepts of ODYM, its structure and scope are simil
   ```
   waste[...] = end_of_life_products * waste_share
   ```
-  This allows to write simpler code and reduces errors, as for example, dimensions of the same size could simply be switched in the `einsum` statement, which yields wrong results but goes unnoticed by the code. More importantly, it makes the code flexible (hence the name flodym) and extensible. Since the dimensions of each object are not explicitly given in the source code, but only once in the array definition, dimensions can be added, removed or re-ordered later without having to go through the whole source code. Similarly, slicing is eased in a similar way. If, for example, only the values of the `waste` array for the `C` (carbon) entry of the `element` dimension are needed, the ODYM syntax
+  using `FlodymArray` objects. This allows to write simpler code and reduces errors. For example, dimensions of the same size could simply be switched in the `einsum` statement, which yields wrong results but goes unnoticed by the code. More importantly, it makes the code flexible (hence the name flodym) and extensible. Since the dimensions of each object are not explicitly given in the source code, but only once in the array definition, dimensions can be added, removed or re-ordered later without having to go through the whole source code.
+- Slicing is eased in a similar way. If, for example, only the values of the `waste` array for the `C` (carbon) entry of the `element` dimension are needed, the ODYM syntax
   ```
   waste.Values[:,0,:,:]
   ```
@@ -59,8 +60,7 @@ Since flodym is based on the concepts of ODYM, its structure and scope are simil
   ```
   waste['C']
   ```
-  Again, this allows for adding or removing dimensions later, or changing the position of the `C` entry in the `element` dimension.
-  Apart from these functionalities, `FlodymArrays` feature a large range of built-in methods for dimension manipulation, such as `sum_over`, `cast_to` or `get_shares_over`
+  Again, this allows for adding or removing other dimensions later, or changing the position of the `C` entry in the `element` dimension, without having to change the code. Apart from these functionalities, `FlodymArrays` feature a large range of built-in methods for dimension manipulation, such as `sum_over`, `cast_to` or `get_shares_over`
 - Data read-in and initialization as well as export are more flexible and general, through the use of pandas. Users can either use pre-built read-in functions, or write their own, and generate objects from data frames. On data read-in, flodym also performs checks on the data, detecting errors early on. Data read-in is performance-optimized especially for sparse arrays, since the full array size is only used after converting the input pandas data frame to a numpy array. Data is type-checked through the use of pydantic [@pydantic], adding robustness to the code.
 - General visualization routines are implemented for pyplot [@pyplot] and plotly [@plotly] visualization.
 - The treatment of material stocks is simplified and integrated with the rest of the MFA. This is realized through `Stock` objects containing `FlodymArray` objects for inflow, outflow and stock arrays, as well as a lifetime model and compute functions. Both stock and lifetime model are multi-dimensional and part of the mfa system class, such that the interaction with them is seamless.
