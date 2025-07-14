@@ -27,24 +27,24 @@ bibliography: paper.bib
 
 # Summary
 
-Dynamic material flow analysis (MFA) is one of the core methods in the field of industrial ecology. It systematically tracks and quantifies the time-dependent mass flows of materials through a system (such as a country's society) throughout different stages of their life cycle, as well as their accumulation in stocks, such as in the in-use stock representing all mass of a material contained in goods that are in use at a given point in time. Such analyses can be used for resource management, for assessing environmental impacts, and investigating circular economy measures. This assists in policy advice, in urban and regional planning, and in sustainable product design.
+Dynamic material flow analysis (MFA) is one of the core methods in the field of industrial ecology. It systematically tracks the time-dependent mass flows of materials through a system (such as a country's society) throughout different stages of their life cycle, as well as their accumulation in stocks, such as in the in-use stock representing all materials contained in products, assets or infrastructure that are in use at a given point in time. Such analyses are used for resource management, for assessing environmental impacts, and investigating circular economy measures - assisting in policy advice, urban and regional planning, or sustainable product design.
 
 flodym (Flexible Open Dynamic Material Systems Model) is a library of objects and functions needed to build dynamic MFA.
 It implements the `FlodymArray` class, which internally manages operations of one or several such multi-dimensional arrays. Objects representing flows, stocks, and parameters all inherit from this class. Stocks include lifetime models for dynamic stock modelling, i.e. for calculating the relation of material flows entering a stock and the mass and age structure of that stock over time. The whole MFA system is realized with an abstract parent class including sanity checks for the system, that users can implement a subclass of. flodym includes functionality for efficient read-in and export via pandas (@pandas1, @pandas2), as well as visualization routines.
 
-flodym is based on on the concepts of the Open Dynamic Material Systems Model (ODYM) [@odym]. It can be seen as a re-implementation with added functionality.
+flodym is based on the concepts of the Open Dynamic Material Systems Model (ODYM) [@odym]. It can be seen as a re-implementation with added functionality.
 
 # Statement of need
 
-MFA is a widespread modelling tool in industrial ecology and related research fields, which makes general, accessible MFA tools vital for a large target group in academia and beyond. There are several existing open source MFA software packages.
+MFA is a widespread method in industrial ecology and related fields, which makes general and accessible MFA tools vital for a large audience in academia and beyond.
 
-ODYM [@odym] is, to the knowledge of the authors, the only general and flexible open-source MFA library, meaning that it is the only package allowing users to write their own MFA with the full flexibility of an own code. ODYM is therefore used widely in the industrial ecology community and beyond. One of ODYM's strengths is that it builds on an abstraction of the principles and structures of MFAs, such as:
+While there are several existing open source MFA software packages, ODYM [@odym] is, to the knowledge of the authors, the only general and flexible open-source MFA library, allowing users to write their own MFA with the full flexibility of an own code. ODYM is therefore widely used in the industrial ecology community and beyond. One of ODYM's strengths is that it builds on an abstraction of the principles and structures of MFAs, such as:
 
 - formalizing a system definition and establishing mass conservation checks
 - formalizing dynamic stock models, such as done in [@Lauinger21]
 - translating the abstract concepts of processes, stocks, flows, and parameters into a general library, without prescribing any details anout the MFA structure, such as its dimensions.
 
-Since flodym is based on the concepts of ODYM, its structure and scope are similar to ODYM. However, flodym aims to add value in the following aspects, setting it apart from the original:
+flodym is based on the concepts of ODYM such that its structure, scope and strengths are similar to ODYM. However, flodym aims to add value in the following aspects, setting it apart from the original:
 
 - flodym features complete internal dimension management in operations of multi-dimensional arrays. For example, the ODYM-based code
   ```
