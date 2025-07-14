@@ -39,7 +39,7 @@ It implements the `FlodymArray` class, which internally manages operations of on
 
 MFA is a widespread method in industrial ecology and related fields, which makes general and accessible MFA tools vital for a large audience in academia and beyond.
 
-While there are several existing open source MFA software packages, ODYM [@odym] is, to the knowledge of the authors, the only general and adaptable open-source MFA library, allowing users to write their own MFA with the full flexibility of custom code. ODYM is therefore widely used in the industrial ecology community and beyond. One of ODYM's strengths is that it builds on an abstraction of the principles and structures of MFAs, such as:
+While there are several existing open source MFA software packages, ODYM [@odym] is, to the knowledge of the authors, the only general and adaptable open-source MFA library, allowing users to write their own MFA with the full range of options that custom code offers. ODYM is therefore widely used in the industrial ecology community and beyond. One of ODYM's strengths is that it builds on an abstraction of the principles and structures of MFAs, such as:
 
 - formalizing a system definition and establishing mass conservation checks
 - formalizing dynamic stock models, such as described later in [@Lauinger21]
