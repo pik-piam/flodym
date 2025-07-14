@@ -11,6 +11,7 @@ authors:
   - name: Merlin Hosak
     affiliation: 1
   - name: Bennet Weiß
+    orcid: 0009-0009-9859-9683
     affiliation: 1
   - name: Falko Ueckerdt
     affiliation: 1
@@ -24,12 +25,12 @@ bibliography: paper.bib
 
 # Summary
 
-Dynamic material flow analysis (MFA) is one of the core methods in the field of industrial ecology. It systematically tracks the time-dependent mass flows of materials through a system (such as a country's society) throughout different stages of their life cycle, and accounts for their accumulation in stocks, such as materials contained in products, assets or infrastructure in use at a given point in time. Such analyses are used for resource management, for assessing environmental impacts, and investigating circular economy measures - assisting in policy advice, urban and regional planning, or sustainable product design.
+Dynamic material flow analysis (MFA) is one of the core methods in the field of industrial ecology. It systematically tracks the time-dependent mass flows of materials within a system (such as a country's society) throughout different stages of their life cycle, and accounts for their accumulation in stocks, such as materials contained in products, assets or infrastructure in use at a given point in time. Such analyses are used for resource management, for assessing environmental impacts, and investigating circular economy measures - assisting in policy advice, urban and regional planning, or sustainable product design.
 
 flodym (Flexible Open Dynamic Material Systems Model) is a library of objects and functions needed to build dynamic MFA.
 It implements the `FlodymArray` class, which internally manages operations of one or several such multi-dimensional arrays. Objects representing flows, stocks, and parameters all inherit from this class. Stocks include lifetime models for dynamic stock modelling, i.e. for calculating the relation of material flows entering a stock and the mass and age structure of that stock over time. The whole MFA system is realized with an abstract parent class including sanity checks for the system, that users can implement a subclass of. flodym includes functionality for efficient read-in and export via pandas (@pandas1, @pandas2), as well as visualization routines.
 
-flodym is based on the concepts of the Open Dynamic Material Systems Model (ODYM) [@odym]. It can be seen as a re-implementation with vastly expanded functionality and the aim of improved structuring.
+flodym is based on the concepts of the Open Dynamic Material Systems Model (ODYM) [@odym]. It can be seen as a re-implementation with vastly expanded functionality and the aim of improved structuring. As a result, flodym enables users to effortlessly deploy a customized, flexible MFA - built for maintainability and future expansion.
 
 # Statement of need
 
@@ -62,9 +63,9 @@ flodym is based on the concepts of ODYM such that its structure, scope and stren
   ```
   Again, this allows for adding or removing other dimensions later, or changing the position of the `C` entry in the `element` dimension, without having to change the code. Apart from these functionalities, which are built on Python's magic methods, `FlodymArrays` feature a large range of built-in conventional methods for dimension manipulation, such as `sum_over`, `cast_to` or `get_shares_over`.
 - Data read-in and initialization in ODYM prescribes a strict format based on Excel files. There is no data export functionality. In flodym, data read-in and export are based on pandas, opening them to a wide range of formats. Users can either use pre-built flodym read-in functions, or write their own, and generate objects from data frames. On data read-in, flodym performs checks on the data, detecting errors early on. Data read-in is performance-optimized especially for sparse arrays, since the full array size is only used after converting the input pandas data frame to a numpy array. Data is type-checked through the use of pydantic [@pydantic], adding robustness to the code.
-- ODYM contains the possibility of data export to a non-Python Sankey plotting tool, but no other visualization tools. General visualization routines are implemented for pyplot [@pyplot] and plotly [@plotly] visualization, including plotting of multi-dimensional arrays, and Sankey plots of the MFA system.
+- ODYM contains the possibility of data export to a non-Python Sankey plotting tool, but no other visualization tools. In flodym, general visualization routines are implemented for pyplot [@pyplot] and plotly [@plotly] visualization, including plotting of multi-dimensional arrays, and Sankey plots of the MFA system.
 - In ODYM, the class for dynamic stock models does not allow for dimensions apart from time. It also does not contain integrated methods for all required computation steps. Moreover, the stock objects which are used in the MFA system do not contain inflow, outflow, and stock, but only one of the three, distinguished by a `Type` attribute. To transfer the results of the dynamic stock model into the MFA, one has to loop over all non-time dimensions, run several sub-methods of the scalar dynamic stock model, and transfer the results into the MFA arrays. This is somewhat cumbersome and a performance bottleneck. In flodym, the treatment of material stocks is simplified and integrated with the rest of the MFA. This is realized through `Stock` objects containing `FlodymArray` objects for inflow, outflow and stock arrays, as well as a lifetime model and compute functions. Both stock and lifetime model are multi-dimensional and part of the mfa system class, such that the interaction with them is seamless and the performance gains of numpy array operations are leveraged.
-- flodym features various smaller functional extensions compared to ODYM. For example, stock models can handle non-evenly-spaced time step vectors, or sub-year lifetimes while still returning the correct stock-to-flow ratio.
+- flodym features various smaller functional extensions compared to ODYM. For example, stock models can handle non-evenly-spaced time step vectors, or sub-year lifetimes.
 - ODYM only features a partial API reference, and the API does not always follow PEP 8 naming conventions.
 The whole flodym code incorporates principles of software development (such as PEP 8 formatting, or github actions for tests and documentation building) and clean code, easing future collaboration and extension. The code is extensively documented, including docstings, type hints, an API reference, howtos and examples.
 
@@ -80,6 +81,5 @@ Further external applications are currently in early development stage.
 Thank you to Stefan Pauliuk and other contributors to ODYM [@odym], which forms the conceptual basis for flodym.
 
 The development of flodym was conducted within the TRANSIENCE project, grant number 101137606, funded by the European Commission within the Horizon Europe Research and Innovation Programme.
-
 
 # References
