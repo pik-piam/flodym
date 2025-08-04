@@ -1,5 +1,10 @@
 # flodym
 
+![PyPI - Version](https://img.shields.io/pypi/v/flodym)
+[![flodym.tests](https://github.com/pik-piam/flodym/actions/workflows/main_actions.yml/badge.svg)](https://github.com/pik-piam/flodym/actions/workflows/main_actions.yml)
+![docs](https://app.readthedocs.org/projects/flodym/badge/?version=latest)
+[![status](https://joss.theoj.org/papers/92b6faa2d82b8694f4ad5d394053ef32/status.svg)](https://joss.theoj.org/papers/92b6faa2d82b8694f4ad5d394053ef32)
+
 The flodym (Flexibe Open Dynamic Material Systems Model) library provides key functionality for building material flow analysis models, including
 - the class `MFASystem` acting as a template (parent class) for users to create their own material flow models
 - the class `FlodymArray` handling mathematical operations between multi-dimensional arrays
