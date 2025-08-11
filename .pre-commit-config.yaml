@@ -12,7 +12,7 @@ repos:
       - id: black
         language_version: python3.12
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: check-yaml
       - id: check-case-conflict
