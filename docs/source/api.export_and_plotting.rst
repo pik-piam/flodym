@@ -17,3 +17,7 @@ Export and plotting classes and functions
 .. autofunction:: flodym.export.export_mfa_to_pickle
 
 .. autofunction:: flodym.export.convert_to_dict
+
+.. autofunction:: flodym.export.convert_array_to_iamc_df
+
+.. autofunction:: flodym.export.write_iamc_dfs_to_excel
