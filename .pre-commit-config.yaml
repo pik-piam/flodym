@@ -1,18 +1,18 @@
 repos:
   - repo: https://github.com/mwouts/jupytext
-    rev: v1.17.2
+    rev: v1.17.3
     hooks:
     - id: jupytext
       args: [--sync, --pipe, black]
       additional_dependencies:
         - black==24.10.0 # should match hook
-  - repo: https://github.com/psf/black
-    rev: 25.1.0
+  - repo: https://github.com/psf/black-pre-commit-mirror
+    rev: 25.9.0
     hooks:
       - id: black
         language_version: python3.12
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: check-yaml
       - id: check-case-conflict
