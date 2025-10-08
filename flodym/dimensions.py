@@ -97,6 +97,16 @@ class Dimension(PydanticBaseModel):
         """Check if the items of this dimension are a superset of the items of another dimension."""
         return set(self.items).issuperset(other.items)
 
+    def __str__(self):
+        base = f"Dimension '{self.name}' ('{self.letter}'); "
+        item_base = f"{self.len} items"
+        type_info = f" (type {self.dtype})" if self.dtype is not None else ""
+        if self.len <= 3:
+            list_str = f": {str(self.items)}"
+        else:
+            list_str = f": ['{self.items[0]}', ..., '{self.items[-1]}']"
+        return base + item_base + type_info + list_str
+
 
 class DimensionSet(PydanticBaseModel):
     """A set of Dimension objects which MFA arrays are defined over.
@@ -307,3 +317,10 @@ class DimensionSet(PydanticBaseModel):
     def index(self, key):
         """Return the index of a dimension in the set."""
         return [d.letter for d in self.dim_list].index(key)
+
+    def __str__(self):
+        base = f"DimensionSet ({','.join(self.letters)}) with shape {self.shape}:"
+        dim_strs = [
+            f"\n  '{dim.letter}': '{dim.name}' with length {dim.len}" for dim in self.dim_list
+        ]
+        return base + "".join(dim_strs)

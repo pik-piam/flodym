@@ -566,6 +566,12 @@ class FlodymArray(PydanticBaseModel):
         ]
         return np.array(items).transpose()
 
+    def __str__(self):
+        base = f"{self.__class__.__name__} '{self.name}'"
+        dims = f" with dims ({','.join(self.dims.letters)}) and shape {self.shape};"
+        values = f"\nValues:\n{str(self.values)}"
+        return base + dims + values
+
 
 class SubArrayHandler:
     """This class handles subsets of the 'values' numpy array of a FlodymArray object, created by slicing along one or
