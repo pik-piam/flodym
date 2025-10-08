@@ -131,6 +131,11 @@ class Stock(PydanticBaseModel):
         """
         return np.einsum("t...,t->t...", whole_period_flow, 1. / self._t.interval_lengths)
 
+    def __str__(self):
+        base = f"{self.__class__.__name__} '{self.name}'"
+        dims = f" with dims ({','.join(self.dims.letters)}) and shape {self.shape};"
+        return base + dims
+
 
 
 class SimpleFlowDrivenStock(Stock):
@@ -211,6 +216,11 @@ class DynamicStockModel(Stock):
             "c...,tc...->tc...", self.inflow.values, self.lifetime_model.pdf
         )
         self.outflow.values[...] = self._outflow_by_cohort.sum(axis=1)
+
+    def __str__(self):
+        base = super().__str__()
+        lifetime_model = self.lifetime_model.__class__.__name__
+        return base + "\n  Lifetime model: " + lifetime_model
 
 
 class InflowDrivenDSM(DynamicStockModel):
