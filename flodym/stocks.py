@@ -122,20 +122,17 @@ class Stock(PydanticBaseModel):
         return self.inflow.values - self.outflow.values - dsdt
 
     def _to_whole_period(self, annual_flow: np.ndarray) -> np.ndarray:
-        """multiply annual flow by interval length to get flow over whole period.
-        """
+        """multiply annual flow by interval length to get flow over whole period."""
         return np.einsum("t...,t->t...", annual_flow, self._t.interval_lengths)
 
     def _to_annual(self, whole_period_flow: np.ndarray) -> np.ndarray:
-        """divide flow over whole period by interval length to get annual flow
-        """
-        return np.einsum("t...,t->t...", whole_period_flow, 1. / self._t.interval_lengths)
+        """divide flow over whole period by interval length to get annual flow"""
+        return np.einsum("t...,t->t...", whole_period_flow, 1.0 / self._t.interval_lengths)
 
     def __str__(self):
         base = f"{self.__class__.__name__} '{self.name}'"
         dims = f" with dims ({','.join(self.dims.letters)}) and shape {self.shape};"
         return base + dims
-
 
 
 class SimpleFlowDrivenStock(Stock):
@@ -292,7 +289,9 @@ class StockDrivenDSM(DynamicStockModel):
         else:
             raise ValueError(f"Unknown engine: {self.solver}")
 
-        self._stock_by_cohort = np.einsum("c...,tc...->tc...", self.inflow.values, self.lifetime_model.sf)
+        self._stock_by_cohort = np.einsum(
+            "c...,tc...->tc...", self.inflow.values, self.lifetime_model.sf
+        )
 
     def _compute_inflow_manual(self) -> tuple[np.ndarray]:
         """With given total stock and lifetime distribution,
