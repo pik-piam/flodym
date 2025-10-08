@@ -320,5 +320,7 @@ class DimensionSet(PydanticBaseModel):
 
     def __str__(self):
         base = f"DimensionSet ({','.join(self.letters)}) with shape {self.shape}:"
-        dim_strs = [f"\n  '{dim.letter}': '{dim.name}' with length {dim.len}" for dim in self.dim_list]
+        dim_strs = [
+            f"\n  '{dim.letter}': '{dim.name}' with length {dim.len}" for dim in self.dim_list
+        ]
         return base + "".join(dim_strs)
