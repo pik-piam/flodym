@@ -316,7 +316,7 @@ class DimensionSet(PydanticBaseModel):
 
     def index(self, key):
         """Return the index of a dimension in the set.
-        
+
         Args:
             key (str): The name or letter of the dimension to get the index of
         """
