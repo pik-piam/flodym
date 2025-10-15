@@ -315,8 +315,13 @@ class DimensionSet(PydanticBaseModel):
         return "".join(self.letters)
 
     def index(self, key):
-        """Return the index of a dimension in the set."""
-        return [d.letter for d in self.dim_list].index(key)
+        """Return the index of a dimension in the set.
+        
+        Args:
+            key (str): The name or letter of the dimension to get the index of
+        """
+        dim = self._dict[key]
+        return self.dim_list.index(dim)
 
     def __str__(self):
         base = f"DimensionSet ({','.join(self.letters)}) with shape {self.shape}:"
