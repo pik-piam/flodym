@@ -22,13 +22,13 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
     array: FlodymArray
     """Values to plot, usually a Flow or Stock; sliced or summed along excess dimensions."""
     intra_line_dim: str
-    """Name of the dimension along which lines are plotted (if no x_array is given, this is also the x-axis)."""
+    """Name or letter of the dimension along which lines are plotted (if no x_array is given, this is also the x-axis)."""
     x_array: Optional[Union[FlodymArray, None]] = None
     """Array with x-values for each line. Must have the same dimensions as array, or a subset of them. If None, the intra_line_dim is used as x-axis."""
     subplot_dim: Optional[str] = None
-    """Name of the dimension by which to split the array into subplots. If None, the array is plotted in a single subplot."""
+    """Name or letter of the dimension by which to split the array into subplots. If None, the array is plotted in a single subplot."""
     linecolor_dim: Optional[str] = None
-    """Name of the dimension along which to split the array into several lines within each subplot. If None, only one line is plotted per subplot."""
+    """Name or letter of the dimension along which to split the array into several lines within each subplot. If None, only one line is plotted per subplot."""
     fig: Any = None
     """Pre-existing figure to plot on. If None, a new figure is created."""
     line_label: Optional[str] = None
@@ -92,10 +92,12 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
         dim_attributes = [self.linecolor_dim, self.subplot_dim, self.intra_line_dim]
         dim_attribute_names = ["linecolor_dim", "subplot_dim", "intra_line_dim"]
         for attr_name, dim in zip(dim_attribute_names, dim_attributes):
-            if dim is not None and dim not in self.array.dims.names:
+            if dim is not None and dim not in self.array.dims:
                 raise ValueError(f"Dimension {dim} given in {attr_name} not in array dimensions.")
         specified_dim_attributes = [d for d in dim_attributes if d is not None]
-        excess_dims = set(self.array.dims.names) - set(specified_dim_attributes)
+        # Convert specified dimensions to names for comparison with all dimension names
+        specified_dim_names = [self.array.dims[d].name for d in specified_dim_attributes]
+        excess_dims = set(self.array.dims.names) - set(specified_dim_names)
         if excess_dims:
             raise ValueError(
                 "All dimensions of passed array must be given exactly once. Either as subplot_dim, linecolor_dim, or intra_line_dim."
@@ -103,7 +105,7 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
                 + "Sum or slice array along these dims before passing it to the plotter."
             )
         if self.x_array is not None:
-            if any(d not in self.array.dims.names for d in self.x_array.dims.names):
+            if any(d not in self.array.dims for d in self.x_array.dims.names):
                 raise ValueError(
                     "x_array must have the same dimensions as array, or a subset of them."
                 )
