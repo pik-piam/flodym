@@ -1,7 +1,7 @@
 from pydantic_core import ValidationError
 import pytest
 
-from flodym import DimensionSet
+from flodym import Dimension, DimensionSet
 
 
 def test_validate_dimension_set():
@@ -105,8 +105,6 @@ def test_drop_with_letters_and_names():
 
 def test_replace_with_letters_and_names():
     """Test that replace() method accepts both letters and names."""
-    from flodym import Dimension
-
     dimensions = [
         {"name": "time", "letter": "t", "items": [1990, 2000, 2010]},
         {"name": "place", "letter": "p", "items": ["World"]},
