@@ -23,6 +23,7 @@ def test_pyplot_plotter_with_names(test_array):
     plotter = PyplotArrayPlotter(array=test_array, intra_line_dim="Time", linecolor_dim="Region")
     assert plotter.intra_line_dim == "Time"
     assert plotter.linecolor_dim == "Region"
+    plotter.plot()  # Ensure plotting works without error
 
 
 def test_pyplot_plotter_with_letters(test_array):
@@ -30,6 +31,7 @@ def test_pyplot_plotter_with_letters(test_array):
     plotter = PyplotArrayPlotter(array=test_array, intra_line_dim="t", linecolor_dim="r")
     assert plotter.intra_line_dim == "t"
     assert plotter.linecolor_dim == "r"
+    plotter.plot()  # Ensure plotting works without error
 
 
 def test_pyplot_plotter_with_mixed(test_array):
@@ -37,6 +39,7 @@ def test_pyplot_plotter_with_mixed(test_array):
     plotter = PyplotArrayPlotter(array=test_array, intra_line_dim="Time", linecolor_dim="r")
     assert plotter.intra_line_dim == "Time"
     assert plotter.linecolor_dim == "r"
+    plotter.plot()  # Ensure plotting works without error
 
 
 def test_plotly_plotter_with_names(test_array):
@@ -44,6 +47,7 @@ def test_plotly_plotter_with_names(test_array):
     plotter = PlotlyArrayPlotter(array=test_array, intra_line_dim="Time", linecolor_dim="Region")
     assert plotter.intra_line_dim == "Time"
     assert plotter.linecolor_dim == "Region"
+    plotter.plot()  # Ensure plotting works without error
 
 
 def test_plotly_plotter_with_letters(test_array):
@@ -51,6 +55,7 @@ def test_plotly_plotter_with_letters(test_array):
     plotter = PlotlyArrayPlotter(array=test_array, intra_line_dim="t", linecolor_dim="r")
     assert plotter.intra_line_dim == "t"
     assert plotter.linecolor_dim == "r"
+    plotter.plot()  # Ensure plotting works without error
 
 
 def test_plotly_plotter_with_mixed(test_array):
@@ -58,6 +63,7 @@ def test_plotly_plotter_with_mixed(test_array):
     plotter = PlotlyArrayPlotter(array=test_array, intra_line_dim="Time", linecolor_dim="r")
     assert plotter.intra_line_dim == "Time"
     assert plotter.linecolor_dim == "r"
+    plotter.plot()  # Ensure plotting works without error
 
 
 def test_plotter_with_subplot_dim_letter(test_array):
@@ -77,6 +83,7 @@ def test_plotter_with_subplot_dim_letter(test_array):
         array=array, intra_line_dim="t", linecolor_dim="r", subplot_dim="e"
     )
     assert plotter.subplot_dim == "e"
+    plotter.plot()  # Ensure plotting works without error
 
 
 def test_plotter_invalid_dimension_name(test_array):
