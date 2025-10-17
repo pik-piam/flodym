@@ -80,7 +80,9 @@ class DataFrameToFlodymDataConverter:
         for c in self.df.columns:
             if c in self.flodym_array.dims.letters:
                 self.df.rename(columns={c: self.flodym_array.dims[c].name}, inplace=True)
-                logging.debug(f"Renamed column {c} to dimension name {self.flodym_array.dims[c].name}")
+                logging.debug(
+                    f"Renamed column {c} to dimension name {self.flodym_array.dims[c].name}"
+                )
         self.dim_columns = [c for c in self.df.columns if c in self.flodym_array.dims.names]
         logging.debug(f"Recognized index columns by name: {self.dim_columns}")
 
