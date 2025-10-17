@@ -40,6 +40,11 @@ print("Values:", my_array.values.flatten())
 # Notice how the entries were re-ordered according to the order of items in the dims.
 # the `from_df()` methods performs lots of checks and can handle different input data formats.
 #
+# **Column names:** You can use either dimension names or dimension letters as column names in
+# your DataFrame. If dimension letters are used, they will be automatically converted to
+# dimension names internally. For example, both `"Time"` and `"t"` would work as column names
+# for the time dimension.
+#
 # For details on allowed formats, see the API reference of the method.
 #
 # NB: `Dimension` objects also have `from_np()` and `from_df` methods, which can be combined with numpy and pandas read functions.
