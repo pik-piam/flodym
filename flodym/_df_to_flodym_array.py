@@ -70,12 +70,17 @@ class DataFrameToFlodymDataConverter:
             self.df.reset_index(inplace=True)
 
     def _determine_format(self):
-        self._get_dim_columns_by_name()
+        self._get_dim_columns_by_name_or_letter()
         self._check_if_first_row_are_items()
         self._check_for_dim_columns_by_items()
         self._check_value_columns()
 
-    def _get_dim_columns_by_name(self):
+    def _get_dim_columns_by_name_or_letter(self):
+        self.original_dim_columns = [c for c in self.df.columns if c in self.flodym_array.dims]
+        for c in self.df.columns:
+            if c in self.flodym_array.dims.letters:
+                self.df.rename(columns={c: self.flodym_array.dims[c].name}, inplace=True)
+                logging.debug(f"Renamed column {c} to dimension name {self.flodym_array.dims[c].name}")
         self.dim_columns = [c for c in self.df.columns if c in self.flodym_array.dims.names]
         logging.debug(f"Recognized index columns by name: {self.dim_columns}")
 
@@ -94,11 +99,11 @@ class DataFrameToFlodymDataConverter:
     def _add_column_names_as_row(self, column_name: str, dim: Dimension):
         if len(self.dim_columns) > 0:
             raise ValueError(
-                f"Ambiguouity detected: column with first item {column_name} could be "
+                f"Ambiguity detected: column with first item {column_name} could be "
                 f"dimension {dim.name} if the first row counts as an item, but columns "
-                f"{self.dim_columns} are already recognized as dimensions first row as name."
-                f" Please change the item names of the affected dimension, or use a"
-                f" different method to read data."
+                f"{self.original_dim_columns} are already recognized as dimensions first row as "
+                f"name. Please add dimension names to your index columns, change the item names "
+                f"of the affected dimension, or use a different method to read data."
             )
         # prepend a row to df with all the column names
         self.df = pd.concat([pd.DataFrame([self.df.columns], columns=self.df.columns), self.df])
@@ -176,7 +181,9 @@ class DataFrameToFlodymDataConverter:
         self.format = FlodymDataFormat(type="long", value_column=self.format.value_column)
 
     def _check_missing_dim_columns(self):
-        missing_dim_columns = np.setdiff1d(list(self.flodym_array.dims.names), self.dim_columns)
+        # convert letters to name
+        dim_column_names = [self.flodym_array.dims[c].name for c in self.dim_columns]
+        missing_dim_columns = np.setdiff1d(list(self.flodym_array.dims.names), dim_column_names)
         for c in missing_dim_columns:
             if len(self.flodym_array.dims[c].items) == 1:
                 self.df[c] = self.flodym_array.dims[c].items[0]
