@@ -175,11 +175,13 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
         linedict_array = self._dict_of_slices(array, self.linecolor_dim)
         linedict_x_array = self._dict_of_slices(x_array, self.linecolor_dim)
         prev_y = None
+        # Get the dimension name for intra_line_dim (in case a letter was provided)
+        intra_line_dim_name = self.array.dims[self.intra_line_dim].name
         for i_line, (array_line, x_array_line, name_line) in enumerate(
             zip(linedict_array.values(), linedict_x_array.values(), linedict_array.keys())
         ):
             label = self.line_label if self.line_label is not None else self.display_name(name_line)
-            assert array_line.dims.names == (self.intra_line_dim,), (
+            assert array_line.dims.names == (intra_line_dim_name,), (
                 "All dimensions of array must be given exactly once. Either as x_dim / subplot_dim / linecolor_dim, or in "
                 "slice_dict or summed_dims."
             )
