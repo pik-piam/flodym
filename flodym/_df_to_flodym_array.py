@@ -23,11 +23,8 @@ class DataFrameToFlodymDataConverter:
     """Converts a panda DataFrame with various possible formats to a numpy array that can be used
     as values of a FlodymArray.
 
-    The DataFrame can use either dimension names or dimension letters as column names. If dimension
-    letters are used, they will be automatically converted to dimension names internally.
-
     Usually not called by the user, but from within the FlodymArray from_df and
-    set_values_from_df methods.
+    set_values_from_df methods, where further documentation can be found.
 
     In case of errors, turning on debug logging might help to understand the process.
     """
