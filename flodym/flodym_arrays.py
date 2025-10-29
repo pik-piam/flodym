@@ -112,6 +112,7 @@ class FlodymArray(PydanticBaseModel):
         **kwargs,
     ) -> "FlodymArray":
         """Create a FlodymArray object from a DataFrame.
+        In case of errors, turning on debug logging might help to understand the process.
 
         Parameters:
             dims (DimensionSet): Dimensions of the FlodymArray
@@ -119,12 +120,11 @@ class FlodymArray(PydanticBaseModel):
                 Dimensions of the named dim array can be given in DataFrame columns or the index.
                 The DataFrame can be in long or wide format, that is there can either be one value column,
                 or the value columns are named by items of one FlodymArray dimension.
-                If dimension names are not given in the respective index or column, they are inferred from the
-                items of the dimensions of the FlodymArray.
+                If dimension names or letters are not given in the respective index or column, they
+                are inferred from the items of the dimensions of the FlodymArray.
                 It is advisable to give the dimension names in the DataFrame, as this makes the error messages
                 more informative if there are typos in the items or if items are missing.
-                Ordering of rows and columns is arbitrary, but the items across each dimension must be given,
-                must be complete and exactly match those of the FlodymArray.
+                Ordering of rows and columns is arbitrary, but the items across each dimension must be given.
                 Dimensions with only one item do not need to be given in the DataFrame.
                 Supersets of dimensions (i.e. additional values) will lead to an error.
             allow_missing_values (bool, optional): Whether to allow missing values in the DataFrame.
@@ -502,18 +502,18 @@ class FlodymArray(PydanticBaseModel):
         allow_extra_values: bool = False,
     ):
         """Set the values of the FlodymArray from a pandas DataFrame.
+        In case of errors, turning on debug logging might help to understand the process.
 
         Parameters:
             df (DataFrame): pandas DataFrame containing the values of the FlodymArray.
                 Dimensions of the named dim array can be given in DataFrame columns or the index.
                 The DataFrame can be in long or wide format, that is there can either be one value column,
                 or the value columns are named by items of one FlodymArray dimension.
-                If dimension names are not given in the respective index or column, they are inferred from the
-                items of the dimensions of the FlodymArray.
+                If dimension names or letters are not given in the respective index or column, they
+                are inferred from the items of the dimensions of the FlodymArray.
                 It is advisable to give the dimension names in the DataFrame, as this makes the error messages
                 more informative if there are typos in the items or if items are missing.
-                Ordering of rows and columns is arbitrary, but the items across each dimension must be given,
-                must be complete and exactly match those of the FlodymArray.
+                Ordering of rows and columns is arbitrary, but the items across each dimension must be given.
                 Dimensions with only one item do not need to be given in the DataFrame.
                 Supersets of dimensions (i.e. additional values) will lead to an error.
             allow_missing_values (bool, optional): Whether to allow missing values in the DataFrame.

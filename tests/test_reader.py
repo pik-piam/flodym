@@ -186,6 +186,43 @@ def test_build_mfa_system():
     )
 
 
+def test_dimension_letters_as_column_names():
+    """Test that dimension letters can be used as column names in CSV files."""
+    dims = CSVDimensionReader(csv_dimension_files).read_dimensions(dimension_definitions)
+
+    # Test with all letters as column names
+    csv_files_letters = {
+        "p1": "tests/tests_data/parameter_p1_letters.csv",
+        "p5": "tests/tests_data/parameter_p5_letters.csv",
+    }
+    reader_letters = CSVParameterReader(csv_files_letters)
+
+    # Test parameter with 2 dimensions (t, r)
+    param_def_p1 = ParameterDefinition(name="p1", dim_letters=["t", "r"])
+    params_p1 = reader_letters.read_parameters([param_def_p1], dims)
+    assert np.array_equal(params_p1["p1"].values, [[1], [2], [3]])
+
+    # Test parameter with 3 dimensions (t, r, a)
+    param_def_p5 = ParameterDefinition(name="p5", dim_letters=["t", "r", "a"])
+    params_p5 = reader_letters.read_parameters([param_def_p5], dims)
+    assert np.array_equal(params_p5["p5"].values, np.array([[[1, 4]], [[2, 5]], [[3, 6]]]))
+
+
+def test_mixed_dimension_letters_and_names():
+    """Test that dimension letters and names can be mixed as column names."""
+    dims = CSVDimensionReader(csv_dimension_files).read_dimensions(dimension_definitions)
+
+    # Test with mixed letters and names
+    csv_files_mixed = {
+        "p1": "tests/tests_data/parameter_p1_mixed.csv",
+    }
+    reader_mixed = CSVParameterReader(csv_files_mixed)
+
+    param_def_p1 = ParameterDefinition(name="p1", dim_letters=["t", "r"])
+    params_p1 = reader_mixed.read_parameters([param_def_p1], dims)
+    assert np.array_equal(params_p1["p1"].values, [[1], [2], [3]])
+
+
 if __name__ == "__main__":
     test_dimensions()
     test_valid_parameter_reader()
@@ -193,4 +230,6 @@ if __name__ == "__main__":
     test_allow_incomplete_data()
     test_allow_extra_data()
     test_build_mfa_system()
+    test_dimension_letters_as_column_names()
+    test_mixed_dimension_letters_and_names()
     print("All tests passed.")
