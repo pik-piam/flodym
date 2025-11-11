@@ -7,6 +7,7 @@ import pandas as pd
 from .mfa_definition import DimensionDefinition
 
 
+
 class Dimension(PydanticBaseModel):
     """One of multiple dimensions over which MFA arrays are defined.
 
@@ -195,11 +196,6 @@ class DimensionSet(PydanticBaseModel):
         """shape of the array that would be created with the dimensions in the set"""
         return tuple(self.size(dim) for dim in self.letters)
 
-    @property
-    def ndim(self):
-        """the number of dimensions in the set"""
-        return len(self.dim_list)
-
     def get_subset(self, dims: tuple = None) -> "DimensionSet":
         """Selects :py:class:`Dimension` objects from the object attribute dim_list,
         according to the dims passed, which can be either letters or names.
@@ -273,6 +269,10 @@ class DimensionSet(PydanticBaseModel):
         intersection_letters = [dim.letter for dim in self.dim_list if dim.letter in other.letters]
         return self.get_subset(intersection_letters)
 
+    def __and__(self, other: "DimensionSet") -> "DimensionSet":
+        """Intersection operator for two DimensionSets."""
+        return self.intersect_with(other)
+
     def union_with(self, other: "DimensionSet") -> "DimensionSet":
         """Get the union of two DimensionSets.
 
@@ -284,6 +284,10 @@ class DimensionSet(PydanticBaseModel):
         """
         added_dims = [dim for dim in other.dim_list if dim.letter not in self.letters]
         return self.expand_by(added_dims)
+
+    def __or__(self, other: "DimensionSet") -> "DimensionSet":
+        """Union operator for two DimensionSets."""
+        return self.union_with(other)
 
     def difference_with(self, other: "DimensionSet") -> "DimensionSet":
         """Get the set difference of two DimensionSets.
@@ -298,6 +302,27 @@ class DimensionSet(PydanticBaseModel):
             dim.letter for dim in self.dim_list if dim.letter not in other.letters
         ]
         return self.get_subset(difference_letters)
+
+    def __sub__(self, other: "DimensionSet") -> "DimensionSet":
+        """Difference operator for two DimensionSets."""
+        return self.difference_with(other)
+
+    def __xor__(self, other: "DimensionSet") -> "DimensionSet":
+        """Symmetric difference operator for two DimensionSets."""
+        return (self - other) | (other - self)
+
+    @property
+    def ndim(self):
+        """the number of dimensions in the set"""
+        return len(self.dim_list)
+
+    def __len__(self) -> int:
+        """Return the number of dimensions in the set."""
+        return len(self.dim_list)
+
+    def __bool__(self) -> bool:
+        """Return True if the set is not empty."""
+        return len(self.dim_list) > 0
 
     @property
     def names(self):
