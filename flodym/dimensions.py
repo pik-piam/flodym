@@ -7,7 +7,6 @@ import pandas as pd
 from .mfa_definition import DimensionDefinition
 
 
-
 class Dimension(PydanticBaseModel):
     """One of multiple dimensions over which MFA arrays are defined.
 
