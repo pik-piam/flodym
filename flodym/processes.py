@@ -5,6 +5,7 @@ from .flodym_arrays import Flow
 from .stocks import Stock
 from .mfa_definition import ProcessDefinition
 
+
 class Process(PydanticBaseModel, arbitrary_types_allowed=True):
     """Processes serve as nodes for the MFA system layout definition.
     Flows are defined between two processes. Stocks are connected to a process.
@@ -60,7 +61,9 @@ class Process(PydanticBaseModel, arbitrary_types_allowed=True):
         if from_process in self._inflows:
             del self._inflows[from_process]
         else:
-            raise ValueError(f"In process {self.name}: No inflow from process '{from_process}' found.")
+            raise ValueError(
+                f"In process {self.name}: No inflow from process '{from_process}' found."
+            )
 
     def remove_outflow(self, to_process: str) -> None:
         """Remove an outflow from the process."""
@@ -70,7 +73,7 @@ class Process(PydanticBaseModel, arbitrary_types_allowed=True):
             raise ValueError(f"In process {self.name}: No outflow to process '{to_process}' found.")
 
 
-def make_processes(definitions: List[str|ProcessDefinition]) -> dict[str, Process]:
+def make_processes(definitions: List[str | ProcessDefinition]) -> dict[str, Process]:
     """Create a dictionary of processes from a list of process names."""
     processes = {}
     for definition in definitions:
@@ -79,7 +82,9 @@ def make_processes(definitions: List[str|ProcessDefinition]) -> dict[str, Proces
             id = len(processes)
         elif isinstance(definition, ProcessDefinition):
             if definition.id != len(processes):
-                raise ValueError(f"Processes must be defined with consecutive IDs starting from 0, but found {definition.id} in {len(processes)}'th definition.")
+                raise ValueError(
+                    f"Processes must be defined with consecutive IDs starting from 0, but found {definition.id} in {len(processes)}'th definition."
+                )
             name = definition.name
             id = definition.id
         processes[name] = Process(name=name, id=id)

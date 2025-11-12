@@ -140,7 +140,7 @@ class MFADefinition(PydanticBaseModel):
 
     dimensions: List[DimensionDefinition]
     """List of definitions of dimensions used in the model."""
-    processes: List[str|ProcessDefinition]
+    processes: List[str | ProcessDefinition]
     """List of process names used in the model."""
     flows: List[FlowDefinition]
     """List of definitions of flows used in the model."""

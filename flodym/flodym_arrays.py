@@ -781,9 +781,9 @@ class Flow(FlodymArray):
 
     model_config = ConfigDict(protected_namespaces=())
 
-    from_process: 'Process'
+    from_process: "Process"
     """Process from which the flow originates."""
-    to_process: 'Process'
+    to_process: "Process"
     """Process to which the flow goes."""
 
     @property
