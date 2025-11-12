@@ -87,6 +87,11 @@ class Stock(PydanticBaseModel):
     def _check_needed_arrays(self):
         pass
 
+    def mark_computed(self):
+        self.inflow.mark_set()
+        self.outflow.mark_set()
+        self.stock.mark_set()
+
     @property
     def shape(self) -> tuple:
         """Shape of the stock, inflow, outflow arrays, defined by the dimensions."""
@@ -121,6 +126,17 @@ class Stock(PydanticBaseModel):
         )  # stock_change(t) = stock(t) - stock(t-1)
         return self.inflow.values - self.outflow.values - dsdt
 
+    @property
+    def is_computed(self) -> bool:
+        """Check whether the stock has been computed, i.e. whether the stock, inflow, and outflow arrays
+        are all set.
+        """
+        return (
+            self.inflow.is_set
+            and self.outflow.is_set
+            and self.stock.is_set
+        )
+
     def _to_whole_period(self, annual_flow: np.ndarray) -> np.ndarray:
         """multiply annual flow by interval length to get flow over whole period."""
         return np.einsum("t...,t->t...", annual_flow, self._t.interval_lengths)
@@ -140,10 +156,10 @@ class SimpleFlowDrivenStock(Stock):
 
     def _check_needed_arrays(self):
         if (
-            np.max(np.abs(self.inflow.values)) < 1e-10
-            and np.max(np.abs(self.outflow.values)) < 1e-10
+            not self.inflow.is_set
+            and not self.outflow.is_set
         ):
-            logging.warning("Inflow and Outflow are zero. This will lead to a zero stock.")
+            logging.warning("Neither inflow and outflow are set (is_set=False). If this is intended, perform mark_set() on one of them.")
 
     def compute(self):
         self._check_needed_arrays()
@@ -227,8 +243,8 @@ class InflowDrivenDSM(DynamicStockModel):
 
     def _check_needed_arrays(self):
         super()._check_needed_arrays()
-        if np.allclose(self.inflow.values, np.zeros(self.shape)):
-            logging.warning("Inflow is zero. This will lead to a zero stock and outflow.")
+        if not self.inflow.is_set:
+            logging.warning("Inflow is not set (is_set=False). If this is intended, perform mark_set() on it.")
 
     def compute(self):
         """Determine stocks and outflows and store values in the class instance."""
@@ -267,8 +283,8 @@ class StockDrivenDSM(DynamicStockModel):
 
     def _check_needed_arrays(self):
         super()._check_needed_arrays()
-        if np.allclose(self.stock.values, np.zeros(self.shape)):
-            logging.warning("Stock is zero. This will lead to a zero inflow and outflow.")
+        if not self.stock.is_set:
+            logging.warning("Stock is not set (is_set=False). If this is intended, perform mark_set() on it.")
 
     def compute(self):
         """Determine inflows and outflows and store values in the class instance."""

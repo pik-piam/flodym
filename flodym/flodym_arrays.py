@@ -8,8 +8,8 @@ from copy import deepcopy
 from collections import defaultdict
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel as PydanticBaseModel, ConfigDict, model_validator
-from typing import Optional, Union, Callable
+from pydantic import BaseModel as PydanticBaseModel, ConfigDict, model_validator, ModelWrapValidatorHandler
+from typing import Optional, Union, Callable, Any
 from copy import copy
 
 from .processes import Process
@@ -61,6 +61,8 @@ class FlodymArray(PydanticBaseModel):
     """Values of the FlodymArray. Must have the same shape as the dimensions of the FlodymArray. If None, an array of zeros is created."""
     name: Optional[str] = "unnamed"
     """Name of the FlodymArray."""
+    _is_set: bool = False
+    """Flag indicating whether the flow has been set or not."""
 
     @model_validator(mode="after")
     def validate_values(self):
@@ -83,6 +85,14 @@ class FlodymArray(PydanticBaseModel):
                 f"Array shape: {self.dims.shape}\n"
                 f"Values shape: {self.values.shape}\n"
             )
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def mark_set_or_unset(cls, data: Any, handler: ModelWrapValidatorHandler[Self]) -> Self:
+        obj = handler(data)
+        if isinstance(data, dict):
+            obj._is_set = "values" in data
+        return obj
 
     @classmethod
     def from_dims_superset(
@@ -171,6 +181,7 @@ class FlodymArray(PydanticBaseModel):
             self._check_value_format()
         else:
             self.values[...] = values
+        self._is_set = True
 
     def sum_values(self):
         """Return the sum of all values in the FlodymArray."""
@@ -447,6 +458,7 @@ class FlodymArray(PydanticBaseModel):
         if isinstance(item, FlodymArray):
             slice_obj = self._sub_array_handler(keys)
             self.values[slice_obj.ids] = item.sum_values_to(slice_obj.dim_letters)
+            self._is_set = True
         else:
             self.set_values(copy(item))
         return
@@ -565,6 +577,19 @@ class FlodymArray(PydanticBaseModel):
             for i, letter in enumerate(self.dims.letters)
         ]
         return np.array(items).transpose()
+
+    @property
+    def is_set(self) -> bool:
+        """A boolean to indicate whether the flow's values are known or not."""
+        return self._is_set
+
+    def mark_set(self):
+        """Mark the flow as having values."""
+        self._is_set = True
+
+    def mark_unset(self):
+        """Mark the flow as not having values"""
+        self._is_set = False
 
     def __str__(self):
         base = f"{self.__class__.__name__} '{self.name}'"
