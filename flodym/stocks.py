@@ -131,11 +131,7 @@ class Stock(PydanticBaseModel):
         """Check whether the stock has been computed, i.e. whether the stock, inflow, and outflow arrays
         are all set.
         """
-        return (
-            self.inflow.is_set
-            and self.outflow.is_set
-            and self.stock.is_set
-        )
+        return self.inflow.is_set and self.outflow.is_set and self.stock.is_set
 
     def _to_whole_period(self, annual_flow: np.ndarray) -> np.ndarray:
         """multiply annual flow by interval length to get flow over whole period."""
@@ -155,11 +151,10 @@ class SimpleFlowDrivenStock(Stock):
     """Given inflows and outflows, the stock can be calculated without a lifetime model or cohorts."""
 
     def _check_needed_arrays(self):
-        if (
-            not self.inflow.is_set
-            and not self.outflow.is_set
-        ):
-            logging.warning("Neither inflow and outflow are set (is_set=False). If this is intended, perform mark_set() on one of them.")
+        if not self.inflow.is_set and not self.outflow.is_set:
+            logging.warning(
+                "Neither inflow and outflow are set (is_set=False). If this is intended, perform mark_set() on one of them."
+            )
 
     def compute(self):
         self._check_needed_arrays()
@@ -244,7 +239,9 @@ class InflowDrivenDSM(DynamicStockModel):
     def _check_needed_arrays(self):
         super()._check_needed_arrays()
         if not self.inflow.is_set:
-            logging.warning("Inflow is not set (is_set=False). If this is intended, perform mark_set() on it.")
+            logging.warning(
+                "Inflow is not set (is_set=False). If this is intended, perform mark_set() on it."
+            )
 
     def compute(self):
         """Determine stocks and outflows and store values in the class instance."""
@@ -284,7 +281,9 @@ class StockDrivenDSM(DynamicStockModel):
     def _check_needed_arrays(self):
         super()._check_needed_arrays()
         if not self.stock.is_set:
-            logging.warning("Stock is not set (is_set=False). If this is intended, perform mark_set() on it.")
+            logging.warning(
+                "Stock is not set (is_set=False). If this is intended, perform mark_set() on it."
+            )
 
     def compute(self):
         """Determine inflows and outflows and store values in the class instance."""

@@ -8,7 +8,12 @@ from copy import deepcopy
 from collections import defaultdict
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel as PydanticBaseModel, ConfigDict, model_validator, ModelWrapValidatorHandler
+from pydantic import (
+    BaseModel as PydanticBaseModel,
+    ConfigDict,
+    model_validator,
+    ModelWrapValidatorHandler,
+)
 from typing import Optional, Union, Callable, Any
 from copy import copy
 
