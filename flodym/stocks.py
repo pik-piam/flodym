@@ -15,6 +15,19 @@ from .dimensions import DimensionSet
 from .lifetime_models import LifetimeModel, UnevenTimeDim
 
 
+def stock_compute_decorator(func):
+    """Adds checks before and after every stock compute routine
+    """
+
+    def wrapper(self: 'Stock', *args, **kwargs):
+        self._check_needed_arrays()
+        func(self, *args, **kwargs)
+        self.mark_computed()
+    wrapper.is_decorated = True
+
+    return wrapper
+
+
 class Stock(PydanticBaseModel):
     """Stock objects are components of an MFASystem, where materials can accumulate over time.
     They consist of three :py:class:`flodym.FlodymArray` objects:
@@ -74,14 +87,23 @@ class Stock(PydanticBaseModel):
         return self
 
     @model_validator(mode="after")
+    def check_compute_decorator(self):
+        if not getattr(self.compute, 'is_decorated', False):
+            raise RuntimeError(
+                "Stock.compute method must have the stock_compute_decorator applied to it."
+            )
+        return self
+
+    @model_validator(mode="after")
     def init_t(self):
         self._t = UnevenTimeDim(dim=self.dims[self.time_letter])
         return self
 
     @abstractmethod
+    @stock_compute_decorator
     def compute(self):
-        # always add this check first
-        self._check_needed_arrays()
+        # Add stock_compute_decorator to all subclasses!
+        pass
 
     @abstractmethod
     def _check_needed_arrays(self):
@@ -137,6 +159,17 @@ class Stock(PydanticBaseModel):
             and self.stock.is_set
         )
 
+    @property
+    def is_computed(self) -> bool:
+        """Check whether the stock has been computed, i.e. whether the stock, inflow, and outflow arrays
+        are all set.
+        """
+        return (
+            self.inflow.is_set
+            and self.outflow.is_set
+            and self.stock.is_set
+        )
+
     def _to_whole_period(self, annual_flow: np.ndarray) -> np.ndarray:
         """multiply annual flow by interval length to get flow over whole period."""
         return np.einsum("t...,t->t...", annual_flow, self._t.interval_lengths)
@@ -161,8 +194,8 @@ class SimpleFlowDrivenStock(Stock):
         ):
             logging.warning("Neither inflow and outflow are set (is_set=False). If this is intended, perform mark_set() on one of them.")
 
+    @stock_compute_decorator
     def compute(self):
-        self._check_needed_arrays()
         annual_net_inflow = self.inflow.values - self.outflow.values
         net_inflow_whole_period = self._to_whole_period(annual_net_inflow)
         self.stock.values[...] = np.cumsum(net_inflow_whole_period, axis=0)
@@ -246,9 +279,9 @@ class InflowDrivenDSM(DynamicStockModel):
         if not self.inflow.is_set:
             logging.warning("Inflow is not set (is_set=False). If this is intended, perform mark_set() on it.")
 
+    @stock_compute_decorator
     def compute(self):
         """Determine stocks and outflows and store values in the class instance."""
-        self._check_needed_arrays()
         self._compute_stock()
         self._compute_outflow()
 
@@ -286,9 +319,9 @@ class StockDrivenDSM(DynamicStockModel):
         if not self.stock.is_set:
             logging.warning("Stock is not set (is_set=False). If this is intended, perform mark_set() on it.")
 
+    @stock_compute_decorator
     def compute(self):
         """Determine inflows and outflows and store values in the class instance."""
-        self._check_needed_arrays()
         self._compute_cohorts_and_inflow()
         self._compute_outflow()
 
