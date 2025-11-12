@@ -4,7 +4,6 @@ including flow-driven stocks and dynamic (lifetime-based) stocks.
 
 from abc import abstractmethod
 import numpy as np
-from scipy.linalg import solve_triangular
 from pydantic import BaseModel as PydanticBaseModel, ConfigDict, model_validator
 from typing import Optional, Union
 import logging
@@ -294,19 +293,6 @@ class StockDrivenDSM(DynamicStockModel):
     where A is the survival function matrix, x is the inflow vector, and b is the stock vector.
     """
 
-    solver: str = "manual"
-    """Algorithm to use for solving the equation system.  Options are: "manual" (default), which uses
-    an own python implementation, and "lapack", which calls the lapack trtrs routine via scipy.
-    The lapack implementation may be more precise. Speed depends on the dimensionality,
-    but the manual implementation is usually faster.
-    """
-
-    @model_validator(mode="after")
-    def init_solver(self):
-        if self.solver not in ["manual", "lapack"]:
-            raise ValueError("Solver must be either 'manual' or 'lapack'.")
-        return self
-
     def _check_needed_arrays(self):
         super()._check_needed_arrays()
         if not self.stock.is_set:
@@ -326,22 +312,6 @@ class StockDrivenDSM(DynamicStockModel):
         This involves solving the lower triangular equation system A*x=b,
         where A is the survival function matrix, x is the inflow vector, and b is the stock vector.
         """
-        if self.solver == "manual":
-            self._compute_inflow_manual()
-        elif self.solver == "lapack":
-            self._compute_inflow_lapack()
-        else:
-            raise ValueError(f"Unknown engine: {self.solver}")
-
-        self._stock_by_cohort = np.einsum(
-            "c...,tc...->tc...", self.inflow.values, self.lifetime_model.sf
-        )
-
-    def _compute_inflow_manual(self) -> tuple[np.ndarray]:
-        """With given total stock and lifetime distribution,
-        the method builds the stock by cohort and the inflow,
-        using a manual algorithm for solving of the equation system (see "solver" doc for details).
-        """
         # Maths behind implementation:
         # Solve square linear equation system
         #   sf * inflow = stock
@@ -359,17 +329,29 @@ class StockDrivenDSM(DynamicStockModel):
 
             inflow_whole_period[i, ...] = (stock_i - (sf_ij * inflow_j).sum(axis=0)) / sf_ii
         self.inflow.values[...] = self._to_annual(inflow_whole_period)
+        self._stock_by_cohort = np.einsum(
+            "c...,tc...->tc...", inflow_whole_period, self.lifetime_model.sf
+        )
 
-    def _compute_inflow_lapack(self) -> tuple[np.ndarray]:
-        """With given total stock and lifetime distribution,
-        the method builds the stock by cohort and the inflow,
-        using lapack for solving of the equation system (see "engine" doc for details).
-        """
-        sf = self.lifetime_model.sf
-        slt = (slice(None),)
-        inflow_whole_period = np.zeros_like(self.inflow.values)
-        for i in np.ndindex(self._shape_no_t):
-            inflow_whole_period[slt + i] = solve_triangular(
-                sf[2 * slt + i], self.stock.values[slt + i], lower=True
-            )
-        self.inflow.values[...] = self._to_annual(inflow_whole_period)
+
+class FlexibleDSM(DynamicStockModel):
+    """Computes either stock-driven or inflow-driven dynamic stock model, depending on which of the
+    stock or inflow is set.
+    """
+
+    compute_stock_driven = StockDrivenDSM.compute
+    compute_inflow_driven = InflowDrivenDSM.compute
+
+    _compute_cohorts_and_inflow = StockDrivenDSM._compute_cohorts_and_inflow
+    _compute_stock = InflowDrivenDSM._compute_stock
+
+    def compute(self):
+        if self.stock.is_set:
+            self.compute_stock_driven()
+        elif self.inflow.is_set:
+            self.compute_inflow_driven()
+        else:
+            raise ValueError("Either stock or inflow must be set for FlexibleDSM.compute().")
+
+    # replaces decorator, since inner functions are already decorated
+    compute.is_decorated = True
