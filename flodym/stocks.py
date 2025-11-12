@@ -16,13 +16,13 @@ from .lifetime_models import LifetimeModel, UnevenTimeDim
 
 
 def stock_compute_decorator(func):
-    """Adds checks before and after every stock compute routine
-    """
+    """Adds checks before and after every stock compute routine"""
 
-    def wrapper(self: 'Stock', *args, **kwargs):
+    def wrapper(self: "Stock", *args, **kwargs):
         self._check_needed_arrays()
         func(self, *args, **kwargs)
         self.mark_computed()
+
     wrapper.is_decorated = True
 
     return wrapper
@@ -88,7 +88,7 @@ class Stock(PydanticBaseModel):
 
     @model_validator(mode="after")
     def check_compute_decorator(self):
-        if not getattr(self.compute, 'is_decorated', False):
+        if not getattr(self.compute, "is_decorated", False):
             raise RuntimeError(
                 "Stock.compute method must have the stock_compute_decorator applied to it."
             )
@@ -160,11 +160,7 @@ class Stock(PydanticBaseModel):
         """Check whether the stock has been computed, i.e. whether the stock, inflow, and outflow arrays
         are all set.
         """
-        return (
-            self.inflow.is_set
-            and self.outflow.is_set
-            and self.stock.is_set
-        )
+        return self.inflow.is_set and self.outflow.is_set and self.stock.is_set
 
     def _to_whole_period(self, annual_flow: np.ndarray) -> np.ndarray:
         """multiply annual flow by interval length to get flow over whole period."""
