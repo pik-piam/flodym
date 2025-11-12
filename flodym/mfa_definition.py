@@ -126,6 +126,19 @@ class ParameterDefinition(DefinitionWithDimLetters):
     """Name of the parameter."""
 
 
+class ProcessDefinition(PydanticBaseModel):
+    id: int
+    """ID of the process."""
+    name: str
+    """Name of the process."""
+    inflow_shares: Optional[Dict[str, str]] = None
+    """parameter names to use as inflow shares, keyed by from_process name of inflow"""
+    outflow_shares: Optional[Dict[str, str]] = None
+    """parameter names to use as outflow shares, keyed by to_process name of outflow"""
+    dimension_splitter: Optional[str] = None
+    """Name of the parameter to use for splitting the total process flow into new dimensions."""
+
+
 class MFADefinition(PydanticBaseModel):
     """All the information needed to define an MFA system, compiled of lists of definition objects."""
 
@@ -133,7 +146,7 @@ class MFADefinition(PydanticBaseModel):
 
     dimensions: List[DimensionDefinition]
     """List of definitions of dimensions used in the model."""
-    processes: List[str]
+    processes: List[str|ProcessDefinition]
     """List of process names used in the model."""
     flows: List[FlowDefinition]
     """List of definitions of flows used in the model."""

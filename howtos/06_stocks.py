@@ -45,7 +45,7 @@ print(f"Array names: {my_stock.stock.name}, {my_stock.inflow.name}, {my_stock.ou
 #
 # As mentioned above, for `SimpleFlowDrivenStock`, the stock is calculated as the cumulative sum over time of inflow minus outflow.
 #
-# There's a `check_stock_balance()` method, which checks whether inflow, outflow and stock are consistent:
+# There's a `check_mass_balance()` method, which checks whether inflow, outflow and stock are consistent:
 
 # %%
 my_stock.inflow.values[...] = 0.1
@@ -54,7 +54,7 @@ my_stock.compute()
 
 print("Stock values for Vehicles:", my_stock.stock["Vehicles"].values)
 
-my_stock.check_stock_balance()
+my_stock.check_mass_balance()
 
 # %% [markdown]
 # ## Dynamic Stock Models (DSM)
