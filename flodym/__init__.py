@@ -4,6 +4,7 @@ from flodym.mfa_definition import (
     DimensionDefinition as DimensionDefinition,
     StockDefinition as StockDefinition,
     ParameterDefinition as ParameterDefinition,
+    ProcessDefinition as ProcessDefinition,
 )
 from flodym.mfa_system import MFASystem as MFASystem
 from flodym.dimensions import DimensionSet as DimensionSet, Dimension as Dimension
@@ -41,3 +42,11 @@ from flodym.data_reader import (
     ExcelParameterReader as ExcelParameterReader,
     CompoundDataReader as CompoundDataReader,
 )
+
+Flow.model_rebuild()
+Stock.model_rebuild()
+SimpleFlowDrivenStock.model_rebuild()
+DynamicStockModel.model_rebuild()
+InflowDrivenDSM.model_rebuild()
+StockDrivenDSM.model_rebuild()
+FlexibleDSM.model_rebuild()

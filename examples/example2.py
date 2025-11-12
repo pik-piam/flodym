@@ -53,6 +53,7 @@ from flodym import (
     ParameterDefinition,
     FlowDefinition,
     StockDefinition,
+    ProcessDefinition,
     MFASystem,
     SimpleFlowDrivenStock,
 )
@@ -85,12 +86,12 @@ parameter_definitions = [
 
 # %%
 process_names = [
-    "sysenv",
-    "shredder",
-    "demolition",
-    "remelting",
-    "landfills",
-    "slag piles",
+    ProcessDefinition(id=0, name="sysenv"),
+    ProcessDefinition(id=1, name="shredder"),
+    ProcessDefinition(id=2, name="demolition"),
+    ProcessDefinition(id=3, name="remelting"),
+    ProcessDefinition(id=4, name="landfills"),
+    ProcessDefinition(id=5, name="slag piles"),
 ]
 
 # %%
@@ -225,7 +226,7 @@ plotter = PlotlyArrayPlotter(
     array=remelted,
     intra_line_dim="Time",
     linecolor_dim="Material",
-    title="GDP-per-capita",
+    title="Total remelted material",
 )
 fig = plotter.plot(do_show=True)
 

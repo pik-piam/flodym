@@ -14,10 +14,11 @@ from pydantic import (
     model_validator,
     ModelWrapValidatorHandler,
 )
-from typing import Optional, Union, Callable, Any, Self
+from typing import Optional, Union, Callable, Any, Self, TYPE_CHECKING
 from copy import copy
 
-from .processes import Process
+if TYPE_CHECKING:
+    from .processes import Process
 from .dimensions import DimensionSet, Dimension
 from ._df_to_flodym_array import DataFrameToFlodymDataConverter
 
@@ -780,9 +781,9 @@ class Flow(FlodymArray):
 
     model_config = ConfigDict(protected_namespaces=())
 
-    from_process: Process
+    from_process: 'Process'
     """Process from which the flow originates."""
-    to_process: Process
+    to_process: 'Process'
     """Process to which the flow goes."""
 
     @property
@@ -794,6 +795,13 @@ class Flow(FlodymArray):
     def to_process_id(self):
         """ID of the process to which the flow goes."""
         return self.to_process.id
+
+    @model_validator(mode="after")
+    def attach_to_process(self):
+        """Add the flow to the from and to processes."""
+        self.from_process.add_outflow(self)
+        self.to_process.add_inflow(self)
+        return self
 
 
 class StockArray(FlodymArray):
