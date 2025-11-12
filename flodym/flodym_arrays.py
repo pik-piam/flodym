@@ -14,7 +14,7 @@ from pydantic import (
     model_validator,
     ModelWrapValidatorHandler,
 )
-from typing import Optional, Union, Callable, Any
+from typing import Optional, Union, Callable, Any, Self
 from copy import copy
 
 from .processes import Process
