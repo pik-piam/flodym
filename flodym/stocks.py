@@ -153,11 +153,7 @@ class Stock(PydanticBaseModel):
         """Check whether the stock has been computed, i.e. whether the stock, inflow, and outflow arrays
         are all set.
         """
-        return (
-            self.inflow.is_set
-            and self.outflow.is_set
-            and self.stock.is_set
-        )
+        return self.inflow.is_set and self.outflow.is_set and self.stock.is_set
 
     @property
     def is_computed(self) -> bool:
@@ -188,11 +184,10 @@ class SimpleFlowDrivenStock(Stock):
     """Given inflows and outflows, the stock can be calculated without a lifetime model or cohorts."""
 
     def _check_needed_arrays(self):
-        if (
-            not self.inflow.is_set
-            and not self.outflow.is_set
-        ):
-            logging.warning("Neither inflow and outflow are set (is_set=False). If this is intended, perform mark_set() on one of them.")
+        if not self.inflow.is_set and not self.outflow.is_set:
+            logging.warning(
+                "Neither inflow and outflow are set (is_set=False). If this is intended, perform mark_set() on one of them."
+            )
 
     @stock_compute_decorator
     def compute(self):
@@ -277,7 +272,9 @@ class InflowDrivenDSM(DynamicStockModel):
     def _check_needed_arrays(self):
         super()._check_needed_arrays()
         if not self.inflow.is_set:
-            logging.warning("Inflow is not set (is_set=False). If this is intended, perform mark_set() on it.")
+            logging.warning(
+                "Inflow is not set (is_set=False). If this is intended, perform mark_set() on it."
+            )
 
     @stock_compute_decorator
     def compute(self):
@@ -317,7 +314,9 @@ class StockDrivenDSM(DynamicStockModel):
     def _check_needed_arrays(self):
         super()._check_needed_arrays()
         if not self.stock.is_set:
-            logging.warning("Stock is not set (is_set=False). If this is intended, perform mark_set() on it.")
+            logging.warning(
+                "Stock is not set (is_set=False). If this is intended, perform mark_set() on it."
+            )
 
     @stock_compute_decorator
     def compute(self):
