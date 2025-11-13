@@ -15,9 +15,13 @@ class UnderdeterminedError(Exception):
     """Exception raised when a process is underdetermined."""
 
     def __init__(self, process: "Process", message: str):
-        message = f"Cannot compute process '{process.name}' with ID {process.id}, as it is underdetermined. \n" + message
+        message = (
+            f"Cannot compute process '{process.name}' with ID {process.id}, as it is underdetermined. \n"
+            + message
+        )
         super().__init__(message)
         self.message = message
+
 
 class Process(PydanticBaseModel, arbitrary_types_allowed=True):
     """Processes serve as nodes for the MFA system layout definition.
@@ -92,12 +96,16 @@ class Process(PydanticBaseModel, arbitrary_types_allowed=True):
 
     def add_inflow_share(self, from_process: str, share: FlodymArray):
         if from_process not in self._inflows:
-            raise ValueError(f"In process {self.name}: Cannot add inflow share from process {from_process}, as no such inflow found.")
+            raise ValueError(
+                f"In process {self.name}: Cannot add inflow share from process {from_process}, as no such inflow found."
+            )
         self._inflow_shares[from_process] = share
 
     def add_outflow_share(self, to_process: str, share: FlodymArray):
         if to_process not in self._outflows:
-            raise ValueError(f"In process {self.name}: Cannot add outflow share to process {to_process}, as no such outflow found.")
+            raise ValueError(
+                f"In process {self.name}: Cannot add outflow share to process {to_process}, as no such outflow found."
+            )
         self._outflow_shares[to_process] = share
 
     def remove_inflow_share(self, from_process: str):
@@ -105,14 +113,18 @@ class Process(PydanticBaseModel, arbitrary_types_allowed=True):
         if from_process in self._inflow_shares:
             del self._inflow_shares[from_process]
         else:
-            raise ValueError(f"In process {self.name}: No inflow share for process '{from_process}' found.")
+            raise ValueError(
+                f"In process {self.name}: No inflow share for process '{from_process}' found."
+            )
 
     def remove_outflow_share(self, to_process: str):
         """Remove the outflow share for a given process."""
         if to_process in self._outflow_shares:
             del self._outflow_shares[to_process]
         else:
-            raise ValueError(f"In process {self.name}: No outflow share for process '{to_process}' found.")
+            raise ValueError(
+                f"In process {self.name}: No outflow share for process '{to_process}' found."
+            )
 
     @property
     def is_computed(self) -> bool:
@@ -123,7 +135,7 @@ class Process(PydanticBaseModel, arbitrary_types_allowed=True):
             return False
         return True
 
-    def compute(self, on_underdetermined: ErrorBehavior = "error", recursive: bool=False) -> None:
+    def compute(self, on_underdetermined: ErrorBehavior = "error", recursive: bool = False) -> None:
         """Compute all unknown flows of the process, based on topological information and known in/outflows.
         This covers most cases of MFA processes, but not all.
         Sometimes manual computations are still necessary.
@@ -164,7 +176,9 @@ class Process(PydanticBaseModel, arbitrary_types_allowed=True):
             logging.debug(f"Process {self.name} with ID {self.id} is already computed.")
             return
         if self.id == 0:
-            logging.debug(f"Process {self.name} with ID {self.id} is the system boundary and cannot be computed.")
+            logging.debug(
+                f"Process {self.name} with ID {self.id} is the system boundary and cannot be computed."
+            )
             return
         try:
 
@@ -226,8 +240,9 @@ class Process(PydanticBaseModel, arbitrary_types_allowed=True):
 
     def neither_known(self, side: str) -> List[str]:
         return [
-            name for name, flow in self.flows(side).items() if not flow.is_set
-            and name not in self.shares(side)
+            name
+            for name, flow in self.flows(side).items()
+            if not flow.is_set and name not in self.shares(side)
         ]
 
     def known_flows(self, side: str) -> Dict[str, Flow]:
@@ -238,21 +253,28 @@ class Process(PydanticBaseModel, arbitrary_types_allowed=True):
 
     def both_known(self, side: str) -> List[str]:
         return [
-            name for name, flow in self.flows(side).items() if flow.is_set
-            and name in self.shares(side)
+            name
+            for name, flow in self.flows(side).items()
+            if flow.is_set and name in self.shares(side)
         ]
 
     @property
     def is_overdetermined(self) -> bool:
         n_degree_of_freedom = len(self.flows("in")) + len(self.flows("out")) + 1  # +1 for total
         n_conditions = 2  # sum_inflows = total and sum_outflows = total
-        n_given = (len(self.known_flows("in")) + len(self.known_flows("out")) + len(self.shares("in")) + len(self.shares("out")))
+        n_given = (
+            len(self.known_flows("in"))
+            + len(self.known_flows("out"))
+            + len(self.shares("in"))
+            + len(self.shares("out"))
+        )
         return n_given > n_degree_of_freedom - n_conditions
 
     def can_compute_total(self, from_side: str) -> bool:
         """Check if the process can compute the total flow through the process in the given direction."""
-        return (self.both_known(from_side) or
-            (len(self.neither_known(from_side)) == 0 and len(self.known_flows(from_side)) >= 1))
+        return self.both_known(from_side) or (
+            len(self.neither_known(from_side)) == 0 and len(self.known_flows(from_side)) >= 1
+        )
 
     def can_compute_flows(self, sides: List[str] = ["in", "out"]) -> bool:
         """Check if the process can compute the flows in the given direction."""
@@ -292,11 +314,12 @@ class Process(PydanticBaseModel, arbitrary_types_allowed=True):
                 share_names = ", ".join(
                     [name for name, share in shares_unknown.items() if share.dims - sum_known.dims]
                 )
-                excess_names = ", ".join((dims_unknown-sum_known.dims).names)
+                excess_names = ", ".join((dims_unknown - sum_known.dims).names)
                 raise ValueError(
                     f"In Process {self.name}: Error when trying to infer total flow from known "
                     f"flows and shares of unknown flows: Shares of flows to/from process(es) "
-                    f"{share_names} has dimensions " f"{excess_names} not contained in all the "
+                    f"{share_names} has dimensions "
+                    f"{excess_names} not contained in all the "
                     f"known flows from/to processes {', '.join(self.known_flows(side))}"
                 )
             sum_shares_unknown = sum([s.cast_to(dims_unknown) for s in shares_unknown.values()])
@@ -357,10 +380,7 @@ class Process(PydanticBaseModel, arbitrary_types_allowed=True):
 
     def handle_unused_splitter(self):
         message = f"In Process {self.name}: Dimension splitter is set, but not used. Given split may not be fulfilled."
-        handle_error(
-            behavior=config.error_behaviors.unused_dimension_splitter,
-            message=message
-        )
+        handle_error(behavior=config.error_behaviors.unused_dimension_splitter, message=message)
 
     def compute_flows(self, sides: List[str] = ["in", "out"]):
         """Compute the flows based on the total flow."""
@@ -424,10 +444,7 @@ class Process(PydanticBaseModel, arbitrary_types_allowed=True):
                         )
                     else:
                         message += "This may be due to lacking float precision, or an internal flodym error."
-                    handle_error(
-                        behavior=config.error_behaviors.process_shares,
-                        message=message
-                    )
+                    handle_error(behavior=config.error_behaviors.process_shares, message=message)
 
     def get_sum_inflows(self) -> FlodymArray:
         """Sum of all inflows to the process."""

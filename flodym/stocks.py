@@ -160,10 +160,10 @@ class Stock(PydanticBaseModel):
         if config.absolute_tolerance is not None:
             return config.absolute_tolerance
         return config.relative_tolerance * max(
-                self.inflow._absolute_float_precision,
-                self.outflow._absolute_float_precision,
-                self.stock._absolute_float_precision,
-            )
+            self.inflow._absolute_float_precision,
+            self.outflow._absolute_float_precision,
+            self.stock._absolute_float_precision,
+        )
 
     def check_mass_balance(self, tolerance: float = None, error_behavior: ErrorBehavior = None):
         """Compute mass balance, and check whether it is within a certain tolerance.
@@ -265,7 +265,6 @@ class SimpleFlowDrivenStock(Stock):
 
         self.process.check_shares()
         self.compute()
-
 
 
 class DynamicStockModel(Stock):

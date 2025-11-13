@@ -84,4 +84,5 @@ class Config(BaseModel, validate_assignment=True):
     If None, `relative_tolerance` is used.
     """
 
+
 config = Config()
