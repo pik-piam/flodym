@@ -7,7 +7,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.18.1
 #   kernelspec:
-#     display_name: .venv
+#     display_name: flodym
 #     language: python
 #     name: python3
 # ---
@@ -53,6 +53,7 @@ from flodym import (
     ParameterDefinition,
     FlowDefinition,
     StockDefinition,
+    ProcessDefinition,
     MFASystem,
     SimpleFlowDrivenStock,
 )
@@ -85,12 +86,12 @@ parameter_definitions = [
 
 # %%
 process_names = [
-    "sysenv",
-    "shredder",
-    "demolition",
-    "remelting",
-    "landfills",
-    "slag piles",
+    ProcessDefinition(id=0, name="sysenv"),
+    ProcessDefinition(id=1, name="shredder"),
+    ProcessDefinition(id=2, name="demolition"),
+    ProcessDefinition(id=3, name="remelting"),
+    ProcessDefinition(id=4, name="landfills"),
+    ProcessDefinition(id=5, name="slag piles"),
 ]
 
 # %%
@@ -207,6 +208,7 @@ mfa_example = SimpleMFA.from_excel(
     dimension_sheets={d.name: d.name for d in dimension_definitions},
     parameter_sheets={p.name: p.name for p in parameter_definitions},
 )
+
 mfa_example.compute()
 
 # %% [markdown]
@@ -224,7 +226,7 @@ plotter = PlotlyArrayPlotter(
     array=remelted,
     intra_line_dim="Time",
     linecolor_dim="Material",
-    title="GDP-per-capita",
+    title="Total remelted material",
 )
 fig = plotter.plot(do_show=True)
 
