@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 from .flodym_arrays import StockArray, FlodymArray
 from .dimensions import DimensionSet
 from .lifetime_models import LifetimeModel, UnevenTimeDim
+from .config import config, handle_error, ErrorBehavior
 
 
 def stock_compute_decorator(func):
@@ -22,7 +23,8 @@ def stock_compute_decorator(func):
         self._check_needed_arrays()
         func(self, *args, **kwargs)
         self.mark_computed()
-
+        if config.checks.mass_balance_stocks:
+            self.check_mass_balance()
     wrapper.is_decorated = True
 
     return wrapper
@@ -130,6 +132,15 @@ class Stock(PydanticBaseModel):
         """ID of the process the stock is associated with."""
         return self.process.id
 
+    @property
+    def net_inflow(self) -> FlodymArray:
+        return self.inflow - self.outflow
+
+    @property
+    def time_interval_length(self) -> FlodymArray:
+        t = UnevenTimeDim(dim=self.dims[self.time_letter])
+        return FlodymArray(dims=self.dims[self.time_letter,], values=t.interval_lengths)
+
     def to_stock_type(self, desired_stock_type: type, **kwargs):
         """Return an object of a new stock type with values and dimensions the same as the original.
         `**kwargs` can be used to pass additional model attributes as required by the desired stock
@@ -137,29 +148,53 @@ class Stock(PydanticBaseModel):
         """
         return desired_stock_type(**self.__dict__, **kwargs)
 
-    def check_stock_balance(self):
-        balance = self.get_stock_balance()
-        balance = np.max(np.abs(balance).sum(axis=0))
-        if balance > 1:  # 1 tonne accuracy
-            raise RuntimeError("Stock balance for dynamic stock model is too high: " + str(balance))
-        elif balance > 0.001:
-            print("Stock balance for model dynamic stock model is noteworthy: " + str(balance))
+    def tolerance(self) -> float:
+        if config.absolute_tolerance is not None:
+            return config.absolute_tolerance
+        return config.relative_tolerance * max(
+                self.inflow._absolute_float_precision,
+                self.outflow._absolute_float_precision,
+                self.stock._absolute_float_precision,
+            )
 
-    def get_stock_balance(self) -> np.ndarray:
+    def check_mass_balance(self, tolerance: float = None, error_behavior: ErrorBehavior = None):
+        """Compute mass balance, and check whether it is within a certain tolerance.
+        Throw an error if it isn't.
+
+        Args:
+            tolerance (float, optional): The tolerance for the mass balance check.
+                If None, takes the global config setting, which defaults to 100 times the numpy
+                float precision, multiplied by the maximum absolute flow value.
+            error_behavior (ErrorBehavior): What to do if the mass balance check fails.
+                If None, takes the global config setting, which defaults to raising an error
+        """
+        max_error = np.max(np.abs(self.balance.values))
+        if tolerance is None:
+            tolerance = config.absolute_tolerance
+        if error_behavior is None:
+            error_behavior = config.error_behaviors.mass_balance
+        if tolerance is None:
+            tolerance = self.tolerance()
+        if max_error > tolerance:
+            message = f"In stock {self.name}: Mass balance check failed (error = {max_error})"
+            handle_error(
+                behavior=error_behavior,
+                message=message,
+            )
+        else:
+            logging.info(f"In stock {self.name}: Success - Mass balance is consistent!")
+
+    @property
+    def balance(self) -> FlodymArray:
         """Check whether inflow, outflow, and stock are balanced.
         If possible, the method returns the vector 'Balance', where Balance = inflow - outflow - stock_change
         """
-        dsdt = np.diff(
-            self.stock.values, axis=0, prepend=0
-        )  # stock_change(t) = stock(t) - stock(t-1)
-        return self.inflow.values - self.outflow.values - dsdt
+        net_addition_to_stock = self.net_inflow * self.time_interval_length
+        return net_addition_to_stock - self.stock_change
 
     @property
-    def is_computed(self) -> bool:
-        """Check whether the stock has been computed, i.e. whether the stock, inflow, and outflow arrays
-        are all set.
-        """
-        return self.inflow.is_set and self.outflow.is_set and self.stock.is_set
+    def stock_change(self) -> FlodymArray:
+        return self.stock.apply(np.diff, kwargs={"axis": 0, "prepend": 0})
 
     @property
     def is_computed(self) -> bool:

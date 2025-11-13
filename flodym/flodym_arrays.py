@@ -597,6 +597,13 @@ class FlodymArray(PydanticBaseModel):
         """Mark the flow as not having values"""
         self._is_set = False
 
+    @property
+    def _absolute_float_precision(self) -> float:
+        """The numpy float precision, multiplied by the maximum absolute flow or stock value."""
+        max_value = np.max(np.abs(self.values))
+        epsilon = np.finfo(self.values.dtype).eps
+        return epsilon * max_value
+
     def __str__(self):
         base = f"{self.__class__.__name__} '{self.name}'"
         dims = f" with dims ({','.join(self.dims.letters)}) and shape {self.shape};"

@@ -43,6 +43,7 @@ from flodym.data_reader import (
     ExcelParameterReader as ExcelParameterReader,
     CompoundDataReader as CompoundDataReader,
 )
+from flodym.config import config as config
 
 Flow.model_rebuild()
 Stock.model_rebuild()
