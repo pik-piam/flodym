@@ -97,6 +97,10 @@ class Dimension(PydanticBaseModel):
         """Check if the items of this dimension are a superset of the items of another dimension."""
         return set(self.items).issuperset(other.items)
 
+    def to_set(self) -> "DimensionSet":
+        """Convert the Dimension to a DimensionSet containing only this Dimension."""
+        return DimensionSet(dim_list=[self])
+
     def __str__(self):
         base = f"Dimension '{self.name}' ('{self.letter}'); "
         item_base = f"{self.len} items"
@@ -256,6 +260,15 @@ class DimensionSet(PydanticBaseModel):
             dim_list[self.index(key)] = new_dim
             return DimensionSet(dim_list=dim_list)
 
+    def prepare_other(self, other: "DimensionSet") -> "DimensionSet":
+        """Check that the other object is a DimensionSet or Dimension, and convert if necessary."""
+        if isinstance(other, DimensionSet):
+            return other
+        elif isinstance(other, Dimension):
+            return other.to_set()
+        else:
+            raise TypeError("Operation of DimensionSet must be with DimensionSet or Dimension")
+
     def intersect_with(self, other: "DimensionSet") -> "DimensionSet":
         """Get the intersection of two DimensionSets.
 
@@ -265,6 +278,7 @@ class DimensionSet(PydanticBaseModel):
         Returns:
             DimensionSet: The intersection of the two DimensionSets
         """
+        other = self.prepare_other(other)
         intersection_letters = [dim.letter for dim in self.dim_list if dim.letter in other.letters]
         return self.get_subset(intersection_letters)
 
@@ -281,6 +295,7 @@ class DimensionSet(PydanticBaseModel):
         Returns:
             DimensionSet: The union of the two DimensionSets
         """
+        other = self.prepare_other(other)
         added_dims = [dim for dim in other.dim_list if dim.letter not in self.letters]
         return self.expand_by(added_dims)
 
@@ -297,6 +312,7 @@ class DimensionSet(PydanticBaseModel):
         Returns:
             DimensionSet: The difference of the two DimensionSets
         """
+        other = self.prepare_other(other)
         difference_letters = [
             dim.letter for dim in self.dim_list if dim.letter not in other.letters
         ]
