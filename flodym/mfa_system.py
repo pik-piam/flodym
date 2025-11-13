@@ -13,7 +13,7 @@ from .mfa_definition import MFADefinition
 from .dimensions import DimensionSet
 from .flodym_arrays import Flow, Parameter, FlodymArray
 from .stocks import Stock
-from .processes import Process, make_processes
+from .processes import Process, make_processes, set_process_parameters
 from .stock_helper import make_empty_stocks
 from .flow_helper import make_empty_flows
 from .data_reader import (
@@ -76,6 +76,8 @@ class MFASystem(PydanticBaseModel):
         stocks = make_empty_stocks(
             processes=processes, stock_definitions=definition.stocks, dims=dims
         )
+        set_process_parameters(processes, definition.processes, parameters)
+
         return cls(
             dims=dims,
             parameters=parameters,
@@ -283,3 +285,7 @@ class MFASystem(PydanticBaseModel):
             stock.inflow.mark_unset()
             stock.outflow.mark_unset()
             stock.stock.mark_unset()
+
+    def compute_all_possible(self):
+        for process in self.processes.values():
+            process.compute(on_underdetermined="info", recursive=True)

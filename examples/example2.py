@@ -56,6 +56,7 @@ from flodym import (
     ProcessDefinition,
     MFASystem,
     SimpleFlowDrivenStock,
+    config,
 )
 from flodym.export import PlotlyArrayPlotter
 
@@ -87,9 +88,9 @@ parameter_definitions = [
 # %%
 process_names = [
     ProcessDefinition(id=0, name="sysenv"),
-    ProcessDefinition(id=1, name="shredder"),
-    ProcessDefinition(id=2, name="demolition"),
-    ProcessDefinition(id=3, name="remelting"),
+    ProcessDefinition(id=1, name="shredder", outflow_shares={"remelting": "shredder yield"}),
+    ProcessDefinition(id=2, name="demolition", outflow_shares={"remelting": "demolition yield"}),
+    ProcessDefinition(id=3, name="remelting", outflow_shares={"sysenv": "remelting yield"}),
     ProcessDefinition(id=4, name="landfills"),
     ProcessDefinition(id=5, name="slag piles"),
 ]
@@ -167,28 +168,7 @@ class SimpleMFA(MFASystem):
         self.flows["sysenv => demolition"][...] = (
             self.parameters["eol buildings"] * self.parameters["composition eol buildings"]
         )
-        self.flows["shredder => remelting"][...] = (
-            self.flows["sysenv => shredder"] * self.parameters["shredder yield"]
-        )
-        self.flows["shredder => sysenv"][...] = self.flows["sysenv => shredder"] * (
-            1 - self.parameters["shredder yield"]
-        )
-        self.flows["demolition => remelting"][...] = (
-            self.flows["sysenv => demolition"] * self.parameters["demolition yield"]
-        )
-        self.flows["demolition => landfills"][...] = self.flows["sysenv => demolition"] * (
-            1 - self.parameters["demolition yield"]
-        )
-        self.flows["remelting => sysenv"][...] = (
-            self.flows["shredder => remelting"] + self.flows["demolition => remelting"]
-        ) * self.parameters["remelting yield"]
-        self.flows["remelting => slag piles"][...] = (
-            self.flows["shredder => remelting"] + self.flows["demolition => remelting"]
-        ) * (1 - self.parameters["remelting yield"])
-        self.stocks["landfills"].inflow[...] = self.flows["demolition => landfills"]
-        self.stocks["landfills"].compute()
-        self.stocks["slag piles"].inflow[...] = self.flows["shredder => remelting"]
-        self.stocks["slag piles"].compute()
+        self.compute_all_possible()
 
 
 # %% [markdown]
@@ -271,16 +251,16 @@ fig = plotter.plot(do_show=True)
 #
 
 # %%
-mfa_example_a = deepcopy(mfa_example)
-mfa_example_a.parameters["shredder yield"].set_values(np.array([0.92, 0.075, 0.92]))
-mfa_example_a.compute()
-shares_shredder = mfa_example_a.flows["remelting => sysenv"].get_shares_over(("e"))
+mfa_example.parameters["shredder yield"].set_values(np.array([0.92, 0.075, 0.92]))
+mfa_example.mark_all_unset()
+mfa_example.compute()
+shares_shredder = mfa_example.flows["remelting => sysenv"].get_shares_over(("e"))
 
 # %%
-mfa_example_b = deepcopy(mfa_example)
-mfa_example_b.parameters["eol buildings"][...] *= 1.25
-mfa_example_b.compute()
-shares_demolition = mfa_example_b.flows["remelting => sysenv"].get_shares_over(("e"))
+mfa_example.parameters["eol buildings"][...] *= 1.25
+mfa_example.mark_all_unset()
+mfa_example.compute()
+shares_demolition = mfa_example.flows["remelting => sysenv"].get_shares_over(("e"))
 
 # %%
 plotter = PlotlyArrayPlotter(

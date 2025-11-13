@@ -118,6 +118,13 @@ class Stock(PydanticBaseModel):
     def _check_needed_arrays(self):
         pass
 
+    @abstractmethod
+    def compute_process(self):
+        """Compute the stock based on the process inflows and outflows.
+        This is called by the process when it computes its total inflow/outflow.
+        """
+        pass
+
     def mark_computed(self):
         self.inflow.mark_set()
         self.outflow.mark_set()
@@ -153,10 +160,10 @@ class Stock(PydanticBaseModel):
         if config.absolute_tolerance is not None:
             return config.absolute_tolerance
         return config.relative_tolerance * max(
-            self.inflow._absolute_float_precision,
-            self.outflow._absolute_float_precision,
-            self.stock._absolute_float_precision,
-        )
+                self.inflow._absolute_float_precision,
+                self.outflow._absolute_float_precision,
+                self.stock._absolute_float_precision,
+            )
 
     def check_mass_balance(self, tolerance: float = None, error_behavior: ErrorBehavior = None):
         """Compute mass balance, and check whether it is within a certain tolerance.
@@ -232,6 +239,33 @@ class SimpleFlowDrivenStock(Stock):
         annual_net_inflow = self.inflow.values - self.outflow.values
         net_inflow_whole_period = self._to_whole_period(annual_net_inflow)
         self.stock.values[...] = np.cumsum(net_inflow_whole_period, axis=0)
+
+    def compute_process(self):
+        if self.process.inflows:
+            self.process.compute_total(try_sides=["in"])
+            if self.inflow.dims - self.process._total.dims:
+                names = ", ".join((self.inflow.dims - self.process._total.dims).names)
+                raise ValueError(
+                    f"In Process {self.process.name}: Stock inflow has dimensions {names} not contained in the "
+                    "dimensions of the summed inflow Flows. Consider using less dimensions for the "
+                    "stock or a preceding process with a dimension_splitter."
+                )
+            self.inflow[...] = self.process._total
+
+        if self.process.outflows:
+            self.process.compute_total(try_sides=["out"])
+            if self.outflow.dims - self.process._total.dims:
+                names = ", ".join((self.outflow.dims - self.process._total.dims).names)
+                raise ValueError(
+                    f"In Process {self.process.name}: Stock outflow has dimensions {names} not contained in the "
+                    "dimensions of the summed outflow Flows. Consider using less dimensions for the "
+                    "stock or a neighboring process with a dimension_splitter."
+                )
+            self.outflow[...] = self.process._total
+
+        self.process.check_shares()
+        self.compute()
+
 
 
 class DynamicStockModel(Stock):
@@ -328,6 +362,22 @@ class InflowDrivenDSM(DynamicStockModel):
         )
         self.stock.values[...] = self._stock_by_cohort.sum(axis=1)
 
+    def compute_process(self):
+        if self.inflow.is_set:
+            self.compute()
+            self.process._total = self.inflow
+            self.process.compute_flows(sides=["in"])
+            self.process.check_shares(sides=["in"])
+        else:
+            self.process.compute_total(try_sides=["in"])
+            self.inflow[...] = self.process._total
+            self.compute()
+
+        self.process._total = self.outflow
+        self.process.apply_dimension_splitter(sides=["out"])
+        self.process.compute_flows(sides=["out"])
+        self.process.check_shares(sides=["out"])
+
 
 class StockDrivenDSM(DynamicStockModel):
     """Stock driven model.
@@ -376,6 +426,20 @@ class StockDrivenDSM(DynamicStockModel):
             "c...,tc...->tc...", inflow_whole_period, self.lifetime_model.sf
         )
 
+    def compute_process(self):
+
+        self.compute()
+
+        self.process._total = self.outflow
+        self.process.apply_dimension_splitter(sides=["out"])
+        self.process.compute_flows(sides=["out"])
+        self.process.check_shares(sides=["out"])
+
+        self.process._total = self.inflow
+        self.process.apply_dimension_splitter(sides=["in"])
+        self.process.compute_flows(sides=["in"])
+        self.process.check_shares(sides=["in"])
+
 
 class FlexibleDSM(DynamicStockModel):
     """Computes either stock-driven or inflow-driven dynamic stock model, depending on which of the
@@ -388,6 +452,9 @@ class FlexibleDSM(DynamicStockModel):
     _compute_cohorts_and_inflow = StockDrivenDSM._compute_cohorts_and_inflow
     _compute_stock = InflowDrivenDSM._compute_stock
 
+    compute_process_stock_driven = StockDrivenDSM.compute_process
+    compute_process_inflow_driven = InflowDrivenDSM.compute_process
+
     def compute(self):
         if self.stock.is_set:
             self.compute_stock_driven()
@@ -398,3 +465,9 @@ class FlexibleDSM(DynamicStockModel):
 
     # replaces decorator, since inner functions are already decorated
     compute.is_decorated = True
+
+    def compute_process(self):
+        if self.stock.is_set:
+            self.compute_process_stock_driven()
+        else:
+            self.compute_process_inflow_driven()
