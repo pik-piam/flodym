@@ -25,6 +25,7 @@ def stock_compute_decorator(func):
         self.mark_computed()
         if config.checks.mass_balance_stocks:
             self.check_mass_balance()
+
     wrapper.is_decorated = True
 
     return wrapper
@@ -152,10 +153,10 @@ class Stock(PydanticBaseModel):
         if config.absolute_tolerance is not None:
             return config.absolute_tolerance
         return config.relative_tolerance * max(
-                self.inflow._absolute_float_precision,
-                self.outflow._absolute_float_precision,
-                self.stock._absolute_float_precision,
-            )
+            self.inflow._absolute_float_precision,
+            self.outflow._absolute_float_precision,
+            self.stock._absolute_float_precision,
+        )
 
     def check_mass_balance(self, tolerance: float = None, error_behavior: ErrorBehavior = None):
         """Compute mass balance, and check whether it is within a certain tolerance.

@@ -192,7 +192,11 @@ class MFASystem(PydanticBaseModel):
 
         logging.info(f"Checking mass balance of {self.__class__.__name__} object...")
 
-        self.processes["sysenv"].check_mass_balance(tolerance=self.tolerance, error_behavior=error_behavior, mass_change_target=-self.total_stock_change,)
+        self.processes["sysenv"].check_mass_balance(
+            tolerance=self.tolerance,
+            error_behavior=error_behavior,
+            mass_change_target=-self.total_stock_change,
+        )
         for process in self.processes.values():
             process.check_mass_balance(tolerance=self.tolerance, error_behavior=error_behavior)
 
@@ -217,7 +221,10 @@ class MFASystem(PydanticBaseModel):
         return config.relative_tolerance * self._absolute_float_precision
 
     def check_flows(
-        self, exceptions: list[str] = [], error_behavior: ErrorBehavior = None, verbose: bool = False
+        self,
+        exceptions: list[str] = [],
+        error_behavior: ErrorBehavior = None,
+        verbose: bool = False,
     ):
         """Check if all flows are non-negative.
 

@@ -11,7 +11,7 @@ class ErrorBehavior(str, Enum):
     IGNORE = "ignore"
 
 
-def handle_error(behavior: ErrorBehavior, message: str=None, error: Exception = None):
+def handle_error(behavior: ErrorBehavior, message: str = None, error: Exception = None):
 
     # ensures valid ErrorBehavior
     behavior = ErrorBehavior(behavior)
@@ -60,7 +60,7 @@ class Config(BaseModel, validate_assignment=True):
     error_behaviors: ErrorBehaviors = ErrorBehaviors()
     """What to do if a check fails."""
 
-    relative_tolerance: Optional[confloat(ge=0)] = 10.
+    relative_tolerance: Optional[confloat(ge=0)] = 10.0
     """Tolerance relative to a float precision metric used for mass balance and other checks.
     Increase if your mass balance checks fail due to rounding errors.
     Overridden by `absolute_tolerance` if set.
@@ -70,5 +70,6 @@ class Config(BaseModel, validate_assignment=True):
     Overrides `relative_tolerance` if set.
     If None, `relative_tolerance` is used.
     """
+
 
 config = Config()
