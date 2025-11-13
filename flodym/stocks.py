@@ -52,7 +52,7 @@ class Stock(PydanticBaseModel):
     """Outflow from the stock"""
     name: Optional[str] = "unnamed"
     """Name of the stock"""
-    process: Optional['Process'] = None
+    process: Optional["Process"] = None
     """Process the stock is associated with, if any. Needed for example for the mass balance."""
     time_letter: str = "t"
     """Letter of the time dimension in the dimensions set, to make sure it's the first one."""
