@@ -21,7 +21,7 @@ def stock_compute_decorator(func):
     def wrapper(self: "Stock", *args, **kwargs):
         self._check_needed_arrays()
         func(self, *args, **kwargs)
-        self.mark_computed()
+        self.mark_all_set()
 
     wrapper.is_decorated = True
 
@@ -109,10 +109,17 @@ class Stock(PydanticBaseModel):
     def _check_needed_arrays(self):
         pass
 
-    def mark_computed(self):
+    def mark_all_set(self):
+        """Mark all StockArrays (inflow, outflow, stock) as set."""
         self.inflow.mark_set()
         self.outflow.mark_set()
         self.stock.mark_set()
+
+    def mark_all_unset(self):
+        """Mark all StockArrays (inflow, outflow, stock) as unset."""
+        self.inflow.mark_unset()
+        self.outflow.mark_unset()
+        self.stock.mark_unset()
 
     @property
     def shape(self) -> tuple:
