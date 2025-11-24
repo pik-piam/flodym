@@ -13,7 +13,7 @@ from .mfa_definition import MFADefinition
 from .dimensions import DimensionSet
 from .flodym_arrays import Flow, Parameter, FlodymArray
 from .stocks import Stock
-from .processes import Process, make_processes
+from .processes import Process, make_processes, set_process_parameters
 from .stock_helper import make_empty_stocks
 from .flow_helper import make_empty_flows
 from .data_reader import (
@@ -24,6 +24,7 @@ from .data_reader import (
     ExcelDimensionReader,
     ExcelParameterReader,
 )
+from .config import config, ErrorBehavior, handle_error
 
 
 class MFASystem(PydanticBaseModel):
@@ -75,6 +76,8 @@ class MFASystem(PydanticBaseModel):
         stocks = make_empty_stocks(
             processes=processes, stock_definitions=definition.stocks, dims=dims
         )
+        set_process_parameters(processes, definition.processes, parameters)
+
         return cls(
             dims=dims,
             parameters=parameters,
@@ -180,86 +183,57 @@ class MFASystem(PydanticBaseModel):
         dims = self.dims.get_subset(dim_letters)
         return FlodymArray(dims=dims, **kwargs)
 
-    def _get_mass_balance(self) -> Dict[str, FlodymArray]:
-        """Calculate the mass balance for each process, by summing the contributions.
-        - all flows entering (positive)
-        - all flows leaving (negative)
-        - the stock change of the process (negative)
-
-        Returns:
-            A dictionary mapping process names to their mass balance contributions.
-            Each contribution is a :py:class:`flodym.FlodymArray` with dimensions common to all contributions.
-        """
-        contributions = {p: [] for p in self.processes.keys()}
-
-        # Add flows to mass balance
-        for flow in self.flows.values():
-            contributions[flow.from_process.name].append(-flow)  # Subtract flow from start process
-            contributions[flow.to_process.name].append(flow)  # Add flow to end process
-
-        # Add stock changes to the mass balance
-        for stock in self.stocks.values():
-            if stock.process is None:  # not connected to a process
-                continue
-            stock_change = stock.inflow - stock.outflow
-            #    sum(flows_to) - sum(flows_from) = stock_change
-            # => sum(flows_to) - sum(flows_from) - stock_change = 0
-            # => stock_change is subtracted from the process
-            contributions[stock.process.name].append(-stock_change)
-            # system_mass_change = sum(stock_changes),
-            # where the sysenv process mass balance is the negative system_mass_change:
-            # system_mass_change = flows_into_system - flows_out_of_system
-            #                    = sum(flows_from_sysenv) - sum(flows_to_sysenv)
-            # So stock change is accounted to sysenv process with opposite sign as to other
-            # processes => added instead of subtracted.
-            contributions["sysenv"].append(stock_change)
-
-        return {p_name: sum(parts) for p_name, parts in contributions.items()}
-
-    @property
-    def _absolute_float_precision(self) -> float:
-        """The numpy float precision, multiplied by the maximum absolute flow or stock value."""
-        max_flow_value = max([np.max(np.abs(f.values)) for f in self.flows.values()])
-        max_stock_value = max([np.max(np.abs(s.stock.values)) for s in self.stocks.values()])
-        epsilon = np.finfo(next(iter(self.flows.values())).values.dtype).eps
-        return epsilon * max(max_flow_value, max_stock_value)
-
-    def check_mass_balance(self, tolerance=None, raise_error: bool = True):
+    def check_mass_balance(self, error_behavior: ErrorBehavior = None):
         """Compute mass balance, and check whether it is within a certain tolerance.
         Throw an error if it isn't.
 
         Args:
-            tolerance (float, optional): The tolerance for the mass balance check.
-                If None, defaults to 100 times the numpy float precision,
-                multiplied by the maximum absolute flow or stock value.
-            raise_error (bool): If True, raises an error if the mass balance check fails.
-                Else, logs a warning and continues execution.
+            error_behavior (ErrorBehavior): What to do if the mass balance check fails.
+                If None, takes the global config setting, which defaults to raising an error.
         """
 
         logging.info(f"Checking mass balance of {self.__class__.__name__} object...")
 
-        if tolerance is None:
-            tolerance = 100 * self._absolute_float_precision
+        self.processes["sysenv"].check_mass_balance(
+            tolerance=self.tolerance,
+            error_behavior=error_behavior,
+            mass_change_target=-self.total_stock_change,
+        )
+        for process in self.processes.values():
+            process.check_mass_balance(tolerance=self.tolerance, error_behavior=error_behavior)
 
-        # returns array with dim [t, process, e]
-        balances = self._get_mass_balance()
-        max_errors = {p_name: np.max(np.abs(b.values)) for p_name, b in balances.items()}
-        failed = {p_name: e for p_name, e in max_errors.items() if e > tolerance}
-        if failed:
-            info = ", ".join(f"{p_name} (max error: {e})" for p_name, e in failed.items())
-            message = "Mass balance check failed for the following processes: " + info
-            self._error_or_warning(message, raise_error)
-        else:
-            logging.info(f"Success - Mass balance is consistent!")
+        for stock in self.stocks.values():
+            stock.check_mass_balance(tolerance=self.tolerance, error_behavior=error_behavior)
+
+    @property
+    def total_stock_change(self):
+        return sum(s.net_inflow for s in self.stocks.values() if s.process is not None)
+
+    @property
+    def _absolute_float_precision(self) -> float:
+        max_flows = max(f._absolute_float_precision for f in self.flows.values())
+        max_stocks = max(s.stock._absolute_float_precision for s in self.stocks.values())
+        return max(max_flows, max_stocks)
+
+    @property
+    def tolerance(self) -> float:
+        """Get the absolute tolerance for checks, based on the system's float precision."""
+        if config.absolute_tolerance is not None:
+            return config.absolute_tolerance
+        return config.relative_tolerance * self._absolute_float_precision
 
     def check_flows(
-        self, exceptions: list[str] = [], raise_error: bool = False, verbose: bool = False
+        self,
+        exceptions: list[str] = [],
+        error_behavior: ErrorBehavior = None,
+        verbose: bool = False,
     ):
         """Check if all flows are non-negative.
 
         Args:
             exceptions (list[str]): A list of strings representing flow names to be excluded from the check.
-            raise_error (bool): If True, raises an error instead of logging warnings.
+            error_behavior (ErrorBehavior): What to do if the mass balance check fails.
+                If None, takes the global config setting, which defaults to logging a warning.
             verbose (bool): If True, logs detailed information about negative flows.
 
         Raises:
@@ -270,6 +244,8 @@ class MFASystem(PydanticBaseModel):
             Info: If no negative flows are found.
         """
         logging.info("Checking flows for NaN and negative values...")
+        if error_behavior is None:
+            error_behavior = config.error_behaviors.check_flows
 
         flows = [f for f in self.flows.values() if f.name not in exceptions]
         flows = [
@@ -283,28 +259,33 @@ class MFASystem(PydanticBaseModel):
         for flow in flows:
             if np.any(np.isnan(flow.values)):
                 message = f"NaN values found in flow {flow.name}!"
-                self._error_or_warning(message, raise_error)
+                handle_error(behavior=error_behavior, message=message)
                 all_good = False
 
         # Check for negative values
-        tolerance = 100 * self._absolute_float_precision
         for flow in flows:
-            if np.any(flow.values < -tolerance):
+            if np.any(flow.values < -self.tolerance):
                 message = f"Negative value in flow {flow.name}!"
                 if verbose:
                     message += f"\n Items:"
-                    indices = flow.items_where(lambda x: x < -tolerance)
+                    indices = flow.items_where(lambda x: x < -self.tolerance)
                     for index in indices:
                         message += "\n  " + ", ".join(index)
-                self._error_or_warning(message, raise_error)
+                handle_error(behavior=error_behavior, message=message)
                 all_good = False
 
         if all_good:
             logging.info(f"Success - No negative flows or NaN values in {self.__class__.__name__}")
 
-    @staticmethod
-    def _error_or_warning(message: str, raise_error: bool) -> bool:
-        if raise_error:
-            raise ValueError(message)
-        else:
-            logging.warning(message)
+    def mark_all_unset(self):
+        """Mark all parameters as unset."""
+        for flow in self.flows.values():
+            flow.mark_unset()
+        for stock in self.stocks.values():
+            stock.inflow.mark_unset()
+            stock.outflow.mark_unset()
+            stock.stock.mark_unset()
+
+    def compute_all_possible(self):
+        for process in self.processes.values():
+            process.compute(on_underdetermined="info", recursive=True)

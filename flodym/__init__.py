@@ -4,6 +4,7 @@ from flodym.mfa_definition import (
     DimensionDefinition as DimensionDefinition,
     StockDefinition as StockDefinition,
     ParameterDefinition as ParameterDefinition,
+    ProcessDefinition as ProcessDefinition,
 )
 from flodym.mfa_system import MFASystem as MFASystem
 from flodym.dimensions import DimensionSet as DimensionSet, Dimension as Dimension
@@ -13,13 +14,19 @@ from flodym.flodym_arrays import (
     StockArray as StockArray,
     Flow as Flow,
 )
-from flodym.processes import Process as Process, make_processes as make_processes
+from flodym.processes import (
+    Process as Process,
+    make_processes as make_processes,
+    set_process_parameters as set_process_parameters,
+    UnderdeterminedError as UnderdeterminedError,
+)
 from flodym.stocks import (
     Stock as Stock,
     SimpleFlowDrivenStock as SimpleFlowDrivenStock,
     DynamicStockModel as DynamicStockModel,
     InflowDrivenDSM as InflowDrivenDSM,
     StockDrivenDSM as StockDrivenDSM,
+    FlexibleDSM as FlexibleDSM,
 )
 from flodym.lifetime_models import (
     LifetimeModel as LifetimeModel,
@@ -41,3 +48,12 @@ from flodym.data_reader import (
     ExcelParameterReader as ExcelParameterReader,
     CompoundDataReader as CompoundDataReader,
 )
+from flodym.config import config as config
+
+Flow.model_rebuild()
+Stock.model_rebuild()
+SimpleFlowDrivenStock.model_rebuild()
+DynamicStockModel.model_rebuild()
+InflowDrivenDSM.model_rebuild()
+StockDrivenDSM.model_rebuild()
+FlexibleDSM.model_rebuild()
