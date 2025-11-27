@@ -272,7 +272,9 @@ class DimensionSet(PydanticBaseModel):
         else:
             return new_dim + self
 
-    def insert(self, index: int, new_dim: Dimension, inplace: bool = False) -> Optional["DimensionSet"]:
+    def insert(
+        self, index: int, new_dim: Dimension, inplace: bool = False
+    ) -> Optional["DimensionSet"]:
         """Insert a new dimension to the set at the given index.
 
         Args:
