@@ -8,11 +8,17 @@ from copy import deepcopy
 from collections import defaultdict
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel as PydanticBaseModel, ConfigDict, model_validator
-from typing import Optional, Union, Callable
+from pydantic import (
+    BaseModel as PydanticBaseModel,
+    ConfigDict,
+    model_validator,
+    ModelWrapValidatorHandler,
+)
+from typing import Optional, Union, Callable, Any, Self, TYPE_CHECKING
 from copy import copy
 
-from .processes import Process
+if TYPE_CHECKING:
+    from .processes import Process
 from .dimensions import DimensionSet, Dimension
 from ._df_to_flodym_array import DataFrameToFlodymDataConverter
 
@@ -61,6 +67,8 @@ class FlodymArray(PydanticBaseModel):
     """Values of the FlodymArray. Must have the same shape as the dimensions of the FlodymArray. If None, an array of zeros is created."""
     name: Optional[str] = "unnamed"
     """Name of the FlodymArray."""
+    _is_set: bool = False
+    """Flag indicating whether the flow has been set or not."""
 
     @model_validator(mode="after")
     def validate_values(self):
@@ -83,6 +91,14 @@ class FlodymArray(PydanticBaseModel):
                 f"Array shape: {self.dims.shape}\n"
                 f"Values shape: {self.values.shape}\n"
             )
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def mark_set_or_unset(cls, data: Any, handler: ModelWrapValidatorHandler[Self]) -> Self:
+        obj = handler(data)
+        if isinstance(data, dict):
+            obj._is_set = "values" in data
+        return obj
 
     @classmethod
     def from_dims_superset(
@@ -171,6 +187,7 @@ class FlodymArray(PydanticBaseModel):
             self._check_value_format()
         else:
             self.values[...] = values
+        self._is_set = True
 
     def sum_values(self):
         """Return the sum of all values in the FlodymArray."""
@@ -447,6 +464,7 @@ class FlodymArray(PydanticBaseModel):
         if isinstance(item, FlodymArray):
             slice_obj = self._sub_array_handler(keys)
             self.values[slice_obj.ids] = item.sum_values_to(slice_obj.dim_letters)
+            self._is_set = True
         else:
             self.set_values(copy(item))
         return
@@ -565,6 +583,26 @@ class FlodymArray(PydanticBaseModel):
             for i, letter in enumerate(self.dims.letters)
         ]
         return np.array(items).transpose()
+
+    @property
+    def is_set(self) -> bool:
+        """A boolean to indicate whether the flow's values are known or not."""
+        return self._is_set
+
+    def mark_set(self):
+        """Mark the flow as having values."""
+        self._is_set = True
+
+    def mark_unset(self):
+        """Mark the flow as not having values"""
+        self._is_set = False
+
+    @property
+    def _absolute_float_precision(self) -> float:
+        """The numpy float precision, multiplied by the maximum absolute flow or stock value."""
+        max_value = np.max(np.abs(self.values))
+        epsilon = np.finfo(self.values.dtype).eps
+        return epsilon * max_value
 
     def __str__(self):
         base = f"{self.__class__.__name__} '{self.name}'"
@@ -750,9 +788,9 @@ class Flow(FlodymArray):
 
     model_config = ConfigDict(protected_namespaces=())
 
-    from_process: Process
+    from_process: "Process"
     """Process from which the flow originates."""
-    to_process: Process
+    to_process: "Process"
     """Process to which the flow goes."""
 
     @property
@@ -764,6 +802,13 @@ class Flow(FlodymArray):
     def to_process_id(self):
         """ID of the process to which the flow goes."""
         return self.to_process.id
+
+    @model_validator(mode="after")
+    def attach_to_process(self):
+        """Add the flow to the from and to processes."""
+        self.from_process.add_outflow(self)
+        self.to_process.add_inflow(self)
+        return self
 
 
 class StockArray(FlodymArray):
