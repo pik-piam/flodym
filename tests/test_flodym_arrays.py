@@ -191,6 +191,20 @@ def test_dimension_subsets():
     with pytest.raises(ValueError):
         historic_space_animals[{"h": time}]  # index is not a subset
 
+def test_setitem():
+    array_1d = FlodymArray(dims=dims["t",])
+    array_1d[...] = 1
+    array_1d[1990] = 2
+    assert_array_equal(array_1d.values, np.array([2, 1, 1]))
+
+    array_2d = FlodymArray(dims=dims["p", "t"])
+    array_2d[...] = 1
+    array_2d[1990] = 2
+    assert_array_equal(
+        array_2d.values,
+        np.array([[2, 1, 1]] * 4),
+    )
+
 
 def test_to_df():
     fda = deepcopy(space_animals)
