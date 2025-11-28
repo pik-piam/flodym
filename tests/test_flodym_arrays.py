@@ -191,6 +191,7 @@ def test_dimension_subsets():
     with pytest.raises(ValueError):
         historic_space_animals[{"h": time}]  # index is not a subset
 
+
 def test_setitem():
     array_1d = FlodymArray(dims=dims["t",])
     array_1d[...] = 1
