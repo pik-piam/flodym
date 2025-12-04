@@ -232,6 +232,8 @@ class DataFrameToFlodymDataConverter:
         if self.allow_missing_values:
             self.df[self.format.value_column] = self.df[self.format.value_column].fillna(0)
         else:
+            # Duplicates throw an error, and extra values are removed above,
+            # so unequal lengths indicate missing values
             if len(self.df) != self.flodym_array.size:
                 # print warning first, as compiling expected index tuples may take long
                 logging.warning(
@@ -244,10 +246,10 @@ class DataFrameToFlodymDataConverter:
                 )
                 indices = self.df[list(self.flodym_array.dims.names)]
                 actual_index_tuples = set(indices.itertuples(index=False, name=None))
-                unexpected_items = actual_index_tuples - expected_index_tuples
+                missing_items = expected_index_tuples - actual_index_tuples
                 raise ValueError(
                     f"Detected missing values in the data, but allow_missing_values is set to False. "
-                    f"Missing values for index combinations: {unexpected_items}."
+                    f"Missing values for index combinations: {missing_items}."
                 )
             if any(self.df[self.format.value_column].isna()):
                 raise ValueError("Empty cells/NaN values in value column!")
