@@ -345,7 +345,7 @@ class DimensionSet(PydanticBaseModel):
         if isinstance(other, DimensionSet):
             return other
         elif isinstance(other, Dimension):
-            return other.to_set()
+            return other.as_dimset()
         else:
             raise TypeError("Operation of DimensionSet must be with DimensionSet or Dimension")
 
