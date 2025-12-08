@@ -380,8 +380,8 @@ def test_dimension_sum_operator():
     dim3 = Dimension(name="material", letter="m", items=["steel", "aluminum"])
     
     # Test sum with list of Dimensions
-    # sum() requires a start value for custom objects, defaulting to 0
-    # We need to provide an empty DimensionSet as start
+    # sum() defaults to start=0, but Dimension objects cannot be added to integers,
+    # so we must provide an empty DimensionSet as the start value
     dimset = sum([dim1, dim2, dim3], start=DimensionSet(dim_list=[]))
     
     assert isinstance(dimset, DimensionSet)
