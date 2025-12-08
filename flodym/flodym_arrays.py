@@ -460,13 +460,14 @@ class FlodymArray(PydanticBaseModel):
         The RHS (baz) is either a FlodymArray, a numpy array of correct shape, or a scalar.
         If it is a numpy array, a copy is used to avoid modifying the original array.
         """
+        slice_obj = self._sub_array_handler(keys)
         if isinstance(item, FlodymArray):
-            slice_obj = self._sub_array_handler(keys)
             self.values[slice_obj.ids] = item.sum_values_to(slice_obj.dim_letters)
-            self._is_set = True
-        else:
+        elif isinstance(keys, type(Ellipsis)):
             self.set_values(copy(item))
-        return
+        else:
+            self.values[slice_obj.ids] = copy(item)
+        self._is_set = True
 
     def to_df(
         self, index: bool = True, dim_to_columns: str = None, sparse: bool = False
