@@ -1,3 +1,4 @@
+from __future__ import annotations
 from copy import copy
 from pydantic import BaseModel as PydanticBaseModel, Field, AliasChoices, model_validator
 from typing import Dict, Iterator, Optional
