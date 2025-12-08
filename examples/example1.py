@@ -7,7 +7,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.19.0.dev0
 #   kernelspec:
-#     display_name: .venv
+#     display_name: flodym
 #     language: python
 #     name: python3
 # ---
@@ -58,9 +58,7 @@ time = Dimension(name="Time", letter="t", items=list(range(1980, 2011)))
 elements = Dimension(
     name="Elements",
     letter="e",
-    items=[
-        "single material",
-    ],
+    items=["single material"],
 )
 dimensions = DimensionSet(dim_list=[time, elements])
 
@@ -116,9 +114,8 @@ flows = make_empty_flows(processes=processes, flow_definitions=flow_definitions,
 # %%
 class SimpleMFA(MFASystem):
     def compute(self):
-        self.flows["sysenv => process 1"][...] = self.parameters[
-            "D"
-        ]  # the elipsis slice [...] ensures the dimensionality of the flow is not changed
+        # the elipsis slice [...] ensures the dimensionality of the flow is not changed
+        self.flows["sysenv => process 1"][...] = self.parameters["D"]
         self.flows["process 1 => process 2"][...] = (
             1 / (1 - self.parameters["alpha"]) * self.parameters["D"]
         )

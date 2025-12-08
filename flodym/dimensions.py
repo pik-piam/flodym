@@ -1,3 +1,4 @@
+from __future__ import annotations
 from copy import copy
 from pydantic import BaseModel as PydanticBaseModel, Field, AliasChoices, model_validator
 from typing import Dict, Iterator, Optional
@@ -97,6 +98,19 @@ class Dimension(PydanticBaseModel):
         """Check if the items of this dimension are a superset of the items of another dimension."""
         return set(self.items).issuperset(other.items)
 
+    def as_dimset(self) -> "DimensionSet":
+        """Convert the Dimension to a DimensionSet containing only this Dimension."""
+        return DimensionSet(dim_list=[self])
+
+    def __add__(self, other: "Dimension") -> "DimensionSet":
+        """Addition operator to create a DimensionSet from two Dimensions."""
+        if isinstance(other, Dimension):
+            return DimensionSet(dim_list=[self, other])
+        elif isinstance(other, DimensionSet):
+            return self.as_dimset() + other
+        else:
+            raise TypeError("Can only add Dimension to Dimension or DimensionSet.")
+
     def __str__(self):
         base = f"Dimension '{self.name}' ('{self.letter}'); "
         item_base = f"{self.len} items"
@@ -179,7 +193,9 @@ class DimensionSet(PydanticBaseModel):
     def __iter__(self) -> Iterator[Dimension]:
         return iter(self.dim_list)
 
-    def __contains__(self, key: str) -> bool:
+    def __contains__(self, key: str | Dimension) -> bool:
+        if isinstance(key, Dimension):
+            key = key.letter
         return key in self._full_mapping
 
     def size(self, key: str):
@@ -194,11 +210,6 @@ class DimensionSet(PydanticBaseModel):
     def shape(self) -> tuple[int]:
         """shape of the array that would be created with the dimensions in the set"""
         return tuple(self.size(dim) for dim in self.letters)
-
-    @property
-    def ndim(self):
-        """the number of dimensions in the set"""
-        return len(self.dim_list)
 
     def get_subset(self, dims: tuple = None) -> "DimensionSet":
         """Selects :py:class:`Dimension` objects from the object attribute dim_list,
@@ -218,6 +229,72 @@ class DimensionSet(PydanticBaseModel):
             )
         return DimensionSet(dim_list=self.dim_list + added_dims)
 
+    extend = expand_by
+
+    def _check_additional_dim(self, new_dim: Dimension):
+        """Checks the new_dim is a Dimension and that it is not already in the DimensionSet."""
+        if not isinstance(new_dim, Dimension):
+            raise TypeError("new_dim must be a Dimension object.")
+        if new_dim in self:
+            raise ValueError(
+                "New dimension can't have same letter as any of those already in DimensionSet, "
+                "as that would create ambiguity."
+            )
+
+    def append(self, new_dim: Dimension, inplace: bool = False) -> Optional["DimensionSet"]:
+        """Add a new dimension to the set at the end.
+
+        Args:
+            new_dim (Dimension): The new dimension to add
+            inplace (bool, optional): If True, the operation is performed in place, otherwise a new DimensionSet is returned. Defaults to False.
+
+        Returns:
+            None if inplace=True, otherwise a new DimensionSet with the new dimension added
+        """
+        self._check_additional_dim(new_dim)
+        if inplace:
+            self.dim_list.append(new_dim)
+            return
+        else:
+            return self + new_dim
+
+    def prepend(self, new_dim: Dimension, inplace: bool = False) -> Optional["DimensionSet"]:
+        """Add a new dimension to the set at the beginning.
+        Args:
+            new_dim (Dimension): The new dimension to add
+            inplace (bool, optional): If True, the operation is performed in place, otherwise a new DimensionSet is returned. Defaults to False.
+        Returns:
+            None if inplace=True, otherwise a new DimensionSet with the new dimension added
+        """
+        self._check_additional_dim(new_dim)
+        if inplace:
+            self.dim_list.insert(0, new_dim)
+            return
+        else:
+            return new_dim + self
+
+    def insert(
+        self, index: int, new_dim: Dimension, inplace: bool = False
+    ) -> Optional["DimensionSet"]:
+        """Insert a new dimension to the set at the given index.
+
+        Args:
+            index (int): The index at which to insert the new dimension
+            new_dim (Dimension): The new dimension to add
+            inplace (bool, optional): If True, the operation is performed in place, otherwise a new DimensionSet is returned. Defaults to False.
+
+        Returns:
+            None if inplace=True, otherwise a new DimensionSet with the new dimension added
+        """
+        self._check_additional_dim(new_dim)
+        if inplace:
+            self.dim_list.insert(index, new_dim)
+            return
+        else:
+            dim_list = copy(self.dim_list)
+            dim_list.insert(index, new_dim)
+            return DimensionSet(dim_list=dim_list)
+
     def drop(self, key: str, inplace: bool = False) -> Optional["DimensionSet"]:
         """Remove a dimension from the set.
 
@@ -236,6 +313,8 @@ class DimensionSet(PydanticBaseModel):
             dimensions = copy(self.dim_list)
             dimensions.remove(dim_to_drop)
             return DimensionSet(dim_list=dimensions)
+
+    remove = drop
 
     def replace(self, key: str, new_dim: Dimension, inplace: bool = False):
         """Replace a dimension in the set with a new one.
@@ -261,7 +340,16 @@ class DimensionSet(PydanticBaseModel):
             dim_list[self.index(key)] = new_dim
             return DimensionSet(dim_list=dim_list)
 
-    def intersect_with(self, other: "DimensionSet") -> "DimensionSet":
+    def prepare_other(self, other: "DimensionSet" | Dimension) -> "DimensionSet":
+        """Check that the other object is a DimensionSet or Dimension, and convert if necessary."""
+        if isinstance(other, DimensionSet):
+            return other
+        elif isinstance(other, Dimension):
+            return other.as_dimset()
+        else:
+            raise TypeError("Operation of DimensionSet must be with DimensionSet or Dimension")
+
+    def intersect_with(self, other: "DimensionSet" | Dimension) -> "DimensionSet":
         """Get the intersection of two DimensionSets.
 
         Args:
@@ -270,10 +358,15 @@ class DimensionSet(PydanticBaseModel):
         Returns:
             DimensionSet: The intersection of the two DimensionSets
         """
+        other = self.prepare_other(other)
         intersection_letters = [dim.letter for dim in self.dim_list if dim.letter in other.letters]
         return self.get_subset(intersection_letters)
 
-    def union_with(self, other: "DimensionSet") -> "DimensionSet":
+    def __and__(self, other: "DimensionSet" | Dimension) -> "DimensionSet":
+        """Intersection operator for two DimensionSets."""
+        return self.intersect_with(other)
+
+    def union_with(self, other: "DimensionSet" | Dimension) -> "DimensionSet":
         """Get the union of two DimensionSets.
 
         Args:
@@ -282,10 +375,21 @@ class DimensionSet(PydanticBaseModel):
         Returns:
             DimensionSet: The union of the two DimensionSets
         """
+        other = self.prepare_other(other)
         added_dims = [dim for dim in other.dim_list if dim.letter not in self.letters]
         return self.expand_by(added_dims)
 
-    def difference_with(self, other: "DimensionSet") -> "DimensionSet":
+    def __or__(self, other: "DimensionSet" | Dimension) -> "DimensionSet":
+        """Union operator for two DimensionSets."""
+        return self.union_with(other)
+
+    def __add__(self, other: "DimensionSet" | Dimension) -> "DimensionSet":
+        """Addition operator for two DimensionSets (alias for union)."""
+        if self & other:
+            raise ValueError("Dimensions of DimensionSets overlap. Use union '|' operator instead.")
+        return self.union_with(other)
+
+    def difference_with(self, other: "DimensionSet" | Dimension) -> "DimensionSet":
         """Get the set difference of two DimensionSets.
 
         Args:
@@ -294,10 +398,32 @@ class DimensionSet(PydanticBaseModel):
         Returns:
             DimensionSet: The difference of the two DimensionSets
         """
+        other = self.prepare_other(other)
         difference_letters = [
             dim.letter for dim in self.dim_list if dim.letter not in other.letters
         ]
         return self.get_subset(difference_letters)
+
+    def __sub__(self, other: "DimensionSet" | Dimension) -> "DimensionSet":
+        """Difference operator for two DimensionSets."""
+        return self.difference_with(other)
+
+    def __xor__(self, other: "DimensionSet" | Dimension) -> "DimensionSet":
+        """Symmetric difference operator for two DimensionSets."""
+        return (self - other) | (other - self)
+
+    @property
+    def ndim(self):
+        """the number of dimensions in the set"""
+        return len(self.dim_list)
+
+    def __len__(self) -> int:
+        """Return the number of dimensions in the set."""
+        return len(self.dim_list)
+
+    def __bool__(self) -> bool:
+        """Return True if the set is not empty."""
+        return len(self.dim_list) > 0
 
     @property
     def names(self):
