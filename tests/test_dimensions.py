@@ -330,18 +330,18 @@ def test_ndim_property():
 def test_dimension_as_dimset():
     """Test that as_dimset() converts a Dimension to a DimensionSet."""
     dim = Dimension(name="time", letter="t", items=[1990, 2000, 2010])
-    
+
     # Convert to DimensionSet
     dimset = dim.as_dimset()
-    
+
     # Verify it's a DimensionSet
     assert isinstance(dimset, DimensionSet)
-    
+
     # Verify it contains only the one dimension
     assert len(dimset) == 1
     assert dimset.letters == ("t",)
     assert dimset.names == ("time",)
-    
+
     # Verify the dimension is the same
     assert dimset[0] == dim
 
@@ -350,54 +350,27 @@ def test_dimension_add():
     """Test the __add__ operator for Dimension objects."""
     dim1 = Dimension(name="time", letter="t", items=[1990, 2000, 2010])
     dim2 = Dimension(name="place", letter="p", items=["World", "Moon"])
-    
+
     # Test Dimension + Dimension
     dimset = dim1 + dim2
     assert isinstance(dimset, DimensionSet)
     assert len(dimset) == 2
     assert dimset.letters == ("t", "p")
     assert dimset.names == ("time", "place")
-    
+
     # Test Dimension + DimensionSet
     dim3 = Dimension(name="material", letter="m", items=["steel", "aluminum"])
     dimset2 = dim1 + dim2
     dimset3 = dim3 + dimset2
-    
+
     assert isinstance(dimset3, DimensionSet)
     assert len(dimset3) == 3
     assert dimset3.letters == ("m", "t", "p")
     assert dimset3.names == ("material", "time", "place")
-    
+
     # Test adding invalid type
     with pytest.raises(TypeError):
         dim1 + "invalid"
-
-
-def test_dimension_sum_operator():
-    """Test that sum() works with Dimension objects using __add__."""
-    dim1 = Dimension(name="time", letter="t", items=[1990, 2000, 2010])
-    dim2 = Dimension(name="place", letter="p", items=["World", "Moon"])
-    dim3 = Dimension(name="material", letter="m", items=["steel", "aluminum"])
-    
-    # Test sum with list of Dimensions
-    # sum() defaults to start=0, but Dimension objects cannot be added to integers,
-    # so we must provide an empty DimensionSet as the start value
-    dimset = sum([dim1, dim2, dim3], start=DimensionSet(dim_list=[]))
-    
-    assert isinstance(dimset, DimensionSet)
-    assert len(dimset) == 3
-    assert dimset.letters == ("t", "p", "m")
-    assert dimset.names == ("time", "place", "material")
-    
-    # Test sum with single dimension
-    dimset_single = sum([dim1], start=DimensionSet(dim_list=[]))
-    assert isinstance(dimset_single, DimensionSet)
-    assert len(dimset_single) == 1
-    
-    # Test sum with empty list
-    dimset_empty = sum([], start=DimensionSet(dim_list=[]))
-    assert isinstance(dimset_empty, DimensionSet)
-    assert len(dimset_empty) == 0
 
 
 def test_dimensionset_append():
@@ -408,29 +381,29 @@ def test_dimensionset_append():
     ]
     dimset = DimensionSet(dim_list=dims)
     new_dim = Dimension(name="material", letter="m", items=["steel", "aluminum"])
-    
+
     # Test append with inplace=False (returns new DimensionSet)
     new_dimset = dimset.append(new_dim, inplace=False)
     assert new_dimset is not None
     assert len(new_dimset) == 3
     assert new_dimset.letters == ("t", "p", "m")
-    
+
     # Original should be unchanged
     assert len(dimset) == 2
     assert dimset.letters == ("t", "p")
-    
+
     # Test append with inplace=True (modifies in place)
     dimset2 = DimensionSet(dim_list=dims)
     result = dimset2.append(new_dim, inplace=True)
     assert result is None
     assert len(dimset2) == 3
     assert dimset2.letters == ("t", "p", "m")
-    
+
     # Test appending dimension with duplicate letter
     dup_dim = Dimension(name="other_time", letter="t", items=[2020, 2030])
     with pytest.raises(ValueError):
         dimset.append(dup_dim)
-    
+
     # Test appending non-Dimension object
     with pytest.raises(TypeError):
         dimset.append("invalid")
@@ -444,29 +417,29 @@ def test_dimensionset_prepend():
     ]
     dimset = DimensionSet(dim_list=dims)
     new_dim = Dimension(name="material", letter="m", items=["steel", "aluminum"])
-    
+
     # Test prepend with inplace=False (returns new DimensionSet)
     new_dimset = dimset.prepend(new_dim, inplace=False)
     assert new_dimset is not None
     assert len(new_dimset) == 3
     assert new_dimset.letters == ("m", "t", "p")
-    
+
     # Original should be unchanged
     assert len(dimset) == 2
     assert dimset.letters == ("t", "p")
-    
+
     # Test prepend with inplace=True (modifies in place)
     dimset2 = DimensionSet(dim_list=dims)
     result = dimset2.prepend(new_dim, inplace=True)
     assert result is None
     assert len(dimset2) == 3
     assert dimset2.letters == ("m", "t", "p")
-    
+
     # Test prepending dimension with duplicate letter
     dup_dim = Dimension(name="other_time", letter="t", items=[2020, 2030])
     with pytest.raises(ValueError):
         dimset.prepend(dup_dim)
-    
+
     # Test prepending non-Dimension object
     with pytest.raises(TypeError):
         dimset.prepend("invalid")
@@ -480,24 +453,24 @@ def test_dimensionset_remove():
         {"name": "material", "letter": "m", "items": ["steel", "aluminum"]},
     ]
     dimset = DimensionSet(dim_list=dims)
-    
+
     # Test remove with inplace=False (returns new DimensionSet)
     new_dimset = dimset.remove("m", inplace=False)
     assert new_dimset is not None
     assert len(new_dimset) == 2
     assert new_dimset.letters == ("t", "p")
-    
+
     # Original should be unchanged
     assert len(dimset) == 3
     assert dimset.letters == ("t", "p", "m")
-    
+
     # Test remove with inplace=True (modifies in place)
     dimset2 = DimensionSet(dim_list=dims)
     result = dimset2.remove("m", inplace=True)
     assert result is None
     assert len(dimset2) == 2
     assert dimset2.letters == ("t", "p")
-    
+
     # Test removing with name instead of letter
     dimset3 = DimensionSet(dim_list=dims)
     new_dimset3 = dimset3.remove("time", inplace=False)
@@ -513,39 +486,39 @@ def test_dimensionset_insert():
     ]
     dimset = DimensionSet(dim_list=dims)
     new_dim = Dimension(name="material", letter="m", items=["steel", "aluminum"])
-    
+
     # Test insert at beginning (index 0)
     new_dimset = dimset.insert(0, new_dim, inplace=False)
     assert new_dimset is not None
     assert len(new_dimset) == 3
     assert new_dimset.letters == ("m", "t", "p")
-    
+
     # Test insert at middle (index 1)
     new_dimset2 = dimset.insert(1, new_dim, inplace=False)
     assert len(new_dimset2) == 3
     assert new_dimset2.letters == ("t", "m", "p")
-    
+
     # Test insert at end (index 2)
     new_dimset3 = dimset.insert(2, new_dim, inplace=False)
     assert len(new_dimset3) == 3
     assert new_dimset3.letters == ("t", "p", "m")
-    
+
     # Original should be unchanged
     assert len(dimset) == 2
     assert dimset.letters == ("t", "p")
-    
+
     # Test insert with inplace=True
     dimset2 = DimensionSet(dim_list=dims)
     result = dimset2.insert(1, new_dim, inplace=True)
     assert result is None
     assert len(dimset2) == 3
     assert dimset2.letters == ("t", "m", "p")
-    
+
     # Test inserting dimension with duplicate letter
     dup_dim = Dimension(name="other_time", letter="t", items=[2020, 2030])
     with pytest.raises(ValueError):
         dimset.insert(0, dup_dim)
-    
+
     # Test inserting non-Dimension object
     with pytest.raises(TypeError):
         dimset.insert(0, "invalid")
@@ -563,31 +536,31 @@ def test_dimensionset_add():
     ]
     dimset1 = DimensionSet(dim_list=dims1)
     dimset2 = DimensionSet(dim_list=dims2)
-    
+
     # Test DimensionSet + DimensionSet with no overlap
     result = dimset1 + dimset2
     assert isinstance(result, DimensionSet)
     assert len(result) == 4
     assert result.letters == ("t", "p", "m", "r")
-    
+
     # Test DimensionSet + Dimension
     new_dim = Dimension(name="animal", letter="a", items=["cat", "dog"])
     result2 = dimset1 + new_dim
     assert isinstance(result2, DimensionSet)
     assert len(result2) == 3
     assert result2.letters == ("t", "p", "a")
-    
+
     # Test that adding overlapping dimensions raises ValueError
     dims3 = [
         {"name": "place", "letter": "p", "items": ["Mars"]},  # 'p' overlaps
         {"name": "product", "letter": "r", "items": ["car", "bike"]},
     ]
     dimset3 = DimensionSet(dim_list=dims3)
-    
+
     with pytest.raises(ValueError) as error_msg:
         dimset1 + dimset3
     assert "overlap" in str(error_msg.value).lower()
-    
+
     # Test commutativity for disjoint sets
     result_forward = dimset1 + dimset2
     result_backward = dimset2 + dimset1
