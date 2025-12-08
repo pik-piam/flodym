@@ -1,10 +1,8 @@
-from __future__ import annotations
 from copy import copy
 from pydantic import BaseModel as PydanticBaseModel, Field, AliasChoices, model_validator
 from typing import Dict, Iterator, Optional
 import numpy as np
 import pandas as pd
-from deprecated import deprecated
 
 from .mfa_definition import DimensionDefinition
 
@@ -222,7 +220,6 @@ class DimensionSet(PydanticBaseModel):
             subset.dim_list = [self._full_mapping[dim_key] for dim_key in dims]
         return subset
 
-    @deprecated(reason="Use addition operator '+' or 'append' method instead", version="0.5.2")
     def expand_by(self, added_dims: list[Dimension]) -> "DimensionSet":
         """Expands the DimensionSet by adding new dimensions to it."""
         if not all([dim.letter not in self.letters for dim in added_dims]):
@@ -230,6 +227,8 @@ class DimensionSet(PydanticBaseModel):
                 "DimensionSet already contains one or more of the dimensions to be added."
             )
         return DimensionSet(dim_list=self.dim_list + added_dims)
+
+    extend = expand_by
 
     def _check_additional_dim(self, new_dim: Dimension):
         """Checks the new_dim is a Dimension and that it is not already in the DimensionSet."""
