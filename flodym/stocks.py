@@ -219,9 +219,7 @@ class DynamicStockModel(Stock):
                     "Cohort dimension letter and name must be different from time dimension letter and name."
                 )
             if c.items != t.items:
-                raise ValueError(
-                    "Cohort dimension size must be the same as time dimension size."
-                )
+                raise ValueError("Cohort dimension size must be the same as time dimension size.")
             if c.letter in self.dims.letters or c.name in self.dims.names:
                 raise ValueError("Cohort dimension must not be part of the stock dimensions.")
             self._dims_cohort = t + c + self.dims.drop(self.time_letter, inplace=False)
@@ -248,7 +246,9 @@ class DynamicStockModel(Stock):
 
     def _check_cohort_dim(self, application: str):
         if self.cohort_dim is None:
-            raise ValueError(f"Cohort dimension must be provided at DSM initialization for {application} to work.")
+            raise ValueError(
+                f"Cohort dimension must be provided at DSM initialization for {application} to work."
+            )
 
     @property
     def _n_t(self) -> int:
@@ -310,8 +310,12 @@ class DynamicStockModel(Stock):
         inflow_by_cohort = StockArray(dims=self._dims_cohort, name=f"{self.name}_inflow_by_cohort")
         inflow_by_cohort[{self.time_letter: initial_year}] = self._to_annual(initial_stock.values)
         if np.any((inflow_by_cohort.values > 0) & (self.lifetime_model.sf == 0)):
-            raise ValueError("Initial stock is inconsistent with the lifetime model: survival function is zero for some cohort/inflow year combinations.")
-        inflow_by_cohort.values[...] /= np.where(self.lifetime_model.sf == 0, 1, self.lifetime_model.sf)
+            raise ValueError(
+                "Initial stock is inconsistent with the lifetime model: survival function is zero for some cohort/inflow year combinations."
+            )
+        inflow_by_cohort.values[...] /= np.where(
+            self.lifetime_model.sf == 0, 1, self.lifetime_model.sf
+        )
         self._initial_stock_dsm = InflowByCohortDrivenDSM(
             dims=self.dims,
             cohort_dim=self.cohort_dim,
@@ -328,14 +332,18 @@ class DynamicStockModel(Stock):
     def _add_initial_stock_to_inflow(self):
         if self._initial_stock_dsm is not None:
             self._initial_stock_dsm.compute(stop_after="inflow")
-            if np.any(self.inflow.values[:self._initial_year_index+1, ...] > 0):
-                raise ValueError(f"Prescribed inflow before or in the initial stock year {self._initial_stock_year} is non-zero.")
+            if np.any(self.inflow.values[: self._initial_year_index + 1, ...] > 0):
+                raise ValueError(
+                    f"Prescribed inflow before or in the initial stock year {self._initial_stock_year} is non-zero."
+                )
             self.inflow.values[...] += self._initial_stock_dsm.inflow.values
 
     def _add_initial_stock_to_stock(self) -> np.ndarray:
         if self._initial_stock_dsm is not None:
-            if np.any(self.stock.values[:self._initial_year_index+1, ...] > 0):
-                raise ValueError(f"Prescribed stock before or in the initial stock year {self._initial_stock_year} is non-zero.")
+            if np.any(self.stock.values[: self._initial_year_index + 1, ...] > 0):
+                raise ValueError(
+                    f"Prescribed stock before or in the initial stock year {self._initial_stock_year} is non-zero."
+                )
             # Initial stock only gives the remaining(!) stock by cohort in one year;
             # From this, we first need to reconstruct what the total stock was over historic time
             # This needs two steps:
@@ -344,7 +352,7 @@ class DynamicStockModel(Stock):
             # 2) Sum this up over time in an inflow-driven way to get total stock over historic time
             self._initial_stock_dsm.compute(stop_after="stock")
             iiy = self._initial_year_index
-            self.stock.values[:iiy+1,...] = self._initial_stock_dsm.stock.values[:iiy+1,...]
+            self.stock.values[: iiy + 1, ...] = self._initial_stock_dsm.stock.values[: iiy + 1, ...]
 
     def __str__(self):
         base = super().__str__()
@@ -439,7 +447,9 @@ class InflowByCohortDrivenDSM(InflowDrivenDSM):
     @model_validator(mode="after")
     def init_cohort_arrays(self):
         if inflow_by_cohort is None:
-            inflow_by_cohort = StockArray(dims=self._dims_cohort, name=f"{self.name}_inflow_by_cohort")
+            inflow_by_cohort = StockArray(
+                dims=self._dims_cohort, name=f"{self.name}_inflow_by_cohort"
+            )
         else:
             if inflow_by_cohort.dims.letters != self._dims_cohort.letters:
                 raise ValueError(
@@ -460,7 +470,7 @@ class InflowByCohortDrivenDSM(InflowDrivenDSM):
 
     def _compute_inflow(self):
         self.inflow.values[...] = np.einsum(
-            "tc...,tc...->c...", self.inflow_by_cohort, 1/self.lifetime_model.sf
+            "tc...,tc...->c...", self.inflow_by_cohort, 1 / self.lifetime_model.sf
         )
 
     @stock_compute_decorator
