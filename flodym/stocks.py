@@ -366,7 +366,7 @@ class InflowDrivenDSM(DynamicStockModel):
     """
 
     def _check_needed_arrays(self):
-        DynamicStockModel._check_needed_arrays()
+        DynamicStockModel._check_needed_arrays(self)
         if not self.inflow.is_set:
             logging.warning(
                 "Inflow is not set (is_set=False). If this is intended, perform mark_set() on it."
@@ -396,7 +396,7 @@ class StockDrivenDSM(DynamicStockModel):
     """
 
     def _check_needed_arrays(self):
-        DynamicStockModel._check_needed_arrays()
+        DynamicStockModel._check_needed_arrays(self)
         if not self.stock.is_set:
             logging.warning(
                 "Stock is not set (is_set=False). If this is intended, perform mark_set() on it."
@@ -446,19 +446,19 @@ class InflowByCohortDrivenDSM(InflowDrivenDSM):
 
     @model_validator(mode="after")
     def init_cohort_arrays(self):
-        if inflow_by_cohort is None:
-            inflow_by_cohort = StockArray(
+        if self.inflow_by_cohort is None:
+            self.inflow_by_cohort = StockArray(
                 dims=self._dims_cohort, name=f"{self.name}_inflow_by_cohort"
             )
         else:
-            if inflow_by_cohort.dims.letters != self._dims_cohort.letters:
+            if self.inflow_by_cohort.dims.letters != self._dims_cohort.letters:
                 raise ValueError(
-                    f"Inflow by cohort dimensions {inflow_by_cohort.dims.letters} do not match expected dims {self._dims_cohort.letters}."
+                    f"Inflow by cohort dimensions {self.inflow_by_cohort.dims.letters} do not match expected dims {self._dims_cohort.letters}."
                 )
         return self
 
     def _check_needed_arrays(self):
-        DynamicStockModel._check_needed_arrays()
+        DynamicStockModel._check_needed_arrays(self)
         if not self.inflow_by_cohort.is_set:
             logging.warning(
                 "Inflow_by_cohort is not set (is_set=False). If this is intended, perform mark_set() on it."
@@ -470,7 +470,7 @@ class InflowByCohortDrivenDSM(InflowDrivenDSM):
 
     def _compute_inflow(self):
         self.inflow.values[...] = np.einsum(
-            "tc...,tc...->c...", self.inflow_by_cohort, 1 / self.lifetime_model.sf
+            "tc...,tc...->c...", self.inflow_by_cohort.values, 1 / self.lifetime_model.sf
         )
 
     @stock_compute_decorator
