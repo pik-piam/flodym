@@ -222,7 +222,9 @@ class DynamicStockModel(Stock):
                 raise ValueError("Cohort dimension size must be the same as time dimension size.")
             if c.letter in self.dims.letters or c.name in self.dims.names:
                 raise ValueError("Cohort dimension must not be part of the stock dimensions.")
-            self._dims_cohort = t + c + self.dims.drop(self.time_letter, inplace=False)
+            self._dims_cohort = DimensionSet(
+                dim_list=[t, c] + list(self.dims.drop(self.time_letter, inplace=False).dim_list)
+            )
         return self
 
     @model_validator(mode="after")
@@ -308,14 +310,24 @@ class DynamicStockModel(Stock):
             )
 
         inflow_by_cohort = StockArray(dims=self._dims_cohort, name=f"{self.name}_inflow_by_cohort")
-        inflow_by_cohort[{self.time_letter: initial_year}] = self._to_annual(initial_stock.values)
+        # Manually set the slice for the initial_year time index
+        initial_year_idx = self.dims[self.time_letter].items.index(initial_year)
+        inflow_by_cohort.values[initial_year_idx, :, ...] = self._to_annual(initial_stock.values)
         if np.any((inflow_by_cohort.values > 0) & (self.lifetime_model.sf == 0)):
             raise ValueError(
                 "Initial stock is inconsistent with the lifetime model: survival function is zero for some cohort/inflow year combinations."
             )
-        inflow_by_cohort.values[...] /= np.where(
-            self.lifetime_model.sf == 0, 1, self.lifetime_model.sf
+        # Back-calculate the inflow from the initial stock by dividing by survival function at initial_year
+        # Then multiply by survival function at all times to get inflow_by_cohort[t, c]
+        inflow_reconstructed = inflow_by_cohort.values[initial_year_idx, :, ...] / np.where(
+            self.lifetime_model.sf[initial_year_idx, :, ...] == 0,
+            1,
+            self.lifetime_model.sf[initial_year_idx, :, ...]
         )
+        # Set inflow_by_cohort for all time steps
+        for t_idx in range(self._n_t):
+            inflow_by_cohort.values[t_idx, :, ...] = inflow_reconstructed * self.lifetime_model.sf[t_idx, :, ...]
+        inflow_by_cohort.mark_set()  # Mark as set before passing to InflowByCohortDrivenDSM
         self._initial_stock_dsm = InflowByCohortDrivenDSM(
             dims=self.dims,
             cohort_dim=self.cohort_dim,
@@ -469,9 +481,8 @@ class InflowByCohortDrivenDSM(InflowDrivenDSM):
             )
 
     def _compute_inflow(self):
-        self.inflow.values[...] = np.einsum(
-            "tc...,tc...->c...", self.inflow_by_cohort.values, 1 / self.lifetime_model.sf
-        )
+        # Extract diagonal where t==c (inflow occurs in cohort year)
+        self.inflow.values[...] = self.inflow_by_cohort.values[self._t_diag_indices]
 
     @stock_compute_decorator
     def compute(self, stop_after: str = None):
