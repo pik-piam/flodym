@@ -154,13 +154,6 @@ class Stock(PydanticBaseModel):
         """
         return self.inflow.is_set and self.outflow.is_set and self.stock.is_set
 
-    @property
-    def is_computed(self) -> bool:
-        """Check whether the stock has been computed, i.e. whether the stock, inflow, and outflow arrays
-        are all set.
-        """
-        return self.inflow.is_set and self.outflow.is_set and self.stock.is_set
-
     def _to_whole_period(self, annual_flow: np.ndarray) -> np.ndarray:
         """multiply annual flow by interval length to get flow over whole period."""
         return np.einsum("t...,t->t...", annual_flow, self._t.interval_lengths)
