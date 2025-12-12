@@ -230,9 +230,11 @@ class LifetimeModel(PydanticBaseModel):
             pdf[m + 1 :, m, ...] = -1 * np.diff(sf[m:, m, ...], axis=0)
 
     def _compute_sf_conditional(self):
-        self._sf_conditional[:,0,:,...] = self.sf
+        self._sf_conditional[:, 0, :, ...] = self.sf
         i_sf = np.where(self.sf == 0, 1, self.sf)
-        self._sf_conditional[:,1:,:,...] = np.einsum("tc...,ic...->tic...", self.sf, i_sf[:-1,:,...])
+        self._sf_conditional[:, 1:, :, ...] = np.einsum(
+            "tc...,ic...->tic...", self.sf, i_sf[:-1, :, ...]
+        )
 
 
 class FixedLifetime(LifetimeModel):

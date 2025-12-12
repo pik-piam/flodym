@@ -312,7 +312,9 @@ class DynamicStockModel(Stock):
         )
         iiy = self._initial_year_index
         # correction to account for the fact that some of the inflow will leave the stock in the same period
-        isd.inflow_by_cohort.values[iiy,:iiy+1,...] /= isd.lifetime_model.sf_conditional[iiy,iiy,:iiy+1,...]
+        isd.inflow_by_cohort.values[iiy, : iiy + 1, ...] /= isd.lifetime_model.sf_conditional[
+            iiy, iiy, : iiy + 1, ...
+        ]
         self._initial_stock_dsm = isd
 
     # TODO general:
@@ -336,7 +338,6 @@ class DynamicStockModel(Stock):
 
         return wrapper
 
-
     @only_if_has_initial_stock
     def _subtract_initial_stock_from_inflow(self):
         if np.any(self.inflow.values[: self._initial_year_index, ...] > 0):
@@ -353,8 +354,9 @@ class DynamicStockModel(Stock):
         iiy = self._initial_year_index
         # first take maximum of both, then subtract initial stock contribution
         # max(pi, isi) - isi = pi - min(pi, isi)
-        self.inflow.values[iiy,...] -= np.minimum(
-            self.inflow.values[iiy,...], self._initial_stock_dsm.inflow_by_cohort.values[iiy,iiy,...]
+        self.inflow.values[iiy, ...] -= np.minimum(
+            self.inflow.values[iiy, ...],
+            self._initial_stock_dsm.inflow_by_cohort.values[iiy, iiy, ...],
         )
 
     @only_if_has_initial_stock
@@ -363,7 +365,7 @@ class DynamicStockModel(Stock):
 
     @only_if_has_initial_stock
     def _subtract_initial_stock_from_stock(self) -> np.ndarray:
-        if np.any(self.stock.values[:self._initial_year_index, ...] > 0):
+        if np.any(self.stock.values[: self._initial_year_index, ...] > 0):
             raise ValueError(
                 f"Prescribed stock before the initial stock year {self._initial_stock_year} is non-zero."
             )
@@ -371,7 +373,10 @@ class DynamicStockModel(Stock):
             logging.debug(
                 f"Prescribed stock in the initial stock year {self._initial_stock_year} is zero and will be fully replaced by the initial stock."
             )
-        elif not np.all(self.stock.values[self._initial_year_index, ...] == self._initial_stock_dsm.stock.values[self._initial_year_index, ...]):
+        elif not np.all(
+            self.stock.values[self._initial_year_index, ...]
+            == self._initial_stock_dsm.stock.values[self._initial_year_index, ...]
+        ):
             logging.warning(
                 f"Prescribed stock in the initial stock year {self._initial_stock_year} is non-zero and different from the total initial stock. "
                 f"This creates ambiguity: Initial stock and prescribed stock both contribute to the stock of that year. "
@@ -381,7 +386,7 @@ class DynamicStockModel(Stock):
         # first take maximum of both, then subtract initial stock contribution
         # max(ps, is) - is = ps - min(ps, is)
         self.stock.values[iiy, ...] -= np.minimum(
-            self.stock.values[iiy, ], self._initial_stock_dsm.stock.values[iiy, ]
+            self.stock.values[iiy,], self._initial_stock_dsm.stock.values[iiy,]
         )
 
     @only_if_has_initial_stock

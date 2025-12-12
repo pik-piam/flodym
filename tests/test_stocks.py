@@ -178,13 +178,13 @@ def test_inflow_by_cohort_driven_dsm():
             Dimension(name="product", letter="p", items=["A", "B"], dtype=str),
         ]
     )
-    
+
     # Create cohort dimension
     cohort_dim = Dimension(name="cohort", letter="c", items=time_items, dtype=int)
-    
+
     # Create lifetime model
     lifetime_model = LogNormalLifetime(dims=dims_test, time_letter="t", mean=5, std=2)
-    
+
     # Create InflowByCohortDrivenDSM
     dsm = InflowByCohortDrivenDSM(
         dims=dims_test,
@@ -193,23 +193,23 @@ def test_inflow_by_cohort_driven_dsm():
         time_letter="t",
         name="test_dsm",
     )
-    
+
     # Set inflow by cohort - diagonal pattern (inflow only occurs in cohort year)
     dsm.inflow_by_cohort.values[...] = 0.0
     for i in range(len(time_items)):
         dsm.inflow_by_cohort.values[i, i, :] = 1.0  # 1 unit per product per year
-    
+
     # Compute the DSM
     dsm.compute()
-    
+
     # Check that inflow was computed correctly (diagonal extraction)
     assert dsm.inflow.is_set
     assert dsm.stock.is_set
     assert dsm.outflow.is_set
-    
+
     # Verify inflow values are approximately 1.0 at each time step
     assert np.allclose(dsm.inflow.values, 1.0)
-    
+
     # Verify stock balance
     dsm.check_stock_balance()
 
@@ -224,13 +224,13 @@ def test_inflow_driven_dsm_with_initial_stock():
             Dimension(name="product", letter="p", items=["A", "B"], dtype=str),
         ]
     )
-    
+
     # Create cohort dimension (required for initial stock functionality)
     cohort_dim = Dimension(name="cohort", letter="c", items=time_items, dtype=int)
-    
+
     # Create lifetime model
     lifetime_model = LogNormalLifetime(dims=dims_test, time_letter="t", mean=8, std=3)
-    
+
     # Create InflowDrivenDSM with cohort_dim
     dsm = InflowDrivenDSM(
         dims=dims_test,
@@ -239,7 +239,7 @@ def test_inflow_driven_dsm_with_initial_stock():
         time_letter="t",
         name="test_dsm_initial",
     )
-    
+
     # Set initial stock at year 2005
     initial_year = 2005
     # Initial stock dims should be (cohort, product) = _dims_cohort.drop(time_letter)
@@ -251,30 +251,30 @@ def test_inflow_driven_dsm_with_initial_stock():
     # Set stock from various cohorts
     for i in range(5):  # 5 historical cohorts
         initial_stock.values[i, :] = 10.0 - i  # Decreasing stock from older cohorts
-    
+
     dsm.set_initial_stock(initial_stock, initial_year)
-    
+
     # Set inflow for years AFTER initial year only
     # Inflow before and at initial year will be computed from initial stock
     dsm.inflow.values[...] = 0.0
     initial_year_idx = time_items.index(initial_year)
     dsm.inflow.values[initial_year_idx + 1 :, :] = 2.0  # 2 units per year after initial
     dsm.inflow.mark_set()  # Mark inflow as set
-    
+
     # Compute
     dsm.compute()
-    
+
     # Verify that stock is set
     assert dsm.stock.is_set
     assert dsm.inflow.is_set
     assert dsm.outflow.is_set
-    
+
     # Stock at initial year should be non-zero
     assert dsm.stock.values[initial_year_idx, :].sum() > 0
-    
+
     # Stock before initial year should also be non-zero (reconstructed from initial stock)
     assert dsm.stock.values[initial_year_idx - 1, :].sum() > 0
-    
+
     # Verify stock balance
     dsm.check_stock_balance()
 
@@ -289,13 +289,13 @@ def test_stock_driven_dsm_with_initial_stock():
             Dimension(name="product", letter="p", items=["A", "B"], dtype=str),
         ]
     )
-    
+
     # Create cohort dimension (required for initial stock functionality)
     cohort_dim = Dimension(name="cohort", letter="c", items=time_items, dtype=int)
-    
+
     # Create lifetime model
     lifetime_model = LogNormalLifetime(dims=dims_test, time_letter="t", mean=8, std=3)
-    
+
     # Create StockDrivenDSM with cohort_dim
     dsm = StockDrivenDSM(
         dims=dims_test,
@@ -304,7 +304,7 @@ def test_stock_driven_dsm_with_initial_stock():
         time_letter="t",
         name="test_stock_driven_initial",
     )
-    
+
     # Set initial stock at year 2005
     initial_year = 2005
     # Initial stock dims should be (cohort, product) = _dims_cohort.drop(time_letter)
@@ -316,29 +316,31 @@ def test_stock_driven_dsm_with_initial_stock():
     # Set stock from various cohorts
     for i in range(5):  # 5 historical cohorts
         initial_stock.values[i, :] = 10.0 - i  # Decreasing stock from older cohorts
-    
+
     dsm.set_initial_stock(initial_stock, initial_year)
-    
+
     # Set total stock for all years AFTER initial year only
     dsm.stock.values[...] = 0.0
     initial_year_idx = time_items.index(initial_year)
     # Stock before and at initial year will be computed from initial stock
     # We only set stock after the initial year
     for i in range(initial_year_idx + 1, len(time_items)):
-        dsm.stock.values[i, :] = 50.0 + (i - initial_year_idx) * 2  # Growing stock after initial year
+        dsm.stock.values[i, :] = (
+            50.0 + (i - initial_year_idx) * 2
+        )  # Growing stock after initial year
     dsm.stock.mark_set()  # Mark stock as set
-    
+
     # Compute
     dsm.compute()
-    
+
     # Verify that inflow is set
     assert dsm.inflow.is_set
     assert dsm.stock.is_set
     assert dsm.outflow.is_set
-    
+
     # Inflow should be non-zero
     assert dsm.inflow.values.sum() > 0
-    
+
     # Verify stock balance
     dsm.check_stock_balance()
 
@@ -353,13 +355,13 @@ def test_get_stock_by_cohort():
             Dimension(name="product", letter="p", items=["A", "B"], dtype=str),
         ]
     )
-    
+
     # Create cohort dimension
     cohort_dim = Dimension(name="cohort", letter="c", items=time_items, dtype=int)
-    
+
     # Create lifetime model
     lifetime_model = LogNormalLifetime(dims=dims_test, time_letter="t", mean=5, std=2)
-    
+
     # Create InflowDrivenDSM with cohort dimension
     dsm = InflowDrivenDSM(
         dims=dims_test,
@@ -368,31 +370,31 @@ def test_get_stock_by_cohort():
         time_letter="t",
         name="test_cohort",
     )
-    
+
     # Set inflow
     dsm.inflow.values[...] = 1.0
-    
+
     # Compute
     dsm.compute()
-    
+
     # Get stock by cohort
     stock_by_cohort = dsm.get_stock_by_cohort()
-    
+
     # Verify it's a StockArray
     assert isinstance(stock_by_cohort, StockArray)
-    
+
     # Verify dimensions include both time and cohort
     assert "t" in stock_by_cohort.dims.letters
     assert "c" in stock_by_cohort.dims.letters
-    
+
     # Verify shape is correct (n_t, n_t, ...)
     assert stock_by_cohort.values.shape[0] == len(time_items)
     assert stock_by_cohort.values.shape[1] == len(time_items)
-    
+
     # Verify that stock by cohort sums to total stock along cohort dimension
     total_stock_from_cohort = stock_by_cohort.values.sum(axis=1)
     assert np.allclose(total_stock_from_cohort, dsm.stock.values)
-    
+
     # Verify that future cohorts (t < c) have zero stock
     for t_idx in range(len(time_items)):
         for c_idx in range(t_idx + 1, len(time_items)):
@@ -409,13 +411,13 @@ def test_get_outflow_by_cohort():
             Dimension(name="product", letter="p", items=["A", "B"], dtype=str),
         ]
     )
-    
+
     # Create cohort dimension
     cohort_dim = Dimension(name="cohort", letter="c", items=time_items, dtype=int)
-    
+
     # Create lifetime model
     lifetime_model = LogNormalLifetime(dims=dims_test, time_letter="t", mean=5, std=2)
-    
+
     # Create InflowDrivenDSM with cohort dimension
     dsm = InflowDrivenDSM(
         dims=dims_test,
@@ -424,31 +426,31 @@ def test_get_outflow_by_cohort():
         time_letter="t",
         name="test_cohort",
     )
-    
+
     # Set inflow
     dsm.inflow.values[...] = 1.0
-    
+
     # Compute
     dsm.compute()
-    
+
     # Get outflow by cohort
     outflow_by_cohort = dsm.get_outflow_by_cohort()
-    
+
     # Verify it's a StockArray
     assert isinstance(outflow_by_cohort, StockArray)
-    
+
     # Verify dimensions include both time and cohort
     assert "t" in outflow_by_cohort.dims.letters
     assert "c" in outflow_by_cohort.dims.letters
-    
+
     # Verify shape is correct (n_t, n_t, ...)
     assert outflow_by_cohort.values.shape[0] == len(time_items)
     assert outflow_by_cohort.values.shape[1] == len(time_items)
-    
+
     # Verify that outflow by cohort sums to total outflow along cohort dimension
     total_outflow_from_cohort = outflow_by_cohort.values.sum(axis=1)
     assert np.allclose(total_outflow_from_cohort, dsm.outflow.values)
-    
+
     # Verify that future cohorts (t < c) have zero outflow
     for t_idx in range(len(time_items)):
         for c_idx in range(t_idx + 1, len(time_items)):
