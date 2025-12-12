@@ -315,11 +315,13 @@ class DynamicStockModel(Stock):
         inflow_reconstructed = inflow_by_cohort.values[initial_year_idx, :, ...] / np.where(
             self.lifetime_model.sf[initial_year_idx, :, ...] == 0,
             1,
-            self.lifetime_model.sf[initial_year_idx, :, ...]
+            self.lifetime_model.sf[initial_year_idx, :, ...],
         )
         # Set inflow_by_cohort for all time steps
         for t_idx in range(self._n_t):
-            inflow_by_cohort.values[t_idx, :, ...] = inflow_reconstructed * self.lifetime_model.sf[t_idx, :, ...]
+            inflow_by_cohort.values[t_idx, :, ...] = (
+                inflow_reconstructed * self.lifetime_model.sf[t_idx, :, ...]
+            )
         inflow_by_cohort.mark_set()  # Mark as set before passing to InflowByCohortDrivenDSM
         self._initial_stock_dsm = InflowByCohortDrivenDSM(
             dims=self.dims,
