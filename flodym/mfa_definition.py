@@ -162,6 +162,8 @@ class MFADefinition(PydanticBaseModel):
         """
         all_dfs = {}
         for field_name, def_list in self.model_dump().items():
+            if not def_list:
+                continue
             def_dfs = []
             for definition in def_list:
                 if isinstance(definition, str):
