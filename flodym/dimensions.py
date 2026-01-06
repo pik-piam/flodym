@@ -210,6 +210,11 @@ class DimensionSet(PydanticBaseModel):
     def shape(self) -> tuple[int]:
         """shape of the array that would be created with the dimensions in the set"""
         return tuple(self.size(dim) for dim in self.letters)
+    
+    @property
+    def total_size(self) -> int:
+        """size (total number of elements) of the array that would be created with the dimensions in the set"""
+        return int(np.prod(self.shape))
 
     def get_subset(self, dims: tuple = None) -> "DimensionSet":
         """Selects :py:class:`Dimension` objects from the object attribute dim_list,

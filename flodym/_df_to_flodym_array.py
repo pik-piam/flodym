@@ -164,7 +164,7 @@ class DataFrameToFlodymDataConverter:
             logging.debug(f"Value column name is {value_cols[0]}.")
         else:
             raise ValueError(
-                f"More than one value columns. Could not find a dimension the items of which match the set of value column names. "
+                f"More than one value columns. Could not find a dimension whose items match the set of value column names. "
                 f"Value columns: {value_cols}. Please check input data for format, typos, data types and missing items."
             )
 
