@@ -226,5 +226,70 @@ def test_to_df():
         df.loc[("Earth", 2000, "mouse"), "value"]
 
 
+def test_flodym_array_zeros_helper():
+    zeros = FlodymArray.zeros(dims, name="zeros")
+    assert zeros.name == "zeros"
+    assert zeros.dims == dims
+    assert zeros.values.shape == dims.shape
+    assert np.count_nonzero(zeros.values) == 0
+
+
+def test_flodym_array_full_helper():
+    filled = FlodymArray.full(dims, fill_value=3.5, name="filled")
+    assert filled.name == "filled"
+    assert filled.dims == dims
+    assert np.all(filled.values == 3.5)
+
+
+def test_flodym_array_zeros_like_helper():
+    template = FlodymArray.full(dims, fill_value=2.0, name="template")
+    zeros_like = FlodymArray.zeros_like(template)
+    assert zeros_like.name == template.name
+    assert zeros_like.dims == template.dims
+    assert zeros_like.dims is not template.dims
+    assert np.count_nonzero(zeros_like.values) == 0
+
+
+def test_flodym_array_full_like_helper():
+    template = FlodymArray.full(dims, fill_value=2.0, name="template")
+    filled_like = FlodymArray.full_like(template, fill_value=-1.0, name="custom")
+    assert filled_like.name == "custom"
+    assert filled_like.dims == template.dims
+    assert filled_like.dims is not template.dims
+    assert np.all(filled_like.values == -1.0)
+
+
+def test_flodym_array_fill_helper():
+    array = FlodymArray.zeros(dims, name="to_fill")
+    array.fill(9)
+    assert array.name == "to_fill"
+    assert array.dims == dims
+    assert np.all(array.values == 9)
+
+
+def test_flodym_array_copy_helper():
+    array = FlodymArray.full(dims, fill_value=4)
+    array_copy = array.copy()
+    assert array_copy is not array
+    assert array_copy.dims == array.dims
+    assert array_copy.dims is not array.dims
+    assert np.array_equal(array_copy.values, array.values)
+
+    array_copy.fill(1)
+    assert np.all(array_copy.values == 1)
+    assert np.all(array.values == 4)
+
+
+def test_flodym_array_scalar_helper():
+    scalar = FlodymArray.scalar(4.2, name="scalar")
+    assert scalar.name == "scalar"
+    assert len(scalar.dims) == 0
+    assert scalar.dims.letters == ()
+    assert scalar.shape == ()
+    assert scalar.size == 1
+    assert scalar.values.shape == ()
+    assert scalar.values.item() == pytest.approx(4.2)
+
+
 if __name__ == "__main__":
     test_to_df()

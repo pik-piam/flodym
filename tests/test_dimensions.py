@@ -327,6 +327,27 @@ def test_ndim_property():
     assert set2.ndim == 3
 
 
+def test_dimensionset_empty():
+    """DimensionSet.empty should yield a reusable scalar-friendly container."""
+    empty = DimensionSet.empty()
+    assert isinstance(empty, DimensionSet)
+    assert len(empty) == 0
+    assert empty.shape == ()
+    assert empty.letters == ()
+    assert DimensionSet.empty() is not empty
+
+
+def test_dimensionset_total_size():
+    """total_size should equal the product of dimension lengths."""
+    dims = [
+        {"name": "time", "letter": "t", "items": [1990, 2000, 2010]},
+        {"name": "place", "letter": "p", "items": ["Earth", "Moon"]},
+    ]
+    dim_set = DimensionSet(dim_list=dims)
+    assert dim_set.shape == (3, 2)
+    assert dim_set.total_size == 6
+
+
 def test_dimension_as_dimset():
     """Test that as_dimset() converts a Dimension to a DimensionSet."""
     dim = Dimension(name="time", letter="t", items=[1990, 2000, 2010])
