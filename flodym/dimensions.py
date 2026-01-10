@@ -153,6 +153,11 @@ class DimensionSet(PydanticBaseModel):
     dim_list: list[Dimension]
     """A list of Dimension objects defining the set"""
 
+    @classmethod
+    def empty(cls) -> "DimensionSet":
+        """Return an empty DimensionSet."""
+        return cls(dim_list=[])
+
     @model_validator(mode="after")
     def no_repeated_dimensions(self):
         """Check that all dimensions have unique letters."""

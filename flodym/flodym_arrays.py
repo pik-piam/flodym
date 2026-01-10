@@ -103,6 +103,61 @@ class FlodymArray(PydanticBaseModel):
         return cls(dims=dims, **kwargs)
 
     @classmethod
+    def zeros(
+        cls,
+        dims: DimensionSet,
+        name: Optional[str] = None,
+    ) -> "FlodymArray":
+        """Create a FlodymArray filled with zeros for the provided dimensions."""
+        return cls(dims=dims, values=np.zeros(dims.shape), name=name)
+
+    @classmethod
+    def full(
+        cls,
+        dims: DimensionSet,
+        fill_value: Union[int, float],
+        name: Optional[str] = None,
+    ) -> "FlodymArray":
+        """Create a FlodymArray filled with ``fill_value`` for the provided dimensions."""
+        return cls(dims=dims, values=np.full(dims.shape, fill_value), name=name)
+
+    @classmethod
+    def zeros_like(
+        cls,
+        other: "FlodymArray",
+        name: Optional[str] = None,
+    ) -> "FlodymArray":
+        """Create a zero-filled FlodymArray matching another array's dimensions."""
+        return cls(
+            dims=other.dims.get_subset(),
+            values=np.zeros_like(other.values),
+            name=name or other.name,
+        )
+
+    @classmethod
+    def full_like(
+        cls,
+        other: "FlodymArray",
+        fill_value: Union[int, float],
+        name: Optional[str] = None,
+    ) -> "FlodymArray":
+        """Create a FlodymArray filled with ``fill_value`` matching another array's dimensions."""
+        return cls(
+            dims=other.dims.get_subset(),
+            values=np.full_like(other.values, fill_value),
+            name=name or other.name,
+        )
+    
+    @classmethod
+    def scalar(
+        cls,
+        value: Union[int, float],
+        name: Optional[str] = None,
+    ) -> "FlodymArray":
+        """Create a scalar (zero-dimensional) FlodymArray."""
+        return cls(dims=DimensionSet.empty(), values=np.array(value), name=name)
+
+    @classmethod
     def from_df(
         cls,
         dims: DimensionSet,
@@ -171,6 +226,10 @@ class FlodymArray(PydanticBaseModel):
             self._check_value_format()
         else:
             self.values[...] = values
+
+    def fill(self, value: Union[int, float]):
+        """Fill the array in-place with a scalar value."""
+        self.values.fill(value)
 
     def sum_values(self):
         """Return the sum of all values in the FlodymArray."""
@@ -391,6 +450,14 @@ class FlodymArray(PydanticBaseModel):
             self.values = func(self.values, **kwargs)
             return
         return FlodymArray(dims=self.dims, values=func(self.values, **kwargs))
+
+    def copy(self) -> "FlodymArray":
+        """Return a copy of the FlodymArray, including a copy of the values array and dimensions.
+
+        Returns:
+            FlodymArray: A new FlodymArray object with copied values and dimensions.
+        """
+        return FlodymArray(dims=self.dims.get_subset(), values=self.values.copy(), name=self.name)
 
     def abs(self, inplace: bool = False):
         return self.apply(np.abs, inplace=inplace)
