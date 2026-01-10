@@ -147,7 +147,7 @@ class FlodymArray(PydanticBaseModel):
             values=np.full_like(other.values, fill_value),
             name=name or other.name,
         )
-    
+
     @classmethod
     def scalar(
         cls,
