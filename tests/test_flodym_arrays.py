@@ -234,6 +234,14 @@ def test_flodym_array_zeros_helper():
     assert np.count_nonzero(zeros.values) == 0
 
 
+def test_flodym_array_ones_helper():
+    ones = FlodymArray.ones(dims, name="ones")
+    assert ones.name == "ones"
+    assert ones.dims == dims
+    assert ones.values.shape == dims.shape
+    assert np.all(ones.values == 1)
+
+
 def test_flodym_array_full_helper():
     filled = FlodymArray.full(dims, fill_value=3.5, name="filled")
     assert filled.name == "filled"
