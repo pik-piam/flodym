@@ -110,7 +110,7 @@ class FlodymArray(PydanticBaseModel):
     ) -> "FlodymArray":
         """Create a FlodymArray filled with zeros for the provided dimensions."""
         return cls(dims=dims, values=np.zeros(dims.shape), name=name)
-    
+
     @classmethod
     def ones(
         cls,
