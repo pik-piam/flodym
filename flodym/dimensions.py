@@ -226,9 +226,11 @@ class DimensionSet(PydanticBaseModel):
         according to the dims passed, which can be either letters or names.
         Returns a copy if dims are not given.
         """
-        subset = copy(self)
+        subset = self.model_copy()
         if dims is not None:
             subset.dim_list = [self._full_mapping[dim_key] for dim_key in dims]
+        else:
+            subset.dim_list = copy(self.dim_list)
         return subset
 
     def expand_by(self, added_dims: list[Dimension]) -> "DimensionSet":
