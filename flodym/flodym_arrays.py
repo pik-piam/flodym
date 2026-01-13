@@ -477,7 +477,9 @@ class FlodymArray(PydanticBaseModel):
         Returns:
             FlodymArray: A new FlodymArray object with copied values and dimensions.
         """
-        return self.model_copy(update={"dims": self.dims.get_subset(), "values": self.values.copy()})
+        return self.model_copy(
+            update={"dims": self.dims.get_subset(), "values": self.values.copy()}
+        )
 
     def abs(self, inplace: bool = False):
         return self.apply(np.abs, inplace=inplace)
