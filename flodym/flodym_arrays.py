@@ -63,6 +63,12 @@ class FlodymArray(PydanticBaseModel):
     """Name of the FlodymArray."""
 
     @model_validator(mode="after")
+    def copy_dims(self):
+        """Ensure dims is always copied to avoid shared references."""
+        self.dims = self.dims.get_subset()
+        return self
+
+    @model_validator(mode="after")
     def validate_values(self):
         if self.values is None:
             self.values = np.zeros(self.dims.shape)
@@ -103,68 +109,74 @@ class FlodymArray(PydanticBaseModel):
         return cls(dims=dims, **kwargs)
 
     @classmethod
-    def zeros(
-        cls,
-        dims: DimensionSet,
-        name: Optional[str] = None,
-    ) -> "FlodymArray":
-        """Create a FlodymArray filled with zeros for the provided dimensions."""
-        return cls(dims=dims, values=np.zeros(dims.shape), name=name)
-
-    @classmethod
-    def ones(
-        cls,
-        dims: DimensionSet,
-        name: Optional[str] = None,
-    ) -> "FlodymArray":
-        """Create a FlodymArray filled with ones for the provided dimensions."""
-        return cls(dims=dims, values=np.ones(dims.shape), name=name)
-
-    @classmethod
     def full(
         cls,
         dims: DimensionSet,
-        fill_value: Union[int, float],
-        name: Optional[str] = None,
+        fill_value: Union[int, float, np.number, np.ndarray],
+        **kwargs,
     ) -> "FlodymArray":
-        """Create a FlodymArray filled with ``fill_value`` for the provided dimensions."""
-        return cls(dims=dims, values=np.full(dims.shape, fill_value), name=name)
+        """Create a FlodymArray filled with a constant value for the provided dimensions.
 
-    @classmethod
-    def zeros_like(
-        cls,
-        other: "FlodymArray",
-        name: Optional[str] = None,
-    ) -> "FlodymArray":
-        """Create a zero-filled FlodymArray matching another array's dimensions."""
-        return cls(
-            dims=other.dims.get_subset(),
-            values=np.zeros_like(other.values),
-            name=name or other.name,
-        )
+        Parameters:
+            dims (DimensionSet): DimensionSet defining the dimensions of the FlodymArray.
+            fill_value (Union[int, float, np.number, np.ndarray]): Value to fill the array with.
+                Can be a scalar or an array that is broadcastable to the shape of dims.
+            **kwargs: Additional keyword arguments passed to the FlodymArray constructor
+                (e.g., name).
+
+        Returns:
+            FlodymArray: A new FlodymArray filled with the specified value.
+        """
+        return cls(dims=dims, values=np.full(dims.shape, fill_value), **kwargs)
 
     @classmethod
     def full_like(
         cls,
         other: "FlodymArray",
-        fill_value: Union[int, float],
-        name: Optional[str] = None,
+        fill_value: Union[int, float, np.number, np.ndarray],
+        dtype: Optional[Union[type, np.dtype]] = None,
+        **kwargs,
     ) -> "FlodymArray":
-        """Create a FlodymArray filled with ``fill_value`` matching another array's dimensions."""
+        """Create a FlodymArray filled with a constant value, matching another array's dimensions.
+
+        Parameters:
+            other (FlodymArray): FlodymArray whose dimensions will be used for the new array.
+            fill_value (Union[int, float, np.number, np.ndarray]): Value to fill the array with.
+                Can be a scalar or an array that is broadcastable to the shape of other.
+            dtype (Optional[Union[type, np.dtype]], optional): Data type of the new array.
+                If None, the data type of fill_value is used. Defaults to None.
+            **kwargs: Additional keyword arguments passed to the FlodymArray constructor
+                (e.g., name).
+
+        Returns:
+            FlodymArray: A new FlodymArray with the same dimensions as other,
+                filled with the specified value.
+        """
+        if dtype is None:
+            dtype = getattr(fill_value, "dtype", type(fill_value))
         return cls(
             dims=other.dims.get_subset(),
-            values=np.full_like(other.values, fill_value),
-            name=name or other.name,
+            values=np.full_like(other.values, fill_value, dtype=dtype),
+            **kwargs,
         )
 
     @classmethod
     def scalar(
         cls,
-        value: Union[int, float],
-        name: Optional[str] = None,
+        value: Union[int, float, np.number],
+        **kwargs,
     ) -> "FlodymArray":
-        """Create a scalar (zero-dimensional) FlodymArray."""
-        return cls(dims=DimensionSet.empty(), values=np.array(value), name=name)
+        """Create a scalar (zero-dimensional) FlodymArray.
+
+        Parameters:
+            value (Union[int, float, np.number]): The scalar value to store in the FlodymArray.
+            **kwargs: Additional keyword arguments passed to the FlodymArray constructor
+                (e.g., name).
+
+        Returns:
+            FlodymArray: A zero-dimensional FlodymArray containing the scalar value.
+        """
+        return cls(dims=DimensionSet.empty(), values=np.array(value), **kwargs)
 
     @classmethod
     def from_df(
@@ -235,10 +247,6 @@ class FlodymArray(PydanticBaseModel):
             self._check_value_format()
         else:
             self.values[...] = values
-
-    def fill(self, value: Union[int, float]):
-        """Fill the array in-place with a scalar value."""
-        self.values.fill(value)
 
     def sum_values(self):
         """Return the sum of all values in the FlodymArray."""
@@ -461,12 +469,15 @@ class FlodymArray(PydanticBaseModel):
         return FlodymArray(dims=self.dims, values=func(self.values, **kwargs))
 
     def copy(self) -> "FlodymArray":
-        """Return a copy of the FlodymArray, including a copy of the values array and dimensions.
+        """Return a copy of the FlodymArray.
+
+        This method creates a new FlodymArray with deep copies of both the DimensionSet and the numpy
+        values array, ensuring modifications to the copy do not affect the original.
 
         Returns:
             FlodymArray: A new FlodymArray object with copied values and dimensions.
         """
-        return FlodymArray(dims=self.dims.get_subset(), values=self.values.copy(), name=self.name)
+        return self.model_copy(update={"dims": self.dims.get_subset(), "values": self.values.copy()})
 
     def abs(self, inplace: bool = False):
         return self.apply(np.abs, inplace=inplace)

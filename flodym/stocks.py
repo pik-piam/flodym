@@ -227,7 +227,7 @@ class InflowDrivenDSM(DynamicStockModel):
 
     def _check_needed_arrays(self):
         super()._check_needed_arrays()
-        if np.allclose(self.inflow.values, 0):
+        if np.allclose(self.inflow.values, np.zeros(self.shape)):
             logging.warning("Inflow is zero. This will lead to a zero stock and outflow.")
 
     def compute(self):
@@ -267,7 +267,7 @@ class StockDrivenDSM(DynamicStockModel):
 
     def _check_needed_arrays(self):
         super()._check_needed_arrays()
-        if np.allclose(self.stock.values, 0):
+        if np.allclose(self.inflow.values, np.zeros(self.shape)):
             logging.warning("Stock is zero. This will lead to a zero inflow and outflow.")
 
     def compute(self):
