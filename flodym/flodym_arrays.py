@@ -66,7 +66,7 @@ class FlodymArray(PydanticBaseModel):
     @model_validator(mode="after")
     def copy_dims(self):
         """Ensure dims is always copied to avoid shared references."""
-        self.dims = self.dims.get_subset()
+        self.dims = self.dims.copy()
         return self
 
     @model_validator(mode="after")
@@ -156,7 +156,7 @@ class FlodymArray(PydanticBaseModel):
         if dtype is None:
             dtype = getattr(fill_value, "dtype", type(fill_value))
         return cls(
-            dims=other.dims.get_subset(),
+            dims=other.dims.copy(),
             values=np.full_like(other.values, fill_value, dtype=dtype),
             **kwargs,
         )
@@ -479,7 +479,7 @@ class FlodymArray(PydanticBaseModel):
             FlodymArray: A new FlodymArray object with copied values and dimensions.
         """
         return self.model_copy(
-            update={"dims": self.dims.get_subset(), "values": self.values.copy()}
+            update={"dims": self.dims.copy(), "values": self.values.copy()}
         )
 
     def abs(self, inplace: bool = False):
