@@ -792,6 +792,17 @@ class SubArrayHandler:
         self._id_list = [slice(None) for _ in self.flodym_array.dims.letters]
         for dim_letter, item_or_items in self.def_dict.items():
             self._set_ids_single_dim(dim_letter, item_or_items)
+        self._convert_lists_to_cartesian_product()
+
+    def _convert_lists_to_cartesian_product(self):
+        """If there are several dimensions with lists, numpy will try to broadcast the lists together.
+        To avoid this, convert all id lists to their cartesian product of indices, using np.ix_.
+        """
+        axes_with_id_lists = [i for i, ids in enumerate(self._id_list) if isinstance(ids, list)]
+        id_lists = [ids for ids in self._id_list if isinstance(ids, list)]
+        mesh_of_ids = np.ix_(*id_lists)
+        for i_axis, ids_mesh in zip(axes_with_id_lists, mesh_of_ids):
+            self._id_list[i_axis] = ids_mesh
 
     def _set_ids_single_dim(self, dim_letter, item_or_items):
         """Given either a single item name or a list of item names, return the corresponding item IDs, along one
