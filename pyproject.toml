@@ -1,11 +1,11 @@
 [project]
 name = "flodym"
-version = "0.5.3"
+version = "0.5.4"
 authors = [
     {name = "Jakob Dürrwächter"},
     {name = "Sally Dacie"},
     {name = "Merlin Hosak"},
-    {name = "Bennet Weiß"},
+    {name = "Bennet Weiss"},
     {name = "Leonie Schweiger"},
 ]
 readme = "README.md"
