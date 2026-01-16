@@ -1,5 +1,5 @@
 from __future__ import annotations
-from copy import copy
+from copy import copy, deepcopy
 from pydantic import BaseModel as PydanticBaseModel, Field, AliasChoices, model_validator
 from typing import Dict, Iterator, Optional
 import numpy as np
@@ -222,8 +222,8 @@ class DimensionSet(PydanticBaseModel):
         return int(np.prod(self.shape))
 
     def copy(self) -> "DimensionSet":
-        """Return a copy of the DimensionSet."""
-        return self.model_copy(update={"dim_list": copy(self.dim_list)})
+        """Return a deep copy of the DimensionSet."""
+        return self.model_copy(update={"dim_list": deepcopy(self.dim_list)})
 
     def get_subset(self, dims: tuple = None) -> "DimensionSet":
         """Selects :py:class:`Dimension` objects from the object attribute dim_list,
