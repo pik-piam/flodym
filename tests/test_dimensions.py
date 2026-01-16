@@ -586,3 +586,25 @@ def test_dimensionset_add():
     result_forward = dimset1 + dimset2
     result_backward = dimset2 + dimset1
     assert set(result_forward.letters) == set(result_backward.letters)
+
+
+def test_copy_dimension_set():
+    """Test the copy method of DimensionSet."""
+    dimensions = [
+        Dimension(name="time", letter="t", items=[1990, 2000, 2010]),
+        Dimension(name="place", letter="p", items=["World"]),
+    ]
+    original = DimensionSet(dim_list=dimensions)
+
+    # Create a copy
+    copied = original.copy()
+
+    # Ensure the copied object is not the same as the original
+    assert copied is not original
+
+    # Ensure the contents are identical
+    assert copied == original
+
+    # Ensure modifying the copy does not affect the original
+    copied.dim_list[0].items.append(2020)
+    assert copied.dim_list[0].items != original.dim_list[0].items
