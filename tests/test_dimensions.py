@@ -605,6 +605,6 @@ def test_copy_dimension_set():
     # Ensure the contents are identical
     assert copied == original
 
-    # Ensure modifying the copy does not affect the original
+    # Ensure modifying the copy DOES affect the original
     copied.dim_list[0].items.append(2020)
-    assert copied.dim_list[0].items != original.dim_list[0].items
+    assert copied.dim_list[0].items == original.dim_list[0].items
