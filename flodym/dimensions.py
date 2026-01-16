@@ -161,6 +161,18 @@ class DimensionSet(PydanticBaseModel):
             raise ValueError("Dimensions must have unique letters in DimensionSet.")
         return self
 
+    @model_validator(mode="after")
+    def copy_dim_list(self):
+        """Ensure each DimensionSet has its own copy of the dim_list to avoid inplace operations
+        affecting other DimensionSets."""
+        self.dim_list = copy(self.dim_list)
+        return self
+
+    @classmethod
+    def empty(cls) -> "DimensionSet":
+        """Return an empty DimensionSet."""
+        return cls(dim_list=[])
+
     @property
     def _full_mapping(self) -> Dict[str, Dimension]:
         """Contains mappings.
@@ -211,23 +223,47 @@ class DimensionSet(PydanticBaseModel):
         """shape of the array that would be created with the dimensions in the set"""
         return tuple(self.size(dim) for dim in self.letters)
 
+    @property
+    def total_size(self) -> int:
+        """size (total number of elements) of the array that would be created with the dimensions in the set"""
+        return int(np.prod(self.shape))
+
+    def copy(self) -> "DimensionSet":
+        """Return a copy of the DimensionSet."""
+        return self.model_copy(update={"dim_list": copy(self.dim_list)})
+
     def get_subset(self, dims: tuple = None) -> "DimensionSet":
         """Selects :py:class:`Dimension` objects from the object attribute dim_list,
         according to the dims passed, which can be either letters or names.
         Returns a copy if dims are not given.
+
+        Args:
+            dims (tuple, optional): A tuple of dimension letters or names to select. Defaults to None.
         """
-        subset = copy(self)
+        subset = self.model_copy()
         if dims is not None:
             subset.dim_list = [self._full_mapping[dim_key] for dim_key in dims]
         return subset
 
-    def expand_by(self, added_dims: list[Dimension]) -> "DimensionSet":
-        """Expands the DimensionSet by adding new dimensions to it."""
+    def expand_by(self, added_dims: list[Dimension], inplace: bool = False) -> "DimensionSet":
+        """Expands the DimensionSet by adding new dimensions to it.
+
+        Args:
+            added_dims (list[Dimension]): A list of Dimension objects to add
+            inplace (bool, optional): If True, the operation is performed in place, otherwise a new DimensionSet is returned. Defaults to False.
+
+        Returns:
+            None if inplace=True, otherwise a new DimensionSet with the new dimensions added
+        """
         if not all([dim.letter not in self.letters for dim in added_dims]):
             raise ValueError(
                 "DimensionSet already contains one or more of the dimensions to be added."
             )
-        return DimensionSet(dim_list=self.dim_list + added_dims)
+        if inplace:
+            self.dim_list.extend(added_dims)
+            return
+        else:
+            return DimensionSet(dim_list=self.dim_list + added_dims)
 
     extend = expand_by
 
@@ -260,9 +296,11 @@ class DimensionSet(PydanticBaseModel):
 
     def prepend(self, new_dim: Dimension, inplace: bool = False) -> Optional["DimensionSet"]:
         """Add a new dimension to the set at the beginning.
+
         Args:
             new_dim (Dimension): The new dimension to add
             inplace (bool, optional): If True, the operation is performed in place, otherwise a new DimensionSet is returned. Defaults to False.
+
         Returns:
             None if inplace=True, otherwise a new DimensionSet with the new dimension added
         """

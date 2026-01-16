@@ -327,6 +327,27 @@ def test_ndim_property():
     assert set2.ndim == 3
 
 
+def test_dimensionset_empty():
+    """DimensionSet.empty should yield a reusable scalar-friendly container."""
+    empty = DimensionSet.empty()
+    assert isinstance(empty, DimensionSet)
+    assert len(empty) == 0
+    assert empty.shape == ()
+    assert empty.letters == ()
+    assert DimensionSet.empty() is not empty
+
+
+def test_dimensionset_total_size():
+    """total_size should equal the product of dimension lengths."""
+    dims = [
+        {"name": "time", "letter": "t", "items": [1990, 2000, 2010]},
+        {"name": "place", "letter": "p", "items": ["Earth", "Moon"]},
+    ]
+    dim_set = DimensionSet(dim_list=dims)
+    assert dim_set.shape == (3, 2)
+    assert dim_set.total_size == 6
+
+
 def test_dimension_as_dimset():
     """Test that as_dimset() converts a Dimension to a DimensionSet."""
     dim = Dimension(name="time", letter="t", items=[1990, 2000, 2010])
@@ -565,3 +586,25 @@ def test_dimensionset_add():
     result_forward = dimset1 + dimset2
     result_backward = dimset2 + dimset1
     assert set(result_forward.letters) == set(result_backward.letters)
+
+
+def test_copy_dimension_set():
+    """Test the copy method of DimensionSet."""
+    dimensions = [
+        Dimension(name="time", letter="t", items=[1990, 2000, 2010]),
+        Dimension(name="place", letter="p", items=["World"]),
+    ]
+    original = DimensionSet(dim_list=dimensions)
+
+    # Create a copy
+    copied = original.copy()
+
+    # Ensure the copied object is not the same as the original
+    assert copied is not original
+
+    # Ensure modifying the copy does not affect the original
+    assert copied.dim_list is not original.dim_list
+
+    # Ensure the contained Dimension objects remain the same
+    for o_dim, c_dim in zip(original, copied):
+        assert o_dim is c_dim
