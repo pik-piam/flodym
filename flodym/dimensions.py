@@ -229,7 +229,7 @@ class DimensionSet(PydanticBaseModel):
         return int(np.prod(self.shape))
 
     def copy(self) -> "DimensionSet":
-        """Return a deep copy of the DimensionSet."""
+        """Return a copy of the DimensionSet."""
         return self.model_copy(update={"dim_list": copy(self.dim_list)})
 
     def get_subset(self, dims: tuple = None) -> "DimensionSet":
