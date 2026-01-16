@@ -202,14 +202,23 @@ def test_multiple_dimension_subsets():
     regions = Dimension(name="region", letter="r", items=["EUR", "USA", "CHN"])
     years = Dimension(name="time", letter="t", items=list(range(2020, 2030)))  # 10 years
     materials = Dimension(name="material", letter="m", items=["concrete", "steel", "wood"])
-    applications = Dimension(name="application", letter="a", items=["A1", "A2", "A3", "A4", "A5", "A6"])
+    applications = Dimension(
+        name="application", letter="a", items=["A1", "A2", "A3", "A4", "A5", "A6"]
+    )
 
     full_dims = DimensionSet(dim_list=[regions, years, materials, applications])
-    arr = FlodymArray(dims=full_dims, values=np.arange(np.prod(full_dims.shape)).reshape(full_dims.shape).astype(float))
+    arr = FlodymArray(
+        dims=full_dims,
+        values=np.arange(np.prod(full_dims.shape)).reshape(full_dims.shape).astype(float),
+    )
 
     # Create subset dimensions
-    subset_years = Dimension(name="subset_years", letter="y", items=[2025, 2026, 2027, 2028, 2029])  # 5 years
-    subset_apps = Dimension(name="subset_apps", letter="b", items=["A1", "A2", "A3", "A4"])  # 4 apps
+    subset_years = Dimension(
+        name="subset_years", letter="y", items=[2025, 2026, 2027, 2028, 2029]
+    )  # 5 years
+    subset_apps = Dimension(
+        name="subset_apps", letter="b", items=["A1", "A2", "A3", "A4"]
+    )  # 4 apps
 
     # Test 1: Single dimension subset works
     result1 = arr[{"m": "concrete", "t": subset_years}]
@@ -232,7 +241,7 @@ def test_multiple_dimension_subsets():
     arr2 = arr.copy()
     new_values = FlodymArray(
         dims=DimensionSet(dim_list=[regions, subset_years, subset_apps]),
-        values=np.ones((3, 5, 4)) * 999
+        values=np.ones((3, 5, 4)) * 999,
     )
     arr2[{"m": "concrete", "t": subset_years, "a": subset_apps}] = new_values
 
