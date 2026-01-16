@@ -221,6 +221,10 @@ class DimensionSet(PydanticBaseModel):
         """size (total number of elements) of the array that would be created with the dimensions in the set"""
         return int(np.prod(self.shape))
 
+    def copy(self) -> "DimensionSet":
+        """Return a copy of the DimensionSet."""
+        return self.model_copy(update={"dim_list": copy(self.dim_list)})
+
     def get_subset(self, dims: tuple = None) -> "DimensionSet":
         """Selects :py:class:`Dimension` objects from the object attribute dim_list,
         according to the dims passed, which can be either letters or names.
