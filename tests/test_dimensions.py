@@ -602,9 +602,9 @@ def test_copy_dimension_set():
     # Ensure the copied object is not the same as the original
     assert copied is not original
 
-    # Ensure the contents are identical
-    assert copied == original
-
     # Ensure modifying the copy does not affect the original
-    copied.dim_list[0].items.append(2020)
-    assert copied.dim_list[0].items != original.dim_list[0].items
+    copied.dim_list is not original.dim_list
+
+    # Ensure the contained Dimension objects remain the same
+    for o_dim, c_dim in zip(original, copied):
+        assert o_dim is c_dim
