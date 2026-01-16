@@ -713,6 +713,8 @@ class SubArrayHandler:
                 items_ids = [
                     self._get_single_item_id(dim_letter, item) for item in item_or_items.items
                 ]
+                # Convert to slice if contiguous to avoid NumPy advanced indexing broadcast issues
+                items_ids = self._to_slice_if_contiguous(items_ids)
             else:
                 raise ValueError(
                     "Dimension item given in array index must be a subset of the dimension it replaces"
@@ -722,6 +724,19 @@ class SubArrayHandler:
         else:
             items_ids = self._get_single_item_id(dim_letter, item_or_items)  # single item
         self._id_list[self.flodym_array.dims.index(dim_letter)] = items_ids
+
+    def _to_slice_if_contiguous(self, idx_list):
+        """Convert a list of indices to a slice if they are contiguous.
+        
+        This avoids NumPy's advanced indexing broadcast behavior when multiple
+        list indices are used, which would otherwise cause shape mismatch errors.
+        """
+        if len(idx_list) <= 1:
+            return idx_list
+        diffs = np.diff(idx_list)
+        if np.all(diffs == 1):
+            return slice(idx_list[0], idx_list[-1] + 1)
+        return idx_list
 
     def _get_single_item_id(self, dim_letter, item_name):
         return self.flodym_array.dims[dim_letter].items.index(item_name)

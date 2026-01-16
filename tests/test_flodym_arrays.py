@@ -192,6 +192,60 @@ def test_dimension_subsets():
         historic_space_animals[{"h": time}]  # index is not a subset
 
 
+def test_multiple_dimension_subsets():
+    """Test slicing with multiple Dimension objects at once.
+    
+    This reproduces an issue where slicing with two Dimension objects causes
+    a shape mismatch error due to NumPy's advanced indexing broadcasting behavior.
+    """
+    # Create a larger array to make the issue more apparent
+    regions = Dimension(name="region", letter="r", items=["EUR", "USA", "CHN"])
+    years = Dimension(name="time", letter="t", items=list(range(2020, 2030)))  # 10 years
+    materials = Dimension(name="material", letter="m", items=["concrete", "steel", "wood"])
+    applications = Dimension(name="application", letter="a", items=["A1", "A2", "A3", "A4", "A5", "A6"])
+    
+    full_dims = DimensionSet(dim_list=[regions, years, materials, applications])
+    arr = FlodymArray(dims=full_dims, values=np.arange(np.prod(full_dims.shape)).reshape(full_dims.shape).astype(float))
+    
+    # Create subset dimensions
+    subset_years = Dimension(name="subset_years", letter="y", items=[2025, 2026, 2027, 2028, 2029])  # 5 years
+    subset_apps = Dimension(name="subset_apps", letter="b", items=["A1", "A2", "A3", "A4"])  # 4 apps
+    
+    # Test 1: Single dimension subset works
+    result1 = arr[{"m": "concrete", "t": subset_years}]
+    assert result1.shape == (3, 5, 6), f"Expected (3, 5, 6), got {result1.shape}"
+    
+    # Test 2: Two dimension subsets - THIS IS THE FAILING CASE
+    result2 = arr[{"m": "concrete", "t": subset_years, "a": subset_apps}]
+    assert result2.shape == (3, 5, 4), f"Expected (3, 5, 4), got {result2.shape}"
+    
+    # Test 3: Verify values are correct (order matters!)
+    # Manual extraction for comparison - sequential slicing should give same result
+    expected = arr[{"m": "concrete"}][{"t": subset_years}][{"a": subset_apps}]
+    assert_array_equal(result2.values, expected.values)
+    
+    # Test 4: Test with different order of keys in dict (should not matter)
+    result2b = arr[{"a": subset_apps, "m": "concrete", "t": subset_years}]
+    assert_array_equal(result2b.values, expected.values)
+    
+    # Test 5: setitem with multiple dimension subsets
+    arr2 = arr.copy()
+    new_values = FlodymArray(
+        dims=DimensionSet(dim_list=[regions, subset_years, subset_apps]),
+        values=np.ones((3, 5, 4)) * 999
+    )
+    arr2[{"m": "concrete", "t": subset_years, "a": subset_apps}] = new_values
+    
+    # Verify values were set correctly
+    subset = arr2[{"m": "concrete", "t": subset_years, "a": subset_apps}]
+    assert np.allclose(subset.values, 999), "setitem with multiple dimension subsets failed"
+    
+    # Test 6: Verify other values were NOT changed
+    other_material = arr2[{"m": "steel"}]
+    expected_other = arr[{"m": "steel"}]
+    assert_array_equal(other_material.values, expected_other.values)
+
+
 def test_setitem():
     array_1d = FlodymArray(dims=dims["t",])
     array_1d[...] = 1
