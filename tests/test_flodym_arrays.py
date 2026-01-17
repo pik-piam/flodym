@@ -183,6 +183,7 @@ def test_dimension_subsets():
     with pytest.raises(ValueError):
         historic_space_animals[{"h": time}]  # index is not a subset
 
+
 class TestFlodymArrayIndexing:
     """Tests for getitem and setitem, including with advanced indexing separated by slices."""
 
@@ -193,7 +194,9 @@ class TestFlodymArrayIndexing:
     # 4 sectors
     sectors = Dimension(name="sector", letter="s", items=["S1", "S2", "S3", "S4"])
     # 7 products
-    products = Dimension(name="product", letter="p", items=["P1", "P2", "P3", "P4", "P5", "P6", "P7"])
+    products = Dimension(
+        name="product", letter="p", items=["P1", "P2", "P3", "P4", "P5", "P6", "P7"]
+    )
     # 2 materials
     materials = Dimension(name="material", letter="m", items=["M1", "M2"])
     full_dims = DimensionSet(dim_list=[years, regions, sectors, products, materials])
@@ -219,8 +222,12 @@ class TestFlodymArrayIndexing:
         """Test getitem with advanced indices separated by slices (NumPy dimension reordering)."""
         result = self.arr[self.mask]
         expected_shape = (80, 5, 4, 3)
-        assert result.shape == expected_shape, f"getitem: Expected {expected_shape}, got {result.shape}"
-        expected_values = self.arr[{"m": "M1"}][{"r": self.subset_regions}][{"p": self.subset_products}]
+        assert (
+            result.shape == expected_shape
+        ), f"getitem: Expected {expected_shape}, got {result.shape}"
+        expected_values = self.arr[{"m": "M1"}][{"r": self.subset_regions}][
+            {"p": self.subset_products}
+        ]
         assert_array_equal(result.values, expected_values.values)
 
     def test_setitem(self):
@@ -241,7 +248,9 @@ class TestFlodymArrayIndexing:
         """Test setitem with advanced indices separated by slices (NumPy dimension reordering)."""
         arr_copy = self.arr.copy()
 
-        slice_dims = DimensionSet(dim_list=[self.years, self.subset_regions, self.sectors, self.subset_products])
+        slice_dims = DimensionSet(
+            dim_list=[self.years, self.subset_regions, self.sectors, self.subset_products]
+        )
         new_values = FlodymArray.full(slice_dims, fill_value=123.0)
         arr_copy[self.mask] = new_values
         result = arr_copy[self.mask]
