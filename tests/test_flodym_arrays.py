@@ -144,14 +144,6 @@ def test_maths():
     assert_array_almost_equal(divided_flipped.values[:, :, 1], values / (animal_values[:, :, 1]))
 
 
-def test_get_item():
-    cats_on_the_moon = space_animals["Moon"]["cat"]
-    assert isinstance(cats_on_the_moon, FlodymArray)
-    assert_array_almost_equal(cats_on_the_moon.values, space_animals.values[2, :, 0])
-    # note that this does not work for the time dimension (not strings)
-    # and also assumes that no item appears in more than one dimension
-
-
 def test_sub_array_handler():
     space_cat = space_animals["cat"]  # space cat from str
     another_space_cat = space_animals[{"a": "cat"}]  # space cat from dict
@@ -191,83 +183,69 @@ def test_dimension_subsets():
     with pytest.raises(ValueError):
         historic_space_animals[{"h": time}]  # index is not a subset
 
+class TestFlodymArrayIndexing:
+    """Tests for getitem and setitem, including with advanced indexing separated by slices."""
 
-def test_multiple_dimension_subsets():
-    """Test slicing with multiple Dimension objects at once.
-
-    This reproduces an issue where slicing with two Dimension objects causes
-    a shape mismatch error due to NumPy's advanced indexing broadcasting behavior.
-    """
-    # Create a larger array to make the issue more apparent
-    regions = Dimension(name="region", letter="r", items=["EUR", "USA", "CHN"])
-    years = Dimension(name="time", letter="t", items=list(range(2020, 2030)))  # 10 years
-    materials = Dimension(name="material", letter="m", items=["concrete", "steel", "wood"])
-    applications = Dimension(
-        name="application", letter="a", items=["A1", "A2", "A3", "A4", "A5", "A6"]
-    )
-
-    full_dims = DimensionSet(dim_list=[regions, years, materials, applications])
+    # 80 years
+    years = Dimension(name="year", letter="t", items=list(range(2020, 2100)))
+    # 12 regions
+    regions = Dimension(name="region", letter="r", items=[f"R{i}" for i in range(1, 13)])
+    # 4 sectors
+    sectors = Dimension(name="sector", letter="s", items=["S1", "S2", "S3", "S4"])
+    # 7 products
+    products = Dimension(name="product", letter="p", items=["P1", "P2", "P3", "P4", "P5", "P6", "P7"])
+    # 2 materials
+    materials = Dimension(name="material", letter="m", items=["M1", "M2"])
+    full_dims = DimensionSet(dim_list=[years, regions, sectors, products, materials])
     arr = FlodymArray(
         dims=full_dims,
         values=np.arange(np.prod(full_dims.shape)).reshape(full_dims.shape).astype(float),
     )
+    # 5 regions in subset
+    subset_regions = Dimension(name="sub_regions", letter="x", items=["R1", "R2", "R3", "R4", "R5"])
+    # 3 products in subset
+    subset_products = Dimension(name="sub_products", letter="y", items=["P1", "P2", "P3"])
+    # mask includes one material, subset regions and subset products
+    mask = {"m": "M1", "r": subset_regions, "p": subset_products}
 
-    # Create subset dimensions
-    subset_years = Dimension(
-        name="subset_years", letter="y", items=[2025, 2026, 2027, 2028, 2029]
-    )  # 5 years
-    subset_apps = Dimension(
-        name="subset_apps", letter="b", items=["A1", "A2", "A3", "A4"]
-    )  # 4 apps
+    def test_get_item(self):
+        cats_on_the_moon = space_animals["Moon"]["cat"]
+        assert isinstance(cats_on_the_moon, FlodymArray)
+        assert_array_almost_equal(cats_on_the_moon.values, space_animals.values[2, :, 0])
+        # note that this does not work for the time dimension (not strings)
+        # and also assumes that no item appears in more than one dimension
 
-    # Test 1: Single dimension subset works
-    result1 = arr[{"m": "concrete", "t": subset_years}]
-    assert result1.shape == (3, 5, 6), f"Expected (3, 5, 6), got {result1.shape}"
+    def test_getitem_indexing_with_slice(self):
+        """Test getitem with advanced indices separated by slices (NumPy dimension reordering)."""
+        result = self.arr[self.mask]
+        expected_shape = (80, 5, 4, 3)
+        assert result.shape == expected_shape, f"getitem: Expected {expected_shape}, got {result.shape}"
+        expected_values = self.arr[{"m": "M1"}][{"r": self.subset_regions}][{"p": self.subset_products}]
+        assert_array_equal(result.values, expected_values.values)
 
-    # Test 2: Two dimension subsets
-    result2 = arr[{"m": "concrete", "t": subset_years, "a": subset_apps}]
-    assert result2.shape == (3, 5, 4), f"Expected (3, 5, 4), got {result2.shape}"
+    def test_setitem(self):
+        array_1d = FlodymArray(dims=dims["t",])
+        array_1d[...] = 1
+        array_1d[1990] = 2
+        assert_array_equal(array_1d.values, np.array([2, 1, 1]))
 
-    # Test 3: Verify values are correct (order matters!)
-    # Manual extraction for comparison - sequential slicing should give same result
-    expected = arr[{"m": "concrete"}][{"t": subset_years}][{"a": subset_apps}]
-    assert_array_equal(result2.values, expected.values)
+        array_2d = FlodymArray(dims=dims["p", "t"])
+        array_2d[...] = 1
+        array_2d[1990] = 2
+        assert_array_equal(
+            array_2d.values,
+            np.array([[2, 1, 1]] * 4),
+        )
 
-    # Test 4: Test with different order of keys in dict (should not matter)
-    result2b = arr[{"a": subset_apps, "m": "concrete", "t": subset_years}]
-    assert_array_equal(result2b.values, expected.values)
+    def test_setitem_indexing_with_slice(self):
+        """Test setitem with advanced indices separated by slices (NumPy dimension reordering)."""
+        arr_copy = self.arr.copy()
 
-    # Test 5: setitem with multiple dimension subsets
-    arr2 = arr.copy()
-    new_values = FlodymArray(
-        dims=DimensionSet(dim_list=[regions, subset_years, subset_apps]),
-        values=np.ones((3, 5, 4)) * 999,
-    )
-    arr2[{"m": "concrete", "t": subset_years, "a": subset_apps}] = new_values
-
-    # Verify values were set correctly
-    subset = arr2[{"m": "concrete", "t": subset_years, "a": subset_apps}]
-    assert np.allclose(subset.values, 999), "setitem with multiple dimension subsets failed"
-
-    # Test 6: Verify other values were NOT changed
-    other_material = arr2[{"m": "steel"}]
-    expected_other = arr[{"m": "steel"}]
-    assert_array_equal(other_material.values, expected_other.values)
-
-
-def test_setitem():
-    array_1d = FlodymArray(dims=dims["t",])
-    array_1d[...] = 1
-    array_1d[1990] = 2
-    assert_array_equal(array_1d.values, np.array([2, 1, 1]))
-
-    array_2d = FlodymArray(dims=dims["p", "t"])
-    array_2d[...] = 1
-    array_2d[1990] = 2
-    assert_array_equal(
-        array_2d.values,
-        np.array([[2, 1, 1]] * 4),
-    )
+        slice_dims = DimensionSet(dim_list=[self.years, self.subset_regions, self.sectors, self.subset_products])
+        new_values = FlodymArray.full(slice_dims, fill_value=123.0)
+        arr_copy[self.mask] = new_values
+        result = arr_copy[self.mask]
+        assert np.allclose(result.values, 123), "setitem failed to update values correctly"
 
 
 def test_to_df():
