@@ -221,15 +221,3 @@ def test_mixed_dimension_letters_and_names():
     param_def_p1 = ParameterDefinition(name="p1", dim_letters=["t", "r"])
     params_p1 = reader_mixed.read_parameters([param_def_p1], dims)
     assert np.array_equal(params_p1["p1"].values, [[1], [2], [3]])
-
-
-if __name__ == "__main__":
-    test_dimensions()
-    test_valid_parameter_reader()
-    test_wrong_parameter_reader()
-    test_allow_incomplete_data()
-    test_allow_extra_data()
-    test_build_mfa_system()
-    test_dimension_letters_as_column_names()
-    test_mixed_dimension_letters_and_names()
-    print("All tests passed.")

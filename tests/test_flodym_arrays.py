@@ -459,8 +459,3 @@ class TestFlodymArrayCopy:
         array_copy.dims.dim_list[0] = animals
         # Original should be unchanged
         assert array.dims[0] == places
-
-
-if __name__ == "__main__":
-    t = TestFlodymArrayIndexing()
-    t.test_getitem_indexing_with_slice()
