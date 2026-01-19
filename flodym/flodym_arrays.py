@@ -786,8 +786,11 @@ class SubArrayHandler:
 
     def _init_ids(self):
         """
-        - Init the internal list of index slices to slice(None) (i.e. no slicing, keep all items along that dimension)
-        - For each dimension that is sliced, get the corresponding item IDs and set the index slice to these IDs.
+        - Init the internal list of index slices to slice(None) (i.e. no slicing, keep all items
+          along that dimension)
+        - For each dimension that is sliced, get the corresponding item index (or list of several
+          indexes along one dimension) and replace the slice(None) with it.
+        - convert lists of indexes to meshgrid arrays, if there are several dimensions with lists
         """
         self._ids_all_dims = [slice(None) for _ in self.flodym_array.dims.letters]
         for dim_letter, item_or_items in self.def_dict.items():
