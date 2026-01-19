@@ -164,10 +164,9 @@ class LifetimeModel(PydanticBaseModel):
         self._check_prms_set()
         quad_eta, quad_weights = self.get_quad_points_and_weights()
         for m in range(0, self._n_t):  # cohort index
-            width = self._t.bounds[m + 1] - self._t.bounds[m]
             for eta, weight in zip(list(quad_eta), list(quad_weights)):
                 t = self._remaining_ages(m, eta)
-                self._sf[m::, m, ...] += weight * width * self._survival_by_year_id(t, m)
+                self._sf[m::, m, ...] += weight * self._survival_by_year_id(t, m)
 
     def get_quad_points_and_weights(self):
         """Returns the quadrature points and weights for the inflow time periods."""

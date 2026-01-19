@@ -5,6 +5,7 @@ and put it into ojects with the desired properties.
 """
 
 import numpy as np
+import pandas as pd
 from pydantic import (
     BaseModel as PydanticBaseModel,
     AliasChoices,
@@ -13,7 +14,7 @@ from pydantic import (
     model_validator,
     ConfigDict,
 )
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 
 class DimensionDefinition(PydanticBaseModel):
@@ -150,3 +151,26 @@ class MFADefinition(PydanticBaseModel):
             if not np.all(correct_dims):
                 raise ValueError(f"Undefined dimension in {item}")
         return self
+
+    def to_dfs(self) -> Dict[str, pd.DataFrame]:
+        """Export definition information to pandas DataFrames.
+        Column names are the field names, rows have the lists.
+
+        Returns:
+            A dictionary mapping from definition list names (such as "dimensions") to the
+            DataFrames.
+        """
+        all_dfs = {}
+        for field_name, def_list in self.model_dump().items():
+            if not def_list:
+                continue
+            def_dfs = []
+            for definition in def_list:
+                if isinstance(definition, str):
+                    def_dict = {"name": [definition]}
+                else:
+                    def_dict = {k: [v] for k, v in definition.items()}
+                def_dfs.append(pd.DataFrame.from_dict(def_dict))
+            df = pd.concat(def_dfs)
+            all_dfs[field_name] = df
+        return all_dfs

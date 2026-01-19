@@ -5,9 +5,9 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.17.2
+#       jupytext_version: 1.19.0.dev0
 #   kernelspec:
-#     display_name: .venv
+#     display_name: flodym
 #     language: python
 #     name: python3
 # ---
@@ -207,6 +207,7 @@ mfa_example = SimpleMFA.from_excel(
     dimension_sheets={d.name: d.name for d in dimension_definitions},
     parameter_sheets={p.name: p.name for p in parameter_definitions},
 )
+
 mfa_example.compute()
 
 # %% [markdown]
