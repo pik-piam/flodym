@@ -462,4 +462,5 @@ class TestFlodymArrayCopy:
 
 
 if __name__ == "__main__":
-    test_to_df()
+    t = TestFlodymArrayIndexing()
+    t.test_getitem_indexing_with_slice()
