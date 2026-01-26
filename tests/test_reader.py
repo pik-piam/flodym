@@ -10,7 +10,6 @@ from flodym.data_reader import (
 from flodym.mfa_definition import DimensionDefinition, ParameterDefinition, MFADefinition
 from flodym.mfa_system import MFASystem
 
-
 csv_dimension_files = {
     "animals": "tests/tests_data/dimension_animals_horizontal.csv",
     "time": "tests/tests_data/dimension_time_vertical.csv",
