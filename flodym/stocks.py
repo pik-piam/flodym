@@ -4,15 +4,27 @@ including flow-driven stocks and dynamic (lifetime-based) stocks.
 
 from abc import abstractmethod
 import numpy as np
-from scipy.linalg import solve_triangular
-from pydantic import BaseModel as PydanticBaseModel, ConfigDict, model_validator
+from pydantic import BaseModel as PydanticBaseModel, ConfigDict, model_validator, Field
 from typing import Optional, Union
 import logging
 
 from .processes import Process
 from .flodym_arrays import StockArray, FlodymArray
-from .dimensions import DimensionSet
+from .dimensions import Dimension, DimensionSet
 from .lifetime_models import LifetimeModel, UnevenTimeDim
+
+
+def stock_compute_decorator(func):
+    """Adds checks before and after every stock compute routine"""
+
+    def wrapper(self: "Stock", *args, **kwargs):
+        self._check_needed_arrays()
+        func(self, *args, **kwargs)
+        self.mark_computed()
+
+    wrapper.is_decorated = True
+
+    return wrapper
 
 
 class Stock(PydanticBaseModel):
@@ -74,18 +86,32 @@ class Stock(PydanticBaseModel):
         return self
 
     @model_validator(mode="after")
+    def check_compute_decorator(self):
+        if not getattr(self.compute, "is_decorated", False):
+            raise RuntimeError(
+                "Stock.compute method must have the stock_compute_decorator applied to it."
+            )
+        return self
+
+    @model_validator(mode="after")
     def init_t(self):
         self._t = UnevenTimeDim(dim=self.dims[self.time_letter])
         return self
 
     @abstractmethod
+    @stock_compute_decorator
     def compute(self):
-        # always add this check first
-        self._check_needed_arrays()
+        # Add stock_compute_decorator to all subclasses!
+        pass
 
     @abstractmethod
     def _check_needed_arrays(self):
         pass
+
+    def mark_computed(self):
+        self.inflow.mark_set()
+        self.outflow.mark_set()
+        self.stock.mark_set()
 
     @property
     def shape(self) -> tuple:
@@ -121,6 +147,13 @@ class Stock(PydanticBaseModel):
         )  # stock_change(t) = stock(t) - stock(t-1)
         return self.inflow.values - self.outflow.values - dsdt
 
+    @property
+    def is_computed(self) -> bool:
+        """Check whether the stock has been computed, i.e. whether the stock, inflow, and outflow arrays
+        are all set.
+        """
+        return self.inflow.is_set and self.outflow.is_set and self.stock.is_set
+
     def _to_whole_period(self, annual_flow: np.ndarray) -> np.ndarray:
         """multiply annual flow by interval length to get flow over whole period."""
         return np.einsum("t...,t->t...", annual_flow, self._t.interval_lengths)
@@ -139,14 +172,13 @@ class SimpleFlowDrivenStock(Stock):
     """Given inflows and outflows, the stock can be calculated without a lifetime model or cohorts."""
 
     def _check_needed_arrays(self):
-        if (
-            np.max(np.abs(self.inflow.values)) < 1e-10
-            and np.max(np.abs(self.outflow.values)) < 1e-10
-        ):
-            logging.warning("Inflow and Outflow are zero. This will lead to a zero stock.")
+        if not self.inflow.is_set and not self.outflow.is_set:
+            logging.warning(
+                "Neither inflow and outflow are set (is_set=False). If this is intended, perform mark_set() on one of them."
+            )
 
+    @stock_compute_decorator
     def compute(self):
-        self._check_needed_arrays()
         annual_net_inflow = self.inflow.values - self.outflow.values
         net_inflow_whole_period = self._to_whole_period(annual_net_inflow)
         self.stock.values[...] = np.cumsum(net_inflow_whole_period, axis=0)
@@ -162,8 +194,29 @@ class DynamicStockModel(Stock):
     Can be input either as a LifetimeModel subclass, or as an instance of a
     LifetimeModel subclass. For available subclasses, see `flodym.lifetime_models`.
     """
+    cohort_dim: Optional[Dimension] = None
+
     _outflow_by_cohort: np.ndarray = None
     _stock_by_cohort: np.ndarray = None
+    _dims_cohort: DimensionSet = None
+    _initial_stock_dsm: "InflowByCohortDrivenDSM" = None
+    _initial_stock_year: int = None
+
+    @model_validator(mode="after")
+    def validate_cohort_dim(self):
+        if self.cohort_dim is not None:
+            t = self.dims[self.time_letter]
+            c = self.cohort_dim
+            if c.letter == t.letter or c.name == t.name:
+                raise ValueError(
+                    "Cohort dimension letter and name must be different from time dimension letter and name."
+                )
+            if c.items != t.items:
+                raise ValueError("Cohort dimension size must be the same as time dimension size.")
+            if c.letter in self.dims.letters or c.name in self.dims.names:
+                raise ValueError("Cohort dimension must not be part of the stock dimensions.")
+            self._dims_cohort = t + c + self.dims.drop(self.time_letter, inplace=False)
+        return self
 
     @model_validator(mode="after")
     def init_cohort_arrays(self):
@@ -184,6 +237,12 @@ class DynamicStockModel(Stock):
     def _check_needed_arrays(self):
         self.lifetime_model._check_prms_set()
 
+    def _check_cohort_dim(self, application: str):
+        if self.cohort_dim is None:
+            raise ValueError(
+                f"Cohort dimension must be provided at DSM initialization for {application} to work."
+            )
+
     @property
     def _n_t(self) -> int:
         return list(self.shape)[0]
@@ -200,19 +259,143 @@ class DynamicStockModel(Stock):
     def _t_diag_indices(self) -> tuple:
         return np.diag_indices(self._n_t) + (slice(None),) * len(self._shape_no_t)
 
-    def get_outflow_by_cohort(self) -> np.ndarray:
+    def get_outflow_by_cohort(self) -> StockArray:
         """Outflow by cohort, i.e. the outflow of each production year at each time step."""
-        return self._outflow_by_cohort
+        return self._get_by_cohort_array(self._outflow_by_cohort, "outflow_by_cohort")
 
-    def get_stock_by_cohort(self) -> np.ndarray:
+    def get_stock_by_cohort(self) -> StockArray:
         """Stock by cohort, i.e. the stock of each production year at each time step."""
-        return self._stock_by_cohort
+        return self._get_by_cohort_array(self._stock_by_cohort, "stock_by_cohort")
+
+    def _get_by_cohort_array(self, values: np.ndarray, name: str) -> StockArray:
+        if self.cohort_dim is None:  # leave in for backwards compatibility
+            logging.warning(
+                f"Cohort dimension is not defined; {name} cannot be retrieved as FlodymArray. Returning raw ndarray instead."
+            )
+            return values
+        else:
+            return StockArray(dims=self._dims_cohort, values=values, name=f"{self.name}_{name}")
 
     def _compute_outflow(self):
         self._outflow_by_cohort = np.einsum(
             "c...,tc...->tc...", self.inflow.values, self.lifetime_model.pdf
         )
         self.outflow.values[...] = self._outflow_by_cohort.sum(axis=1)
+
+    def set_initial_stock(self, initial_stock: FlodymArray, initial_year: int):
+        """Set an initial stock at a given year.
+        The initial stock is added to the stock by cohort internally.
+
+        Args:
+            initial_stock (FlodymArray): Initial stock to be set. Must have same dimensions as the stock, except for time dimension.
+            initial_year (int): Year in which the initial stock is given. Must be an item of the time dimension.
+        """
+        self._check_cohort_dim("set_initial_stock")
+        if initial_stock.dims.letters != self._dims_cohort.drop(self.time_letter).letters:
+            raise ValueError(
+                f"Initial stock dimensions {initial_stock.dims.letters} do not match expected dims {self._dims_cohort.drop(self.time_letter).letters}."
+            )
+        if initial_year not in self.dims[self.time_letter].items:
+            raise ValueError(
+                f"Initial year {initial_year} is not in time dimension items {self.dims[self.time_letter].items}."
+            )
+
+        inflow_by_cohort = StockArray(dims=self._dims_cohort, name=f"{self.name}_inflow_by_cohort")
+        inflow_by_cohort[{self.time_letter: initial_year}] = self._to_annual(initial_stock.values)
+        self._initial_stock_year = initial_year
+        isd = InflowByCohortDrivenDSM(
+            dims=self.dims,
+            cohort_dim=self.cohort_dim,
+            lifetime_model=self.lifetime_model,
+            inflow_by_cohort=inflow_by_cohort,
+            name=f"{self.name}_ISD",
+        )
+        iiy = self._initial_year_index
+        # correction to account for the fact that some of the inflow will leave the stock in the same period
+        isd.inflow_by_cohort.values[iiy, : iiy + 1, ...] /= isd.lifetime_model.sf_conditional[
+            iiy, iiy, : iiy + 1, ...
+        ]
+        self._initial_stock_dsm = isd
+
+    # TODO general:
+    # - np allclose in all
+    # - make work for inflow_by_cohort?
+    # + proper treatment of prescribed inflow and stock at initial year
+    #   (for inflow: only represents/replaces the newest cohort!)
+    # - add inflow_by_cohort to FlexibleDSM
+    # - move adapt_stock / adapt_inflow to respective subclasses
+
+    @property
+    def _initial_year_index(self):
+        return self.dims[self.time_letter].items.index(self._initial_stock_year)
+
+    def only_if_has_initial_stock(method):
+        """Decorator to only run method if initial stock is set."""
+
+        def wrapper(self: "DynamicStockModel", *args, **kwargs):
+            if self._initial_stock_dsm is not None:
+                return method(self, *args, **kwargs)
+
+        return wrapper
+
+    @only_if_has_initial_stock
+    def _subtract_initial_stock_from_inflow(self):
+        if np.any(self.inflow.values[: self._initial_year_index, ...] > 0):
+            raise ValueError(
+                f"Prescribed inflow before the initial stock year {self._initial_stock_year} is non-zero."
+            )
+        if np.any(self.inflow.values[self._initial_year_index, ...] > 0):
+            logging.warning(
+                f"Prescribed inflow in the initial stock year {self._initial_stock_year} is non-zero. "
+                f"This creates ambiguity: Initial stock and prescribed inflow both contribute to the stock of the cohort of that year. "
+                f"The maximum of both will be used. "
+                f"Moreover, the inflow in that year will be overwritten to introduce all initial stock, to ensure mass balance."
+            )
+        iiy = self._initial_year_index
+        # first take maximum of both, then subtract initial stock contribution
+        # max(pi, isi) - isi = pi - min(pi, isi)
+        self.inflow.values[iiy, ...] -= np.minimum(
+            self.inflow.values[iiy, ...],
+            self._initial_stock_dsm.inflow_by_cohort.values[iiy, iiy, ...],
+        )
+
+    @only_if_has_initial_stock
+    def _compute_initial_stock(self):
+        self._initial_stock_dsm.compute()
+
+    @only_if_has_initial_stock
+    def _subtract_initial_stock_from_stock(self) -> np.ndarray:
+        if np.any(self.stock.values[: self._initial_year_index, ...] > 0):
+            raise ValueError(
+                f"Prescribed stock before the initial stock year {self._initial_stock_year} is non-zero."
+            )
+        if np.all(self.stock.values[self._initial_year_index, ...] == 0):
+            logging.debug(
+                f"Prescribed stock in the initial stock year {self._initial_stock_year} is zero and will be fully replaced by the initial stock."
+            )
+        elif not np.all(
+            self.stock.values[self._initial_year_index, ...]
+            == self._initial_stock_dsm.stock.values[self._initial_year_index, ...]
+        ):
+            logging.warning(
+                f"Prescribed stock in the initial stock year {self._initial_stock_year} is non-zero and different from the total initial stock. "
+                f"This creates ambiguity: Initial stock and prescribed stock both contribute to the stock of that year. "
+                f"The maximum of both will be used."
+            )
+        iiy = self._initial_year_index
+        # first take maximum of both, then subtract initial stock contribution
+        # max(ps, is) - is = ps - min(ps, is)
+        self.stock.values[iiy, ...] -= np.minimum(
+            self.stock.values[iiy,], self._initial_stock_dsm.stock.values[iiy,]
+        )
+
+    @only_if_has_initial_stock
+    def _add_initial_stock_contribution(self):
+        self.inflow.values[...] += self._initial_stock_dsm.inflow.values
+        self.stock.values[...] += self._initial_stock_dsm.stock.values
+        self.outflow.values[...] += self._initial_stock_dsm.outflow.values
+        self._stock_by_cohort[...] += self._initial_stock_dsm._stock_by_cohort
+        self._outflow_by_cohort[...] += self._initial_stock_dsm._outflow_by_cohort
 
     def __str__(self):
         base = super().__str__()
@@ -226,15 +409,20 @@ class InflowDrivenDSM(DynamicStockModel):
     """
 
     def _check_needed_arrays(self):
-        super()._check_needed_arrays()
-        if np.allclose(self.inflow.values, np.zeros(self.shape)):
-            logging.warning("Inflow is zero. This will lead to a zero stock and outflow.")
+        DynamicStockModel._check_needed_arrays(self)
+        if not self.inflow.is_set:
+            logging.warning(
+                "Inflow is not set (is_set=False). If this is intended, perform mark_set() on it."
+            )
 
+    @stock_compute_decorator
     def compute(self):
         """Determine stocks and outflows and store values in the class instance."""
-        self._check_needed_arrays()
+        self._compute_initial_stock()
+        self._subtract_initial_stock_from_inflow()
         self._compute_stock()
         self._compute_outflow()
+        self._add_initial_stock_contribution()
 
     def _compute_stock(self):
         # for non-contiguous years, yearly inflow is multiplied with time interval length
@@ -252,51 +440,27 @@ class StockDrivenDSM(DynamicStockModel):
     where A is the survival function matrix, x is the inflow vector, and b is the stock vector.
     """
 
-    solver: str = "manual"
-    """Algorithm to use for solving the equation system.  Options are: "manual" (default), which uses
-    an own python implementation, and "lapack", which calls the lapack trtrs routine via scipy.
-    The lapack implementation may be more precise. Speed depends on the dimensionality,
-    but the manual implementation is usually faster.
-    """
-
-    @model_validator(mode="after")
-    def init_solver(self):
-        if self.solver not in ["manual", "lapack"]:
-            raise ValueError("Solver must be either 'manual' or 'lapack'.")
-        return self
-
     def _check_needed_arrays(self):
-        super()._check_needed_arrays()
-        if np.allclose(self.stock.values, np.zeros(self.shape)):
-            logging.warning("Stock is zero. This will lead to a zero inflow and outflow.")
+        DynamicStockModel._check_needed_arrays(self)
+        if not self.stock.is_set:
+            logging.warning(
+                "Stock is not set (is_set=False). If this is intended, perform mark_set() on it."
+            )
 
+    @stock_compute_decorator
     def compute(self):
         """Determine inflows and outflows and store values in the class instance."""
-        self._check_needed_arrays()
+        self._compute_initial_stock()
+        self._subtract_initial_stock_from_stock()
         self._compute_cohorts_and_inflow()
         self._compute_outflow()
+        self._add_initial_stock_contribution()
 
     def _compute_cohorts_and_inflow(self):
         """With given total stock and lifetime distribution,
         the method builds the stock by cohort and the inflow.
         This involves solving the lower triangular equation system A*x=b,
         where A is the survival function matrix, x is the inflow vector, and b is the stock vector.
-        """
-        if self.solver == "manual":
-            self._compute_inflow_manual()
-        elif self.solver == "lapack":
-            self._compute_inflow_lapack()
-        else:
-            raise ValueError(f"Unknown engine: {self.solver}")
-
-        self._stock_by_cohort = np.einsum(
-            "c...,tc...->tc...", self.inflow.values, self.lifetime_model.sf
-        )
-
-    def _compute_inflow_manual(self) -> tuple[np.ndarray]:
-        """With given total stock and lifetime distribution,
-        the method builds the stock by cohort and the inflow,
-        using a manual algorithm for solving of the equation system (see "solver" doc for details).
         """
         # Maths behind implementation:
         # Solve square linear equation system
@@ -315,17 +479,94 @@ class StockDrivenDSM(DynamicStockModel):
 
             inflow_whole_period[i, ...] = (stock_i - (sf_ij * inflow_j).sum(axis=0)) / sf_ii
         self.inflow.values[...] = self._to_annual(inflow_whole_period)
+        self._stock_by_cohort = np.einsum(
+            "c...,tc...->tc...", inflow_whole_period, self.lifetime_model.sf
+        )
 
-    def _compute_inflow_lapack(self) -> tuple[np.ndarray]:
-        """With given total stock and lifetime distribution,
-        the method builds the stock by cohort and the inflow,
-        using lapack for solving of the equation system (see "engine" doc for details).
-        """
-        sf = self.lifetime_model.sf
-        slt = (slice(None),)
-        inflow_whole_period = np.zeros_like(self.inflow.values)
-        for i in np.ndindex(self._shape_no_t):
-            inflow_whole_period[slt + i] = solve_triangular(
-                sf[2 * slt + i], self.stock.values[slt + i], lower=True
+
+class InflowByCohortDrivenDSM(InflowDrivenDSM):
+
+    inflow_by_cohort: StockArray = None
+    cohort_dim: Dimension  # require for this subclass
+
+    @model_validator(mode="after")
+    def init_cohort_arrays(self):
+        if self.inflow_by_cohort is None:
+            self.inflow_by_cohort = StockArray(
+                dims=self._dims_cohort, name=f"{self.name}_inflow_by_cohort"
             )
-        self.inflow.values[...] = self._to_annual(inflow_whole_period)
+        else:
+            if self.inflow_by_cohort.dims.letters != self._dims_cohort.letters:
+                raise ValueError(
+                    f"Inflow by cohort dimensions {self.inflow_by_cohort.dims.letters} do not match expected dims {self._dims_cohort.letters}."
+                )
+        return self
+
+    def _check_needed_arrays(self):
+        DynamicStockModel._check_needed_arrays(self)
+        if not self.inflow_by_cohort.is_set:
+            logging.warning(
+                "Inflow_by_cohort is not set (is_set=False). If this is intended, perform mark_set() on it."
+            )
+        if self.inflow.is_set:
+            logging.warning(
+                "Inflow is not set (is_set=True). It will be overwritten. Use either inflow or inflow_by_cohort."
+            )
+
+    def _compute_inflow(self):
+        self.inflow.values[...] = self.inflow_by_cohort.sum(axis=1)
+
+    def _check_inflow_by_cohort_consistency(self):
+        # TODO: leave in, because this is still the correct check? T-1 ?
+        if np.any((self.inflow_by_cohort.values > 0) & (self.lifetime_model.sf == 0)):
+            passed_as = "inflow_by_cohort (or initial_stock)"
+            raise ValueError(
+                f"The given {passed_as} is inconsistent with the lifetime model: survival function "
+                f"is zero for some time/cohort combinations of the {passed_as}, which means that "
+                f"no surviving {passed_as} can exist for these combinations."
+            )
+
+    def _compute_stock(self):
+        # for non-contiguous years, yearly inflow is multiplied with time interval length
+        inflow_per_period = self._to_whole_period(self.inflow_by_cohort.values)
+        self._stock_by_cohort = np.einsum(
+            "ic...,tic...->tc...", inflow_per_period, self.lifetime_model.sf_conditional
+        )
+        self.stock.values[...] = self._stock_by_cohort.sum(axis=1)
+
+    def _compute_outflow(self):
+        self._outflow_by_cohort = np.einsum(
+            "ic...,tic...->tc...", self.inflow_by_cohort.values, self.lifetime_model.pdf_conditional
+        )
+        self.outflow.values[...] = self._outflow_by_cohort.sum(axis=1)
+
+    @stock_compute_decorator
+    def compute(self):
+        """Determine stocks and outflows and store values in the class instance."""
+        self._check_inflow_by_cohort_consistency()
+        self._compute_inflow()
+        self._compute_stock()
+        self._compute_outflow()
+
+
+class FlexibleDSM(DynamicStockModel):
+    """Computes either stock-driven or inflow-driven dynamic stock model, depending on which of the
+    stock or inflow is set.
+    """
+
+    compute_stock_driven = StockDrivenDSM.compute
+    compute_inflow_driven = InflowDrivenDSM.compute
+
+    _compute_cohorts_and_inflow = StockDrivenDSM._compute_cohorts_and_inflow
+    _compute_stock = InflowDrivenDSM._compute_stock
+
+    def compute(self):
+        if self.stock.is_set:
+            self.compute_stock_driven()
+        elif self.inflow.is_set:
+            self.compute_inflow_driven()
+        else:
+            raise ValueError("Either stock or inflow must be set for FlexibleDSM.compute().")
+
+    # replaces decorator, since inner functions are already decorated
+    compute.is_decorated = True
