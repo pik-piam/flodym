@@ -61,7 +61,11 @@ However, there are also aspects leaving potential for improvement:
 
 - Multi-dimensional array operations are the core of MFA. ODYM stores dimensionality information in its array objects, but does not harvest the full potential of this information. Every dimension in the code (such as time) is given an index letter. ODYM stores which dimensions each array has. However, this information is not used in array operations. For example: The array `end_of_life_products` with dimensions time (t), region (r) and product type (p) is multiplied with the array `waste_share` with dimensions Product type (p) and waste type (w), and the resulting `waste` array should have dimensions time, region, and waste type. In ODYM, the user still has to manually spell out this dimension information, resulting in the following line:
   ```
-  waste.Values = np.einsum('trp,pw->trw', end_of_life_products.Values, waste_share.Values)
+  waste.Values = np.einsum(
+      'trp,pw->trw',
+      end_of_life_products.Values,
+      waste_share.Values
+  )
   ```
 This makes the code somewhat hard to read and also inflexible, since dimensionality changes affect the code of every operation.
 - The same applies to array slicing. Addressing only the part of the `waste` array of a single region might look like this:
@@ -88,9 +92,9 @@ flodym is based on the concepts of ODYM such that its structure, scope and stren
   using `FlodymArray` objects. This allows to write simpler code and reduces errors. For example, dimensions of the same size could simply be switched in the `einsum` statement, which yields wrong results but goes unnoticed by the code. More importantly, it makes the code flexible (hence the name flodym) for adaptation and extension. Since the dimensions of each object are not explicitly given for every array operation, but only once in the array definition, dimensions can be added, removed or re-ordered later with minimal changes to the source code.
 - Slicing is eased in a similar way. If, for example, the values of the `waste` array for the `CHA` (China) entry of the `region` dimension can be addressed with the syntax
   ```
-  waste['C']
+  waste['CHA']
   ```
-  Again, this allows for adding or removing other dimensions later, or changing the position of the `C` entry in the `element` dimension, without having to change the code. Apart from these functionalities, which are built on Python's magic methods, `FlodymArrays` feature a large range of built-in conventional methods for dimension manipulation, such as `sum_over`, `cast_to` or `get_shares_over`.
+  Again, this allows for adding or removing other dimensions later, or changing the position of the `CHA` entry in the `region` dimension, without having to change the code. Apart from these functionalities, which are built on Python's magic methods, `FlodymArrays` feature a large range of built-in conventional methods for dimension manipulation, such as `sum_over`, `cast_to` or `get_shares_over`.
 - In flodym, the treatment of material stocks is simplified and integrated with the rest of the MFA. This is realized through `Stock` objects containing `FlodymArray` objects for inflow, outflow and stock arrays, as well as a lifetime model and compute functions. Both stock and lifetime model are multi-dimensional and part of the MFA system class, such that the interaction with them is seamless and the performance gains of NumPy array operations are leveraged. As novel functionality, stock models can handle non-evenly-spaced time step vectors, or sub-year lifetimes.
 - In flodym, data read-in and export are based on pandas, opening them to a wide range of formats. Users can either use pre-built flodym read-in functions, or write their own, and generate objects from data frames. On data read-in, flodym performs checks on the data, detecting errors early on. Data read-in is performance-optimized especially for sparse arrays, since the full array size is only used after converting the input pandas data frame to a NumPy array. Data is type-checked through the use of pydantic [@pydantic], adding robustness to the code.
 - flodym introduces export and visualization functionality.
@@ -106,7 +110,7 @@ Finished large-scale projects using flodym are the in-house REMIND-MFA [@remind-
 
 flodym was used for the following teaching events. None of these are organized by the authors of the publication, demonstrating rapid take-up of the library in the community:
 
-- An autumn school on LCA-MFA coupling was heavily based on flodym [@AutumnSchool2025Website], resulting for example in the development of several GitHub repositories[^0],[^1],[^2],[^3],[^4].
+- An autumn school on LCA-MFA coupling was heavily based on flodym [@AutumnSchool2025Website], resulting for example in the development of several GitHub repositories[^0][^1][^2][^3][^4].
 - An invited lecture on flodym at Brightcon 2025 [@Brightcon].
 - A university class at Leiden University with 150 students.
 
