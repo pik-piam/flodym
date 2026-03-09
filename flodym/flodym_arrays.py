@@ -749,7 +749,7 @@ class SubArrayHandler:
     @property
     def ids(self):
         """Indices used for slicing the values array."""
-        return tuple(self._id_list)
+        return tuple(self._ids_all_dims)
 
     @property
     def values_pointer(self):
@@ -786,12 +786,47 @@ class SubArrayHandler:
 
     def _init_ids(self):
         """
-        - Init the internal list of index slices to slice(None) (i.e. no slicing, keep all items along that dimension)
-        - For each dimension that is sliced, get the corresponding item IDs and set the index slice to these IDs.
+        - Init the internal list of index slices to slice(None) (i.e. no slicing, keep all items
+          along that dimension)
+        - For each dimension that is sliced, get the corresponding item index (or list of several
+          indexes along one dimension) and replace the slice(None) with it.
+        - convert lists of indexes to meshgrid arrays, if there are several dimensions with lists
         """
-        self._id_list = [slice(None) for _ in self.flodym_array.dims.letters]
+        self._ids_all_dims = [slice(None) for _ in self.flodym_array.dims.letters]
         for dim_letter, item_or_items in self.def_dict.items():
             self._set_ids_single_dim(dim_letter, item_or_items)
+        self._convert_lists_to_meshgrid()
+
+    def _convert_lists_to_meshgrid(self):
+        """If there are several dimensions with lists as indexes, numpy will try to broadcast the
+        lists together.
+        To avoid this, the lists are converted to numpy arrays which can be broadcast together:
+        Size-one dimensions are prepended and appended to their shape for each of the other
+        dimensions of the resulting sub-array. Example:
+
+        original array shape: (3,4,5,6)
+        _id_list: [[0,2], slice(None), [1,3,4], 2]
+        resulting sub-array shape: (2,4,3)
+
+        conversion:
+        - [0,2] -> np.array with shape (2,1,1) and entries 0 and 2
+        - slice(None) -> np.array with shape (1,4,1)
+        - [1,3,4] -> np.array with shape (1,1,3) and entries 1, 3, 4
+        - 2 -> no conversion
+        """
+        requires_conversion = sum(isinstance(ids, list) for ids in self._ids_all_dims) > 1
+        if not requires_conversion:
+            return
+        # convert slices to lists of all ids to include them in the meshgrid
+        for i_axis, ids in enumerate(self._ids_all_dims):
+            if isinstance(ids, slice):
+                dim_len = self.flodym_array.dims[i_axis].len
+                self._ids_all_dims[i_axis] = list(range(dim_len))
+        axes_with_id_list = [i for i, ids in enumerate(self._ids_all_dims) if isinstance(ids, list)]
+        id_lists = [ids for ids in self._ids_all_dims if isinstance(ids, list)]
+        mesh_of_ids = np.ix_(*id_lists)
+        for i_axis, ids_mesh in zip(axes_with_id_list, mesh_of_ids):
+            self._ids_all_dims[i_axis] = ids_mesh
 
     def _set_ids_single_dim(self, dim_letter, item_or_items):
         """Given either a single item name or a list of item names, return the corresponding item IDs, along one
@@ -809,7 +844,7 @@ class SubArrayHandler:
             items_ids = [self._get_single_item_id(dim_letter, item) for item in item_or_items]
         else:
             items_ids = self._get_single_item_id(dim_letter, item_or_items)  # single item
-        self._id_list[self.flodym_array.dims.index(dim_letter)] = items_ids
+        self._ids_all_dims[self.flodym_array.dims.index(dim_letter)] = items_ids
 
     def _get_single_item_id(self, dim_letter, item_name):
         return self.flodym_array.dims[dim_letter].items.index(item_name)
