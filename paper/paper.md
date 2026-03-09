@@ -106,18 +106,18 @@ Finished large-scale projects using flodym are the in-house REMIND-MFA [@remind-
 
 flodym was used for the following teaching events. None of these are organized by the authors of the publication, demonstrating rapid take-up of the library in the community:
 
-- An autumn school on LCA-MFA coupling was heavily based on flodym [@AutumnSchool2025Website], resulting for example in the development of several GitHub repositories[^0][^1][^2][^3][^4].
+- An autumn school on LCA-MFA coupling was heavily based on flodym [@AutumnSchool2025Website], resulting for example in the development of several GitHub repositories[^0],[^1],[^2],[^3],[^4].
 - An invited lecture on flodym at Brightcon 2025 [@Brightcon].
 - A university class at Leiden University with 150 students.
 
 Further dissemination at conferences and teaching events is planned.
 Extrapolating from the uptake so far, the software can be expected to have a widespread and sustained impact on the research community.
 
-[^0] https://github.com/Depart-de-Sentier/Schools-2025-November-Switzerland
-[^1] https://github.com/isabelapi/PAW_MFA_LCA_2025
-[^2] https://github.com/MeYiwen/DdS_REFLOC
-[^3] https://github.com/Tanima-Sharma/PVProject
-[^4] https://github.com/gergosuto/dds2025manure
+[^0]: https://github.com/Depart-de-Sentier/Schools-2025-November-Switzerland
+[^1]: https://github.com/isabelapi/PAW_MFA_LCA_2025
+[^2]: https://github.com/MeYiwen/DdS_REFLOC
+[^3]: https://github.com/Tanima-Sharma/PVProject
+[^4]: https://github.com/gergosuto/dds2025manure
 
 # AI usage disclosure
 
