@@ -28,22 +28,22 @@ bibliography: paper.bib
 
 # Summary
 
-Material flow analysis (MFA) is a core method in industrial ecology that tracks time-dependent material flows within a system, such as a national economy, across all life cycle stages. It also accounts for material accumulation in stocks, including materials embodied in products, assets, and infrastructure at a given time. MFA supports resource management, environmental impact assessment, and the evaluation of circular economy strategies, informing policy advice, urban and regional planning, and sustainable product design.
+Material flow analysis (MFA) is a core method in industrial ecology that tracks material flows within a system, such as a national economy, across different life cycle stages [@brunner_rechberger_2016]. It also accounts for material accumulation in stocks, including materials embodied in products, assets, and infrastructure at a given time. MFA supports resource management, environmental impact assessment, and the evaluation of circular economy strategies, informing policy-making, urban and regional planning, and sustainable product design.
 
-flodym (Flexible Open Dynamic Material Systems Model) is a library of objects and functions needed to build dynamic MFA. Mathematically, a large part of MFA translates to operations between multi-dimensional arrays.
-flodym implements the `FlodymArray` class, which internally manages operations of one or several such arrays. Objects representing flows, stocks, and parameters all inherit from this class. Stocks include lifetime models for dynamic stock modelling, i.e. for calculating the relation of material flows entering a stock and the mass and age structure of that stock over time. The whole MFA system is realized with an abstract parent class, which users can implement a subclass of. The parent class includes checking routines for mass balance consistency and non-negative flows. flodym includes functionality for efficient read-in and export via pandas [@pandas1], [@pandas2], as well as visualization routines.
+flodym (Flexible Open Dynamic Material Systems Model) is a Python library of objects and functions needed to build dynamic MFA models. From a mathematical perspective, MFA largely involves operations on multi-dimensional arrays.
+flodym implements the `FlodymArray` class, which internally manages operations of one or more such arrays. Objects representing flows, stocks, and parameters inherit from this class. Stocks include lifetime models for dynamic stock modelling, i.e. for calculating the relationship between material inflows to a stock and the resulting mass and age structure of that stock over time. The whole MFA system is realized with an abstract parent class, which users can subclass. The parent class includes routines for checking mass balance consistency and non-negative flows. flodym includes functionality for efficient data import and export via pandas [@pandas1; @pandas2], as well as visualization routines.
 
-flodym is based on the concepts of the Open Dynamic Material Systems Model (ODYM) [@odym]. It can be seen as a re-implementation with vastly expanded functionality and improved structuring. As a result, flodym enables users to write customized, flexible MFAs, built for maintainability and future expansion.
+flodym is based on the concepts of the Open Dynamic Material Systems Model (ODYM) [@odym]. It can be seen as a re-implementation with expanded functionality and improved structuring. As a result, flodym enables users to write customized, flexible MFAs, designed for maintainability and future extension.
 
 # Statement of need
 
-MFA provides quantitative insights into how materials are extracted, transformed, used, and retained within socio-economic systems over time. In academia, it enables research on resource efficiency, environmental impacts, and sustainability transitions. In industry, it informs decisions on material sourcing, product lifetimes, and circular economy strategies. For policy-makers and planners, MFA provides an evidence base for resource governance, waste and demand forecasting, and the design of interventions.
+MFA provides quantitative insights into how materials are extracted, transformed, used, and accumulated in socioeconomic systems over time. In academia, MFA enables research on resource efficiency, environmental impacts, and sustainability transitions. In industry, it informs decisions on material sourcing, product lifetimes, and circular economy strategies. For policy-makers and planners, it provides an evidence base for resource governance, waste management, demand forecasting, and intervention design.
 
-MFA is therefore a widespread method in industrial ecology and related fields. Review papers include, for example, @Muller2014Feb, @Bringezu2018Jan, @Graedel2019Nov, and @Streeck2023Apr.
+MFA is therefore widely used in industrial ecology and related fields. Several review papers document the development and applications of MFA, including @Muller2014Feb, @Bringezu2018Jan, @Graedel2019Nov, and @Streeck2023Apr.
 
-This makes broadly applicable and easily accessible MFA tools vital for a large audience in academia, industry and policy-making.
-Compared to MFA software using a graphical user interface, a code library such as flodym allows customizability to users' individual needs, which is vital in academia. It drastically enlarges the range of possible use cases.
-One example is the coupling to other modelling tools like life cycle assessment or integrated assessment modelling, where custom models enable flexible data exchange through a coded interface.
+The broad use of MFA makes widely applicable and easily accessible MFA tools essential for a large audience in academia, industry, and policy-making.
+Compared to MFA software using a graphical user interface, a code library such as flodym allows customization to users' individual needs, which is vital in academia. This approach substantially expands the range of possible applications.
+One example is the coupling with other modeling tools like life cycle assessment or integrated assessment models, where custom implementations enable flexible data exchange through programmatic interfaces.
 
 # State of the field
 
@@ -51,15 +51,15 @@ While there are several existing open source MFA software packages, ODYM [@odym]
 
 ## ODYM
 
-ODYM is widely used in the industrial ecology community and beyond. One of ODYM's strengths is that it builds on an abstraction of the principles and structures of MFAs, such as:
+ODYM is widely used in the industrial ecology community and related research areas. One of ODYM's strengths is that it builds on an abstraction of the principles and structures of MFA:
 
 - formalizing a system definition and establishing mass conservation checks
-- formalizing dynamic stock models, as described later in @Lauinger21
-- translating the abstract concepts of processes, stocks, flows, and parameters into a general library, without prescribing any details about the MFA structure, such as its dimensions.
+- formalizing dynamic stock models
+- translating the abstract concepts of processes, stocks, flows, and parameters into a general library without prescribing a specific MFA structure (e.g., dimensions).
 
-However, there are also aspects leaving potential for improvement:
+However, several aspects leave room for improvement:
 
-- Multi-dimensional array operations are the core of MFA. ODYM stores dimensionality information in its array objects, but does not harvest the full potential of this information. Every dimension in the code (such as time) is given an index letter. ODYM stores which dimensions each array has. However, this information is not used in array operations. For example: The array `end_of_life_products` with dimensions time (t), region (r) and product type (p) is multiplied with the array `waste_share` with dimensions Product type (p) and waste type (w), and the resulting `waste` array should have dimensions time, region, and waste type. In ODYM, the user still has to manually spell out this dimension information, resulting in the following line:
+- Multi-dimensional array operations are central to MFA implementations. ODYM stores dimensionality information in its array objects, but does not fully utilize it. Each dimension in the code (e.g., time) is assigned an index letter. ODYM stores which dimensions each array has. However, this information is not used in array operations. For example: The array `end_of_life_products` has dimensions time (t), region (r) and product type (p). The array `waste_share` has dimensions product type (p) and waste type (w). Multiplying them should yield the array `waste` with dimensions time, region, and waste type. In ODYM, the user must manually specify the dimension mapping `'trp,pw->trw'`, as in the following code:
   ```
   waste.Values = np.einsum(
       'trp,pw->trw',
@@ -67,55 +67,55 @@ However, there are also aspects leaving potential for improvement:
       waste_share.Values
   )
   ```
-This makes the code somewhat hard to read and also inflexible, since dimensionality changes affect the code of every operation.
-- The same applies to array slicing. Addressing only the part of the `waste` array of a single region might look like this:
+This reduces readability and makes the code less flexible, because any change in dimensionality requires modifying each operation.
+- A similar issue arises with array slicing. Selecting the portion of the `waste` array corresponding to a single region might look like this:
   ```
   waste.Values[:,0,:]
   ```
-which is hard to interpret, and also subject to change if the dimensionality of `waste` is changed.
-- The class for dynamic stock models does not allow for dimensions apart from time. It also does not contain integrated methods for all required computation steps. Moreover, the stock objects which are used in the MFA system do not contain inflow, outflow, and stock, but only one of the three, distinguished by a `Type` attribute. To transfer the results of the dynamic stock model into the MFA, the user has to loop over all non-time dimensions, run several sub-methods of the scalar dynamic stock model, and transfer the results into the MFA arrays. This is somewhat cumbersome and a performance bottleneck.
-- Data read-in and initialization prescribes a strict format based on Excel files, which limits flexibility. There is no data export functionality.
-- ODYM features several great application examples, but only a partial API reference, and the API does not always follow PEP 8 naming conventions.
+which is hard to interpret, and also subject to change if if the array’s dimensional structure changes.
+- The class for dynamic stock models does not support dimensions other than time. It also does not contain integrated methods for all required computation steps. Moreover, stock objects used in the MFA system represent only one of the three quantities -- stock, inflow, or outflow -- distinguished by a `Type` attribute. To transfer the results of the dynamic stock model to the MFA, the user has to loop over all non-time dimensions, run several sub-methods of the scalar dynamic stock model, and transfer the results into the MFA arrays. This is cumbersome and potentially a performance bottleneck.
+- Data read-in and initialization requires a strict input format based on Excel files, which limits flexibility. There is no data export functionality.
+- ODYM features several comprehensive application examples, but only a partial API reference is available, and the API does not consistently follow PEP 8 naming conventions.
 
 ## Other tools
 
-Other existing open MFA packages such as STAN [@STAN] or OMAT [@OMAT] are different in scope: They are no libraries, but rather comprehensive tools. This eases their use, but limits the flexibility for using them in non-standard ways like flodym allows. The same applies to the pymfa [@pymfa2.1] and PMFA [@PMFA] packages, which are moreover focused on probabilistic MFA as an extension or special case of MFA.
+Other MFA packages such as STAN [@STAN] or OMAT [@OMAT] are different in scope: They are standalone software tools rather than programming libraries. This eases their use, but limits the flexibility for using them in non-standard ways, as flodym allows. A similar limitation applies to the pymfa [@pymfa2.1] and PMFA [@PMFA] packages, which primarily focus on probabilistic MFA as a specific extension of MFA.
 
 # Software design
 
-flodym is based on the concepts of ODYM such that its structure, scope and strengths are similar to ODYM. However, there are also aspects in which flodym aims to fill gaps and add value, setting it apart from the original:
+flodym is based on the concepts of ODYM, and therefore shares a similar structure, scope, and core strengths. However, flodym also addresses several limitations and introduces additional functionality:
 
-- flodym uses dimensionality information for complete internal dimension management in operations of multi-dimensional arrays. For example, the multiplication operation from the previous section reduces to
+- flodym uses dimensionality information for automatic internal management of array dimensions in operations on multidimensional arrays. The multiplication example from the previous section simplifies to
   ```
   waste[...] = end_of_life_products * waste_share
   ```
-  using `FlodymArray` objects. This allows to write simpler code and reduces errors. For example, dimensions of the same size could simply be switched in the `einsum` statement, which yields wrong results but goes unnoticed by the code. More importantly, it makes the code flexible (hence the name flodym) for adaptation and extension. Since the dimensions of each object are not explicitly given for every array operation, but only once in the array definition, dimensions can be added, removed or re-ordered later with minimal changes to the source code.
-- Slicing is eased in a similar way. If, for example, the values of the `waste` array for the `CHA` (China) entry of the `region` dimension can be addressed with the syntax
+  using `FlodymArray` objects. This allows users to write simpler code and reduces errors. For example, dimensions of the same size could accidentally be swapped in the `einsum` statement, which would produce incorrect results without raising an error. Additionally, it makes the code flexible for adaptation and extension (hence the name flodym). Because dimensions are defined once during array initialization rather than specified in each operation, dimensions can later be added, removed, or reordered with minimal changes to the source code.
+- Array slicing is simplified in a similar way. For example, the values of the `waste` array corresponding to the `CHA` (China) entry of the `region` dimension can be accessed using the syntax
   ```
   waste['CHA']
   ```
-  Again, this allows for adding or removing other dimensions later, or changing the position of the `CHA` entry in the `region` dimension, without having to change the code. Apart from these functionalities, which are built on Python's magic methods, `FlodymArrays` feature a large range of built-in conventional methods for dimension manipulation, such as `sum_over`, `cast_to` or `get_shares_over`.
-- In flodym, the treatment of material stocks is simplified and integrated with the rest of the MFA. This is realized through `Stock` objects containing `FlodymArray` objects for inflow, outflow and stock arrays, as well as a lifetime model and compute functions. Both stock and lifetime model are multi-dimensional and part of the MFA system class, such that the interaction with them is seamless and the performance gains of NumPy array operations are leveraged. As novel functionality, stock models can handle non-evenly-spaced time step vectors, or sub-year lifetimes.
-- In flodym, data read-in and export are based on pandas, opening them to a wide range of formats. Users can either use pre-built flodym read-in functions, or write their own, and generate objects from data frames. On data read-in, flodym performs checks on the data, detecting errors early on. Data read-in is performance-optimized especially for sparse arrays, since the full array size is only used after converting the input pandas data frame to a NumPy array. Data is type-checked through the use of pydantic [@pydantic], adding robustness to the code.
-- flodym introduces export and visualization functionality.
-- The whole flodym code incorporates principles of software development (such as PEP 8 formatting, or GitHub Actions for tests and documentation building) and clean code, easing future collaboration and extension. The code is extensively documented, including docstrings, type hints, an API reference, how-tos and examples.
+  This again allows additional dimensions to be added or removed later, or changing the ordering of the entries within a dimension, without having to change the code. Apart from these functionalities, which are built on Python's magic methods, `FlodymArray` objects provide a wide range of built-in methods for dimension manipulation, such as `sum_over`, `cast_to` or `get_shares_over`.
+- In flodym, the handling of material stocks is simplified and integrated with the rest of the MFA. This is implemented through `Stock` objects that contain `FlodymArray` instances for inflow, outflow and stock arrays, together with a lifetime model and associated computation methods. Both stock and lifetime model are multidimensional and integrated into the MFA system class, enabling seamless integration and the performance gains of NumPy array operations. As novel functionality, stock models can handle unevenly spaced time step vectors, or sub-year lifetimes.
+- In flodym, data import and export are based on pandas, allowing support for a wide range of formats. Users can either use pre-built flodym import functions, or write their own routines to generate objects from pandas DataFrames. On data read-in, flodym performs checks on the data, helping detect errors early. Data import is performance-optimized for sparse arrays: the full array size is only used after converting the input pandas DataFrame to a NumPy array. Data types are validated using pydantic [@pydantic], adding robustness to the code.
+- flodym provides functionality for data export and visualization.
+- The whole flodym code follows established software engineering practices (such as PEP 8 formatting, or GitHub Actions for automated testing and documentation building) and clean code, facilitating future collaboration and extension. The code is extensively documented, including docstrings, type hints, an API reference, how-tos and examples.
 
-The required changes compared to ODYM were so extensive that a refactoring (prior to the functional extension) was estimated to be far more work than a re-write, which is why this path was chosen.
+The required modifications relative to ODYM were sufficiently extensive that refactoring the existing codebase -- prior to implementing the new functionality -- was estimated to require more effort than developing a new implementation. For this reason, a reimplementation approach was chosen.
 
 # Research impact statement
 
-flodym has a rapidly growing user base.
+flodym has already been adopted in several research projects and teaching activities.
 
-Finished large-scale projects using flodym are the in-house REMIND-MFA [@remind-mfa] and the external TRANSIENCE EU MFA [@eu-mfa].
+Finished large-scale projects using flodym include the in-house REMIND-MFA model [@remind-mfa] and the externally developed TRANSIENCE EU MFA model [@eu-mfa].
 
-flodym was used for the following teaching events. None of these are organized by the authors of the publication, demonstrating rapid take-up of the library in the community:
+flodym has been used for the following teaching events. None of these events were organized by the authors of the publication, demonstrating independent adoption of the library by the community:
 
-- An autumn school on LCA-MFA coupling was heavily based on flodym [@AutumnSchool2025Website], resulting for example in the development of several GitHub repositories[^0][^1][^2][^3][^4].
-- An invited lecture on flodym at Brightcon 2025 [@Brightcon].
-- A university class at Leiden University with 150 students.
+- An autumn school on LCA--MFA coupling was largely based on flodym [@AutumnSchool2025Website], which resulted, for example, in the development of several GitHub repositories[^0][^1][^2][^3][^4].
+- An invited lecture on flodym at the Brightcon 2025 conference [@Brightcon].
+- A university class at Leiden University attend by approximately 150 students.
 
-Further dissemination at conferences and teaching events is planned.
-Extrapolating from the uptake so far, the software can be expected to have a widespread and sustained impact on the research community.
+Further dissemination through conferences and teaching events is planned.
+Based on the current uptake, the software has the potential to support a wide range of future research and teaching activities in the community.
 
 [^0]: https://github.com/Depart-de-Sentier/Schools-2025-November-Switzerland
 [^1]: https://github.com/isabelapi/PAW_MFA_LCA_2025
@@ -125,18 +125,18 @@ Extrapolating from the uptake so far, the software can be expected to have a wid
 
 # AI usage disclosure
 
-AI was used during generation of the flodym source code: The auto-complete functionality of GitHub Copilot was used in VS Code. The GitHub Copilot coding agent was used in minor development projects with a total of 11 commits with 729 lines. Different AI tools were also used to write parts of the tests.
+AI was used during generation of the flodym source code: The auto-complete functionality of GitHub Copilot was used in VS Code. The GitHub Copilot coding agent was used in minor development projects, resulting in 11 commits comprising 729 lines of code. Different AI tools were also used to write parts of the test suite.
 
-AI played a minor role in paper writing, assisting in re-wording some of the paragraphs.
+AI-assisted language editing was used to improve wording in parts of the manuscript.
 
-All code and text generated or modified by AI was proof-read by humans. AI-generated code was also extensively tested.
+All code and text generated or modified by AI was proofread by the authors. AI-generated code was also extensively tested.
 
 # Acknowledgements
 
-We thank Stefan Pauliuk and other contributors to ODYM [@odym], which forms the conceptual basis for flodym.
+We thank Stefan Pauliuk and the other contributors to ODYM [@odym], which forms the conceptual basis for flodym.
 
-We thank Sally Dacie and other non-author contributors to the project.
+We thank Sally Dacie and other contributors to the project who are not listed as authors.
 
-We gratefully acknowledge funding from the TRANSIENCE project, grant number 101137606, funded by the European Commission within the Horizon Europe Research and Innovation Programme, from the Kopernikus-Projekt Ariadne through the German Federal Ministry of Education and Research (grant no. 03SFK5A0-2), and from the PRISMA project funded by the European Commission within the Horizon Europe Research and Innovation Programme under grant agreement No. 101081604 (PRISMA).
+We gratefully acknowledge funding from the TRANSIENCE project, grant number 101137606, funded by the European Commission within the Horizon Europe Research and Innovation Programme; from the Kopernikus-Projekt Ariadne through the German Federal Ministry of Education and Research (grant no. 03SFK5A0-2); and from the PRISMA project funded by the European Commission within the Horizon Europe Research and Innovation Programme under grant agreement No. 101081604 (PRISMA).
 
 # References
