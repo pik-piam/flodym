@@ -17,6 +17,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
+        ref: ${{ github.head_ref }}
         fetch-depth: 0 # Ensures full history for the auto-commit step
 
     - name: Set up Python 3.12
@@ -60,11 +61,6 @@ jobs:
             echo "::endgroup::"
           fi
         done
-    - name: debug git refs
-      run: |
-        echo "ref: $GITHUB_REF"
-        echo "ref_name: $GITHUB_REF_NAME"
-        git branch -a
     - name: Commit and Push changes
       uses: stefanzweifel/git-auto-commit-action@v5
       with:
