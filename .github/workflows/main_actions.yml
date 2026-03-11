@@ -60,7 +60,11 @@ jobs:
             echo "::endgroup::"
           fi
         done
-
+    - name: debug git refs
+      run: |
+        echo "ref: $GITHUB_REF"
+        echo "ref_name: $GITHUB_REF_NAME"
+        git branch -a
     - name: Commit and Push changes
       uses: stefanzweifel/git-auto-commit-action@v5
       with:
