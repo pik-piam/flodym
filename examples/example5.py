@@ -249,7 +249,7 @@ class CustomDataReader(DataReader):
 # We make an instance of our `CustomDataReader`, read in the data and use it to create an instance of our `VehicleMFA` class. Then we can run the calculations, and check what our estimate of vehicle stocks looks like compared to the data for 2015 in the `vehicle_stock.xlsx` file.
 
 # %%
-data_reader = CustomDataReader(data_directory="input_data", years=list(range(2012, 2018)))
+data_reader = CustomDataReader(data_directory="examples/input_data", years=list(range(2012, 2018)))
 
 vehicle_mfa = VehicleMFA.from_data_reader(
     definition=mfa_definition,
@@ -272,7 +272,7 @@ stock_diff
 #
 
 # %%
-data_reader_2 = CustomDataReader(data_directory="input_data", years=list(range(1990, 2051)))
+data_reader_2 = CustomDataReader(data_directory="examples/input_data", years=list(range(1990, 2051)))
 
 vehicle_mfa_2 = VehicleMFA.from_data_reader(
     definition=mfa_definition,
