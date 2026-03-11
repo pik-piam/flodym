@@ -1,13 +1,11 @@
-ci:
-    autofix_commit_msg: "[pre-commit.ci] auto fixes"
-    autoupdate_schedule: monthly
-    skip: [] # List hooks to skip in CI if needed
-
 repos:
   - repo: local
     hooks:
       - id: block-ipynb-in-protected-dirs
         name: Protect examples and howtos
         files: ^(examples|howtos)/.*\.ipynb$
-        entry: python -c "import sys; print('\n❌ ERROR: Direct edits to .ipynb in examples/ or howtos/ are forbidden.\n'); sys.exit(1)"
+        # The '|' allows us to write multi-line strings without escape errors
+        entry: |
+          python -c "import sys; print('\n' + '='*50 + '\n❌ ERROR: DIRECT IPYNB COMMIT BLOCKED\n' + '='*50 + '\nLocation: ' + sys.argv[1] + '\n\nIn this repo, .py files are the source of truth.\n1. Discard changes to the .ipynb file.\n2. Edit the paired .py file instead.\n3. Push the .py; GitHub CI will sync/run the notebook.\n' + '='*50 + '\n'); sys.exit(1)"
         language: system
+        pass_filenames: true
