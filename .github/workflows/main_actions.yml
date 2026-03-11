@@ -17,6 +17,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
+        ref: ${{ github.head_ref || github.ref_name }}
         fetch-depth: 0 # Ensures full history for the auto-commit step
 
     - name: Set up Python 3.12
