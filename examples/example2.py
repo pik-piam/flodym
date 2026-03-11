@@ -262,7 +262,7 @@ plotter = PlotlyArrayPlotter(
 fig = plotter.plot(do_show=True)
 
 # %% [markdown]
-# **What is more effective in reducing the copper concentraction of secondary steel: A reduction of the shredding yield factor for copper from EoL machines into steel scrap of 25% or an increase in the EoL buildings flow by 25%? (All other variables and parameters remaining equal)**
+# **What is more effective in reducing the copper concentration of secondary steel: A reduction of the shredding yield factor for copper from EoL machines into steel scrap of 25% or an increase in the EoL buildings flow by 25%? (All other variables and parameters remaining equal)**
 #
 # To answer this we change the parameter values and recalculate the entire system.
 # In case a, we update the shredder yield, and in case b we increase the EoL buildings flow.
