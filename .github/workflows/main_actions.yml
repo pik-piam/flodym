@@ -17,7 +17,6 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        ref: ${{ github.head_ref || github.ref_name }}
         fetch-depth: 0 # Ensures full history for the auto-commit step
 
     - name: Set up Python 3.12
@@ -65,6 +64,7 @@ jobs:
     - name: Commit and Push changes
       uses: stefanzweifel/git-auto-commit-action@v5
       with:
+        branch: ${{ github.head_ref || github.ref_name }}
         commit_message: "chore: auto-sync and execute notebooks [skip ci]"
         file_pattern: "examples/*.ipynb howtos/*.ipynb examples/*.py howtos/*.py"
 
