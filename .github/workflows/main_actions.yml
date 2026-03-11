@@ -55,7 +55,7 @@ jobs:
               jupytext --to ipynb "$py_file" -o "$ipynb_file"
 
               # 3. Execute Notebook (Job fails if code crashes)
-              jupyter nbconvert --to notebook --allow-chromium-download --execute --inplace "$ipynb_file"
+              jupyter nbconvert --to notebook --execute --inplace "$ipynb_file"
             done
             echo "::endgroup::"
           fi
