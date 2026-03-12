@@ -225,7 +225,8 @@ plotter = PlotlyArrayPlotter(
     linecolor_dim="Material",
     title="Remelted steel",
 )
-fig = plotter.plot(do_show=True)
+fig = plotter.plot()
+fig.show(renderer="notebook")
 
 
 # %%
@@ -237,7 +238,8 @@ plotter = PlotlyArrayPlotter(
     linecolor_dim="Material",
     title="Share of copper and manganese in secondary steel",
 )
-fig = plotter.plot(do_show=True)
+fig = plotter.plot()
+fig.show(renderer="notebook")
 
 
 # %% [markdown]
@@ -259,7 +261,8 @@ plotter = PlotlyArrayPlotter(
     ylabel="kt/yr",
     title="Manganese lost in the remelting process",
 )
-fig = plotter.plot(do_show=True)
+fig = plotter.plot()
+fig.show(renderer="notebook")
 
 # %% [markdown]
 # **What is more effective in reducing the copper concentration of secondary steel: A reduction of the shredding yield factor for copper from EoL machines into steel scrap of 25% or an increase in the EoL buildings flow by 25%? (All other variables and parameters remaining equal)**
@@ -305,7 +308,8 @@ plotter = PlotlyArrayPlotter(
     line_label="Increased buildings demolition",
     fig=fig,
 )
-fig = plotter.plot(do_show=True)
+fig = plotter.plot()
+fig.show(renderer="notebook")
 
 # %% [markdown]
 # We can see that both measures reduce the copper concentration in the secondary steel. For the first year, the copper concentration is reduced from 0.294% to 0.244% if the Cu-yield into steel scrap of the shredder is reduced and to 0.259% if the EoL building flow treated is increased by 25%. The yield measure thus has a slightly higher impact on the copper contentration than the increase of a copper-poor scrap flow for dilution. In both cases the impact is not high enough to bring the copper concentration to values below 0.04%, which is necessary for automotive applications.
