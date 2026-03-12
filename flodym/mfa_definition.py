@@ -137,9 +137,9 @@ class MFADefinition(PydanticBaseModel):
     """List of process names used in the model."""
     flows: List[FlowDefinition]
     """List of definitions of flows used in the model."""
-    stocks: List[StockDefinition]
+    stocks: List[StockDefinition] = []
     """List of definitions of stocks used in the model."""
-    parameters: List[ParameterDefinition]
+    parameters: List[ParameterDefinition] = []
     """List of definitions of parameters used in the model."""
 
     @model_validator(mode="after")
