@@ -217,17 +217,17 @@ mfa_example.compute()
 # %%
 remelted = mfa_example.flows["remelting => sysenv"]
 legend_hint_subtitle = (
-    "Clicking on the 'Fe' legend entry hides it and adjusts the y-axis to better display "
-    "the trace elements 'Mn' and 'Cu'."
+    "Click on the 'Fe' legend entry to show it"
 )
 
 plotter = PlotlyArrayPlotter(
     array=remelted,
     intra_line_dim="Time",
     linecolor_dim="Material",
-    title="Remelted steel",
+    title="Absolute copper and manganese flows in remelted steel",
 )
 fig = plotter.plot()
+fig.update_traces(visible="legendonly", selector=dict(name="Fe"))
 fig.update_layout(
     title=dict(text=f"{fig.layout.title.text}<br><sup><i>{legend_hint_subtitle}</i></sup>")
 )
@@ -244,6 +244,7 @@ plotter = PlotlyArrayPlotter(
     title="Share of copper and manganese in secondary steel",
 )
 fig = plotter.plot()
+fig.update_traces(visible="legendonly", selector=dict(name="Fe"))
 fig.update_layout(
     title=dict(text=f"{fig.layout.title.text}<br><sup><i>{legend_hint_subtitle}</i></sup>")
 )
