@@ -63,12 +63,24 @@ This gives a flodym-based MFA models the following properties:
 - **Robustness:** Through the use of [Pydantic](https://docs.pydantic.dev/latest/), the setup of the system is type-checked, highlighting errors early-on. The data read-in performs extensive checks on data sorting and completeness.
 - **Performance:** The use of numpy ndarrays ensures low model runtimes compared with dimension matching through pandas dataframes.
 
- <!-- stop parsing here on readthedocs -->
 # How to contribute
 
 If you'd like to contribute, the [issues page](https://github.com/pik-piam/flodym/issues) lists possible extensions and improvements.
 If you wish to contribute your own, just create a fork and open a PR!
 
+To run the tests locally, install the package with test dependencies (`pip install -e ".[tests]"`) and run:
+
+```
+pytest
+```
+
+# Reporting problems & support
+
+If you encounter a bug or unexpected behaviour, please [open an issue](https://github.com/pik-piam/flodym/issues/new) on GitHub.
+
+For questions and general support, use [GitHub Discussions](https://github.com/pik-piam/flodym/discussions) or contact jakob\[dot\]duerrwaechter\[at\]pik-potsdam.de.
+
+ <!-- stop parsing here on readthedocs -->
 # Documentation
 
 See our [readthedocs](https://flodym.readthedocs.io/en/latest/) page for documentation!

@@ -22,7 +22,7 @@
 #
 # * How much copper accumulates in the secondary steel assuming that all available scrap is remelted?
 # * How much manganese is lost in the remelting process assuming that all available scrap is remelted?
-# * What is more effective in reducing the copper concentraction of secondary steel: A reduction of the shredding yield factor for copper from EoL machines into steel scrap of 25% or an increase in the EoL buildings flow by 25%? (All other variables and parameters remaining equal)
+# * What is more effective in reducing the copper concentration of secondary steel: A reduction of the shredding yield factor for copper from EoL machines into steel scrap of 25% or an increase in the EoL buildings flow by 25%? (All other variables and parameters remaining equal)
 #
 # <img src="pictures/SteelAlloyElementsWasteMgt.png" width="554" height="490" alt="Simple MFA system">
 #
@@ -58,8 +58,6 @@ from flodym import (
 )
 from flodym.export import PlotlyArrayPlotter
 
-# needed only for correct rendering on the readthedocs homepage
-pio.renderers.default = "browser"
 
 # %% [markdown]
 # ## 2. Define the data requirements, flows, stocks and MFA system equations
@@ -215,19 +213,23 @@ mfa_example.compute()
 # Here we answer the research questions from the beginning of the notebook.
 #
 # **How much copper accumulates in the secondary steel assuming that all available scrap is remelted?**
-#
-# Clicking on the `Fe` entry of the plot legend hides it and adjusts the y-axis to better display the trace elements `Mn` and `Cu`.
 
 # %%
 remelted = mfa_example.flows["remelting => sysenv"]
+legend_hint_subtitle = "Click on the 'Fe' legend entry to show it"
 
 plotter = PlotlyArrayPlotter(
     array=remelted,
     intra_line_dim="Time",
     linecolor_dim="Material",
-    title="GDP-per-capita",
+    title="Absolute copper and manganese flows in remelted steel",
 )
-fig = plotter.plot(do_show=True)
+fig = plotter.plot()
+fig.update_traces(visible="legendonly", selector=dict(name="Fe"))
+fig.update_layout(
+    title=dict(text=f"{fig.layout.title.text}<br><sup><i>{legend_hint_subtitle}</i></sup>")
+)
+fig.show(renderer="notebook")
 
 
 # %%
@@ -239,13 +241,18 @@ plotter = PlotlyArrayPlotter(
     linecolor_dim="Material",
     title="Share of copper and manganese in secondary steel",
 )
-fig = plotter.plot(do_show=True)
+fig = plotter.plot()
+fig.update_traces(visible="legendonly", selector=dict(name="Fe"))
+fig.update_layout(
+    title=dict(text=f"{fig.layout.title.text}<br><sup><i>{legend_hint_subtitle}</i></sup>")
+)
+fig.show(renderer="notebook")
 
 
 # %% [markdown]
 # The copper flow in the secondary steel increases linearly from 0.34 kt/yr in 1980 to 0.78 kt/yr in 2010. The concentration of copper declines in a hyperbolic curve from 0.294% in 1980 to 0.233% in 2010.
 #
-# That concentration is below 0.4% at all times, the latter being the treshold for construction grade steel, but above 0.04%, which is the threshold for automotive steel.
+# That concentration is below 0.4% at all times, the latter being the threshold for construction grade steel, but above 0.04%, which is the threshold for automotive steel.
 
 # %% [markdown]
 # **How much manganese is lost in the remelting process assuming that all available scrap is remelted?**
@@ -259,10 +266,11 @@ plotter = PlotlyArrayPlotter(
     ylabel="kt/yr",
     title="Manganese lost in the remelting process",
 )
-fig = plotter.plot(do_show=True)
+fig = plotter.plot()
+fig.show(renderer="notebook")
 
 # %% [markdown]
-# **What is more effective in reducing the copper concentraction of secondary steel: A reduction of the shredding yield factor for copper from EoL machines into steel scrap of 25% or an increase in the EoL buildings flow by 25%? (All other variables and parameters remaining equal)**
+# **What is more effective in reducing the copper concentration of secondary steel: A reduction of the shredding yield factor for copper from EoL machines into steel scrap of 25% or an increase in the EoL buildings flow by 25%? (All other variables and parameters remaining equal)**
 #
 # To answer this we change the parameter values and recalculate the entire system.
 # In case a, we update the shredder yield, and in case b we increase the EoL buildings flow.
@@ -305,7 +313,8 @@ plotter = PlotlyArrayPlotter(
     line_label="Increased buildings demolition",
     fig=fig,
 )
-fig = plotter.plot(do_show=True)
+fig = plotter.plot()
+fig.show(renderer="notebook")
 
 # %% [markdown]
 # We can see that both measures reduce the copper concentration in the secondary steel. For the first year, the copper concentration is reduced from 0.294% to 0.244% if the Cu-yield into steel scrap of the shredder is reduced and to 0.259% if the EoL building flow treated is increased by 25%. The yield measure thus has a slightly higher impact on the copper contentration than the increase of a copper-poor scrap flow for dilution. In both cases the impact is not high enough to bring the copper concentration to values below 0.04%, which is necessary for automotive applications.
