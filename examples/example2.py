@@ -58,8 +58,6 @@ from flodym import (
 )
 from flodym.export import PlotlyArrayPlotter
 
-# needed only for correct rendering on the readthedocs homepage
-pio.renderers.default = "browser"
 
 # %% [markdown]
 # ## 2. Define the data requirements, flows, stocks and MFA system equations
