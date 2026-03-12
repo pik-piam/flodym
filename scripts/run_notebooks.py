@@ -12,10 +12,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 NOTEBOOK_FOLDERS = ("examples", "howtos")
 
 
-def iter_notebooks(repo_root: Path = REPO_ROOT) -> list[Path]:
+def iter_notebooks(repo_root: Path = REPO_ROOT, file_extension: str = ".py") -> list[Path]:
+    if not file_extension.startswith("."):
+        file_extension = f".{file_extension}"
+
     notebook_paths: list[Path] = []
     for folder_name in NOTEBOOK_FOLDERS:
-        notebook_paths.extend((repo_root / folder_name).rglob("*.ipynb"))
+        notebook_paths.extend((repo_root / folder_name).rglob(f"*{file_extension}"))
     return sorted(notebook_paths)
 
 
@@ -33,6 +36,21 @@ def run_notebook(
     repo_root: Path = REPO_ROOT,
     inplace: bool = False,
 ) -> subprocess.CompletedProcess[str]:
+    run_kwargs = dict(
+        cwd=notebook_path.parent,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=_build_execution_env(repo_root),
+    )
+
+    if notebook_path.suffix == ".py":
+        command = [sys.executable, str(notebook_path)]
+        return subprocess.run(command, **run_kwargs)
+
+    if notebook_path.suffix != ".ipynb":
+        raise ValueError(f"Unsupported notebook source format: {notebook_path}")
+
     command = [
         sys.executable,
         "-m",
@@ -42,14 +60,6 @@ def run_notebook(
         "notebook",
         "--execute",
     ]
-
-    run_kwargs = dict(
-        cwd=notebook_path.parent,
-        capture_output=True,
-        text=True,
-        check=False,
-        env=_build_execution_env(repo_root),
-    )
 
     if inplace:
         command.extend(["--inplace", str(notebook_path)])
@@ -62,12 +72,17 @@ def run_notebook(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Execute all notebooks under examples/ and howtos/."
+        description="Execute notebook sources under examples/ and howtos/."
+    )
+    parser.add_argument(
+        "--ipynb",
+        action="store_true",
+        help="Execute .ipynb notebooks with nbconvert. Default mode executes .py sources.",
     )
     parser.add_argument(
         "--check",
         action="store_true",
-        help="Execute notebooks without writing outputs back to notebook files.",
+        help="For --ipynb mode: execute notebooks without writing outputs back to notebook files.",
     )
     parser.add_argument(
         "--stop-on-error",
@@ -76,15 +91,19 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    inplace = not args.check
-    notebook_paths = iter_notebooks(REPO_ROOT)
+    file_extension = ".ipynb" if args.ipynb else ".py"
+    notebook_paths = iter_notebooks(REPO_ROOT, file_extension=file_extension)
+    inplace = args.ipynb and not args.check
 
     if not notebook_paths:
-        print("No notebooks found under examples/ and howtos/.")
+        print(f"No {file_extension} files found under examples/ and howtos/.")
         return 0
 
-    mode = "in-place" if inplace else "check"
-    print(f"Executing {len(notebook_paths)} notebooks in {mode} mode.")
+    if args.ipynb:
+        mode = "ipynb in-place" if inplace else "ipynb check"
+    else:
+        mode = "py source"
+    print(f"Executing {len(notebook_paths)} files in {mode} mode.")
 
     failures: list[tuple[Path, subprocess.CompletedProcess[str]]] = []
     for notebook_path in notebook_paths:
