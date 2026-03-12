@@ -216,9 +216,7 @@ mfa_example.compute()
 
 # %%
 remelted = mfa_example.flows["remelting => sysenv"]
-legend_hint_subtitle = (
-    "Click on the 'Fe' legend entry to show it"
-)
+legend_hint_subtitle = "Click on the 'Fe' legend entry to show it"
 
 plotter = PlotlyArrayPlotter(
     array=remelted,
