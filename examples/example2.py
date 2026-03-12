@@ -216,7 +216,7 @@ mfa_example.compute()
 #
 # **How much copper accumulates in the secondary steel assuming that all available scrap is remelted?**
 #
-# Clicking on the `Fe` entry of the plot legend hides it and adjusts the y-axis to better display the trace elements `Mn` and `Cu`.
+# <span style="color:#8B0000;"><strong>Clicking on the `Fe` entry of the plot legend hides it and adjusts the y-axis to better display the trace elements `Mn` and `Cu`.</strong></span>
 
 # %%
 remelted = mfa_example.flows["remelting => sysenv"]
@@ -225,7 +225,7 @@ plotter = PlotlyArrayPlotter(
     array=remelted,
     intra_line_dim="Time",
     linecolor_dim="Material",
-    title="GDP-per-capita",
+    title="Remelted steel",
 )
 fig = plotter.plot(do_show=True)
 
@@ -245,7 +245,9 @@ fig = plotter.plot(do_show=True)
 # %% [markdown]
 # The copper flow in the secondary steel increases linearly from 0.34 kt/yr in 1980 to 0.78 kt/yr in 2010. The concentration of copper declines in a hyperbolic curve from 0.294% in 1980 to 0.233% in 2010.
 #
-# That concentration is below 0.4% at all times, the latter being the treshold for construction grade steel, but above 0.04%, which is the threshold for automotive steel.
+# That concentration is below 0.4% at all times, the latter being the threshold for construction grade steel, but above 0.04%, which is the threshold for automotive steel.
+#
+# <span style="color:#8B0000;"><strong>Clicking on the `Fe` entry of the plot legend hides it and adjusts the y-axis to better display the trace elements `Mn` and `Cu`.</strong></span>
 
 # %% [markdown]
 # **How much manganese is lost in the remelting process assuming that all available scrap is remelted?**
@@ -262,7 +264,7 @@ plotter = PlotlyArrayPlotter(
 fig = plotter.plot(do_show=True)
 
 # %% [markdown]
-# **What is more effective in reducing the copper concentraction of secondary steel: A reduction of the shredding yield factor for copper from EoL machines into steel scrap of 25% or an increase in the EoL buildings flow by 25%? (All other variables and parameters remaining equal)**
+# **What is more effective in reducing the copper concentration of secondary steel: A reduction of the shredding yield factor for copper from EoL machines into steel scrap of 25% or an increase in the EoL buildings flow by 25%? (All other variables and parameters remaining equal)**
 #
 # To answer this we change the parameter values and recalculate the entire system.
 # In case a, we update the shredder yield, and in case b we increase the EoL buildings flow.
