@@ -28,6 +28,8 @@ def _build_execution_env(repo_root: Path = REPO_ROOT) -> dict[str, str]:
     env["PYTHONPATH"] = str(repo_root)
     if existing_pythonpath:
         env["PYTHONPATH"] = f"{env['PYTHONPATH']}{os.pathsep}{existing_pythonpath}"
+    # Ensure subprocess stdout/stderr can encode notebook HTML on Windows CI.
+    env.setdefault("PYTHONIOENCODING", "utf-8")
     return env
 
 
