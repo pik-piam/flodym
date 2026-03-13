@@ -13,6 +13,7 @@ from flodym.flodym_arrays import (
     StockArray as StockArray,
     Flow as Flow,
 )
+from flodym_array_helper import flodym_array_stack as flodym_array_stack
 from flodym.processes import Process as Process, make_processes as make_processes
 from flodym.stocks import (
     Stock as Stock,

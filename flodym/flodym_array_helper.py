@@ -4,14 +4,26 @@ from .flodym_arrays import FlodymArray
 from .dimensions import Dimension
 
 
-def flodym_array_stack(flodym_arrays: list[FlodymArray], dimension: Dimension) -> FlodymArray:
+def flodym_array_stack(flodym_arrays: list[FlodymArray], dimension: Dimension, axis: int = -1, inplace: bool = False) -> FlodymArray:
     """Stack a list of FlodymArray objects using a new dimension.
-    Like numpy.stack with axis=-1, but for `FlodymArray`s.
-    Method can be applied to `FlodymArray`s, `StockArray`s, `Parameter`s and `Flow`s.
+    Like numpy.stack, but for `FlodymArray`s.
+
+    Args:
+        flodym_arrays (list[FlodymArray]): List of FlodymArray objects to stack. Must have the same dimensions and shape.
+        dimension (Dimension): The new dimension to stack along. Must not be present in the FlodymArrays to stack.
+        axis (int, optional): The axis to stack along. Defaults to -1 (the last axis).
+        inplace (bool, optional): If True, modify the first FlodymArray in place. If False, return a new FlodymArray object.
     """
+    if len(flodym_arrays) != dimension.len:
+        raise ValueError(f"Length of flodym_arrays ({len(flodym_arrays)}) must match length of dimension ({dimension.len})")
+    for flodym_array in flodym_arrays:
+        if flodym_array.dims != flodym_arrays[0].dims:
+            raise ValueError("All FlodymArrays to stack must have the same dimensions")
+    if dimension.letter in flodym_array.dims:
+        raise ValueError(f"Dimension {dimension.letter} already present in FlodymArrays to stack")
     flodym_array0 = flodym_arrays[0]
-    extended_dimensions = flodym_array0.dims.expand_by([dimension])
-    extended = FlodymArray(dims=extended_dimensions)
+    extended_dimensions = flodym_array0.dims.insert(index=axis, dimension=dimension)
+    extended = flodym_array0.cast_to(extended_dimensions, inplace=inplace)
     for item, flodym_array in zip(dimension.items, flodym_arrays):
         extended[{dimension.letter: item}] = flodym_array
     return extended

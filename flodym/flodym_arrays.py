@@ -293,18 +293,26 @@ class FlodymArray(PydanticBaseModel):
         values = np.tile(values, multiple)
         return values
 
-    def cast_to(self, target_dims: DimensionSet) -> "FlodymArray":
+    def cast_to(self, target_dims: DimensionSet, inplace: bool = False) -> "FlodymArray":
         """Cast the FlodymArray to a new set of dimensions.
 
         Args:
             target_dims (DimensionSet): New dimensions to cast the FlodymArray to. Must be given as a DimensionSet object, as the new dimensions are otherwise not known to the FlodymArray object.
+            inplace (bool, optional): If True, modify the current FlodymArray in place. If False, return a new FlodymArray object.
 
         Returns:
             FlodymArray: The FlodymArray cast to the new dimensions.
         """
-        return FlodymArray(
-            dims=target_dims, values=self.cast_values_to(target_dims), name=self.name
-        )
+        # dimension consistency checks are performed in cast_values_to
+        values = self.cast_values_to(target_dims)
+        if inplace:
+            self.dims = target_dims
+            self.values = values
+            return self
+        else:
+            return FlodymArray(
+                dims=target_dims, values=self.cast_values_to(target_dims),
+            )
 
     def sum_values_to(self, result_dims: tuple[str] = ()):
         """Return the values of the FlodymArray partially summed, such that only the dimensions given in the result_dims tuple are left.
