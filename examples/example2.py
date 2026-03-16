@@ -58,7 +58,6 @@ from flodym import (
 )
 from flodym.export import PlotlyArrayPlotter
 
-
 # %% [markdown]
 # ## 2. Define the data requirements, flows, stocks and MFA system equations
 #

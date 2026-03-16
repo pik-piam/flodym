@@ -6,7 +6,6 @@ from copy import deepcopy
 
 from flodym import FlodymArray, DimensionSet, Dimension
 
-
 places = Dimension(name="place", letter="p", items=["Earth", "Sun", "Moon", "Venus"])
 local_places = Dimension(name="local place", letter="l", items=["Earth"])
 time = Dimension(name="time", letter="t", items=[1990, 2000, 2010])
