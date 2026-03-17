@@ -8,21 +8,24 @@ tags:
   - industrial ecology
 authors:
   - name: Jakob Dürrwächter
-    corresponding: true
     orcid: 0000-0001-8961-5340
     affiliation: 1
+    corresponding: true
   - name: Merlin Hosak
+    orcid: 0009-0005-7965-1846
     affiliation: 1
   - name: Bennet Weiss
     orcid: 0009-0009-9859-9683
     affiliation: 1
   - name: Falko Ueckerdt
-    affiliation: 1
     orcid: 0000-0001-5585-030X
+    affiliation: "1, 2"
 affiliations:
  - name: Potsdam Institute for Climate Impact Research, Energy Transition Lab, Potsdam, Germany
    index: 1
-date: 14 July 2025
+ - name: Interdisciplinary Transformation University, Energy Transition and Climate Futures, Linz, Austria
+   index: 2
+date: 17 March 2026
 bibliography: paper.bib
 ---
 
@@ -94,7 +97,7 @@ flodym is based on the concepts of ODYM, and therefore shares a similar structur
   ```
   waste['CHA']
   ```
-  This again allows additional dimensions to be added or removed later, or changing the ordering of the entries within a dimension, without having to change the code. Apart from these functionalities, which are built on Python's magic methods, `FlodymArray` objects provide a wide range of built-in methods for dimension manipulation, such as `sum_over`, `cast_to` or `get_shares_over`.
+  This again allows additional dimensions to be added or removed later, or changing the ordering of the entries within a dimension, without having to change the code. Apart from these functionalities, which are built on Python's special methods (methods with names in double underscores allowing operator overloading), `FlodymArray` objects provide a wide range of built-in methods for dimension manipulation, such as `sum_over`, `cast_to` or `get_shares_over`.
 - In flodym, the handling of material stocks is simplified and integrated with the rest of the MFA. This is implemented through `Stock` objects that contain `FlodymArray` instances for inflow, outflow and stock arrays, together with a lifetime model and associated computation methods. Both stocks and lifetime models are multidimensional and attributes of the MFA system class, enabling seamless interaction with flows and the performance gains of NumPy array operations. As novel functionality, stock models can handle unevenly spaced time step vectors, or sub-year lifetimes.
 - In flodym, data import and export are based on pandas, allowing support for a wide range of formats. Users can either use pre-built flodym import functions, or write their own routines to generate objects from pandas DataFrames. On data read-in, flodym performs checks on the data, helping detect errors early. Data import is performance-optimized for sparse arrays: the full array size is only used after converting the input pandas DataFrame to a NumPy array. Data types are validated using pydantic [@pydantic], adding robustness to the code.
 - flodym provides functionality for data export and visualization.
