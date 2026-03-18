@@ -311,7 +311,8 @@ class FlodymArray(PydanticBaseModel):
             return self
         else:
             return FlodymArray(
-                dims=target_dims, values=self.cast_values_to(target_dims),
+                dims=target_dims,
+                values=self.cast_values_to(target_dims),
             )
 
     def sum_values_to(self, result_dims: tuple[str] = ()):
