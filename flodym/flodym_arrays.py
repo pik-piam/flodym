@@ -186,6 +186,7 @@ class FlodymArray(PydanticBaseModel):
         df: pd.DataFrame,
         allow_missing_values: bool = False,
         allow_extra_values: bool = False,
+        strip_whitespace: bool = True,
         **kwargs,
     ) -> "FlodymArray":
         """Create a FlodymArray object from a DataFrame.
@@ -210,13 +211,15 @@ class FlodymArray(PydanticBaseModel):
             allow_extra_values (bool, optional): Whether to allow extra rows in the DataFrame,
                 i.e. tows with index items not present in the FlodymArray dimension items.
                 Defaults to False.
+            strip_whitespace (bool, optional): Whether to strip whitespace from string values in the DataFrame.
+                Defaults to True.
 
         Returns:
             FlodymArray: FlodymArray object with the values from the DataFrame
         """
         flodym_array = cls(dims=dims, **kwargs)
         flodym_array.set_values_from_df(
-            df, allow_missing_values=allow_missing_values, allow_extra_values=allow_extra_values
+            df, allow_missing_values=allow_missing_values, allow_extra_values=allow_extra_values, strip_whitespace=strip_whitespace
         )
         return flodym_array
 
@@ -589,6 +592,7 @@ class FlodymArray(PydanticBaseModel):
         df_in: pd.DataFrame,
         allow_missing_values: bool = False,
         allow_extra_values: bool = False,
+        strip_whitespace: bool = True,
     ):
         """Set the values of the FlodymArray from a pandas DataFrame.
         In case of errors, turning on debug logging might help to understand the process.
@@ -611,12 +615,15 @@ class FlodymArray(PydanticBaseModel):
             allow_extra_values (bool, optional): Whether to allow extra rows in the DataFrame,
                 i.e. rows with index items not present in the FlodymArray dimension items.
                 Defaults to False.
+            strip_whitespace (bool, optional): Whether to strip whitespace from string values in the DataFrame.
+                Defaults to True.
         """
         converter = DataFrameToFlodymDataConverter(
             df_in,
             self,
             allow_missing_values=allow_missing_values,
             allow_extra_values=allow_extra_values,
+            strip_whitespace=strip_whitespace
         )
         self.set_values(converter.target_values)
 

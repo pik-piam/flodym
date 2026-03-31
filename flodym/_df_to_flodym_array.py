@@ -35,11 +35,13 @@ class DataFrameToFlodymDataConverter:
         flodym_array: "FlodymArray",
         allow_missing_values: bool = False,
         allow_extra_values: bool = False,
+        strip_whitespace: bool = True,
     ):
         self.df = df.copy()
         self.flodym_array = flodym_array
         self.allow_missing_values = allow_missing_values
         self.allow_extra_values = allow_extra_values
+        self.strip_whitespace = strip_whitespace
         try:
             self.target_values = self.get_target_values()
         except Exception as e:
@@ -51,6 +53,8 @@ class DataFrameToFlodymDataConverter:
             f"Start setting values for FlodymArray {self.flodym_array.name} with dimensions {self.flodym_array.dims.names} from dataframe."
         )
         self._reset_non_default_index()
+        if self.strip_whitespace:
+            self._strip_whitespace_from_df()
         self._determine_format()
         self._df_to_long_format()
         self._check_missing_dim_columns()
@@ -68,6 +72,18 @@ class DataFrameToFlodymDataConverter:
             self.df.reset_index(inplace=True)
         elif self.df.index.min() >= 1700 and self.df.index.max() <= 2300:
             self.df.reset_index(inplace=True)
+
+    def _strip_whitespace_from_df(self):
+        logging.debug("Stripping whitespace from string values in the DataFrame.")
+
+        def strip_if_string(x):
+            if isinstance(x, str):
+                return x.strip()
+            return x
+
+        self.df.columns = self.df.columns.map(strip_if_string)
+        self.df.index = self.df.index.map(strip_if_string)
+        self.df = self.df.map(strip_if_string)
 
     def _determine_format(self):
         self._get_dim_columns_by_name_or_letter()
