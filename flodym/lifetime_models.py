@@ -82,9 +82,10 @@ class LifetimeModel(PydanticBaseModel):
 
     @model_validator(mode="after")
     def init_t(self):
-        if self.time_letter not in self.dims:
+        if self.dims.letters[0] != self.time_letter:
             raise ValueError(
-                f"Lifetime model uses time_letter '{self.time_letter}', but dims are {self.dims.letters}. "
+                f"Lifetime model expects time dimension to be the first dimension. "
+                f"Lifetime model uses time_letter '{self.time_letter}', but first dimension is {self.dims.letters[0]}. "
                 f"If the time dimension uses a different letter, set time_letter explicitly."
             )
         self._t = UnevenTimeDim(dim=self.dims[self.time_letter])
