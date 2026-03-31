@@ -219,7 +219,10 @@ class FlodymArray(PydanticBaseModel):
         """
         flodym_array = cls(dims=dims, **kwargs)
         flodym_array.set_values_from_df(
-            df, allow_missing_values=allow_missing_values, allow_extra_values=allow_extra_values, strip_whitespace=strip_whitespace
+            df,
+            allow_missing_values=allow_missing_values,
+            allow_extra_values=allow_extra_values,
+            strip_whitespace=strip_whitespace,
         )
         return flodym_array
 
@@ -623,7 +626,7 @@ class FlodymArray(PydanticBaseModel):
             self,
             allow_missing_values=allow_missing_values,
             allow_extra_values=allow_extra_values,
-            strip_whitespace=strip_whitespace
+            strip_whitespace=strip_whitespace,
         )
         self.set_values(converter.target_values)
 
