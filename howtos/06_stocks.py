@@ -145,7 +145,7 @@ print("Stock values for Vehicles:", stocks["in-use"].stock["Vehicles"].values)
 # It is more accurate than a single point, but also slower. The number can be set with the
 # `n_pts_per_interval` attribute of the lifetime model. Up to 10 points can be used.
 #
-# # Uneven time spacing
+# ## Uneven time spacing
 # The items of the time dimension can be non-contiguous and even unevenly spaced.
 # For example, only select years can be used.
 # If the time steps are not contiguous, the flows are assumed to be annual flows.
