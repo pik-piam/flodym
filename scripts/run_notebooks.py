@@ -7,7 +7,6 @@ import subprocess
 import sys
 import tempfile
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 NOTEBOOK_FOLDERS = ("examples", "howtos")
 
