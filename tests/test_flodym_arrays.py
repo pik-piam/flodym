@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from numpy.testing import assert_almost_equal, assert_array_almost_equal, assert_array_equal
 from pydantic_core import ValidationError
 import pytest
@@ -273,6 +274,37 @@ def test_to_df():
     assert df.loc[("Earth", 2000, "cat"), "value"] == 1.0
     with pytest.raises(KeyError):
         df.loc[("Earth", 2000, "mouse"), "value"]
+
+
+def test_from_df_strips_whitespace_when_enabled():
+    selected_places = Dimension(name="place", letter="p", items=["Earth", "Sun"])
+    df = pd.DataFrame(
+        {
+            " place ": [" Earth ", " Earth ", " Sun ", " Sun "],
+            " time ": [1990, 2000, 1990, 2000],
+            " value ": [1.0, 2.0, 3.0, 4.0],
+        }
+    )
+    dims_subset = DimensionSet(dim_list=[selected_places, historic_time])
+
+    result = FlodymArray.from_df(dims=dims_subset, df=df, strip_whitespace=True)
+
+    assert_array_equal(result.values, np.array([[1.0, 2.0], [3.0, 4.0]]))
+
+
+def test_from_df_does_not_strip_whitespace_when_disabled():
+    selected_places = Dimension(name="place", letter="p", items=["Earth", "Sun"])
+    df = pd.DataFrame(
+        {
+            " place ": [" Earth ", " Earth ", " Sun ", " Sun "],
+            " time ": [1990, 2000, 1990, 2000],
+            " value ": [1.0, 2.0, 3.0, 4.0],
+        }
+    )
+    dims_subset = DimensionSet(dim_list=[selected_places, historic_time])
+
+    with pytest.raises(ValueError, match="More than one value columns"):
+        FlodymArray.from_df(dims=dims_subset, df=df, strip_whitespace=False)
 
 
 class TestFlodymArrayFull:
