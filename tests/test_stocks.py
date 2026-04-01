@@ -4,6 +4,8 @@ import time
 
 from flodym.dimensions import Dimension, DimensionSet
 from flodym.flodym_arrays import StockArray
+from flodym.mfa_definition import StockDefinition
+from flodym.stock_helper import make_empty_stocks
 from flodym.stocks import InflowDrivenDSM, StockDrivenDSM
 from flodym.lifetime_models import LogNormalLifetime
 
@@ -166,3 +168,35 @@ def test_unequal_time_steps():
     stocks_select = stocks[1]
     values_select = stocks_select.values[-10:]
     assert np.max(np.abs(values_all - values_select)) < 0.01
+
+
+def test_make_empty_stocks_raises_clear_error_for_missing_nondefault_time_letter():
+    time_dim = Dimension(name="time", letter="s", items=[2000, 2005, 2010], dtype=int)
+    product_dim = Dimension(name="product", letter="a", items=["automotive"], dtype=str)
+    stock_dims = DimensionSet(dim_list=[time_dim, product_dim])
+    stock_definition = StockDefinition(
+        name="stock_with_nondefault_time",
+        dim_letters=("s", "a"),
+        subclass=InflowDrivenDSM,
+        lifetime_model_class=LogNormalLifetime,
+    )
+
+    with pytest.raises(ValueError, match="time_letter"):
+        make_empty_stocks([stock_definition], processes={}, dims=stock_dims)
+
+
+def test_make_empty_stocks_accepts_explicit_nondefault_time_letter():
+    time_dim = Dimension(name="time", letter="s", items=[2000, 2005, 2010], dtype=int)
+    product_dim = Dimension(name="product", letter="a", items=["automotive"], dtype=str)
+    stock_dims = DimensionSet(dim_list=[time_dim, product_dim])
+    stock_definition = StockDefinition(
+        name="stock_with_nondefault_time",
+        dim_letters=("s", "a"),
+        time_letter="s",
+        subclass=InflowDrivenDSM,
+        lifetime_model_class=LogNormalLifetime,
+    )
+
+    stocks = make_empty_stocks([stock_definition], processes={}, dims=stock_dims)
+
+    assert stocks["stock_with_nondefault_time"].time_letter == "s"
