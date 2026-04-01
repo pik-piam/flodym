@@ -72,14 +72,15 @@ If you use this software in publications, please cite our [article in the Journa
     Duerrwaechter2026,
     author = {Dürrwächter, Jakob and Hosak, Merlin and Weiss, Bennet and Ueckerdt, Falko},
     title = {flodym: A Python package for dynamic material flow analysis},
-    journal = {Journal of Open Source Software} }
+    journal = {Journal of Open Source Software},
     year = {2026},
     doi = {10.21105/joss.10105},
     url = {https://doi.org/10.21105/joss.10105},
     publisher = {The Open Journal},
     volume = {11},
     number = {119},
-    pages = {10105},
+    pages = {10105}
+}
 ```
 
 # How to contribute
