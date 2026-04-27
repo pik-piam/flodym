@@ -198,7 +198,7 @@ class LifetimeModel(PydanticBaseModel):
     def set_prms(self, *args, **kwargs):
         """Set parameters and reset cached arrays. Child classes should call `self.reset_cached_arrays()`."""
         self.reset_cached_arrays()
-    
+
     def reset_cached_arrays(self):
         self._sf = None
         self._pdf = None
