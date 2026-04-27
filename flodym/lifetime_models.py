@@ -195,8 +195,13 @@ class LifetimeModel(PydanticBaseModel):
         pass
 
     @abstractmethod
-    def set_prms(self):
-        pass
+    def set_prms(self, *args, **kwargs):
+        """Set parameters and reset cached arrays. Child classes should call `self.reset_cached_arrays()`."""
+        self.reset_cached_arrays()
+
+    def reset_cached_arrays(self):
+        self._sf = None
+        self._pdf = None
 
     def cast_any_to_np_array(self, prm_in):
         if isinstance(prm_in, FlodymArray):
@@ -227,6 +232,7 @@ class FixedLifetime(LifetimeModel):
         return {"mean": self.mean}
 
     def set_prms(self, mean: FlodymArray):
+        self.reset_cached_arrays()
         self.mean = self.cast_any_to_np_array(mean)
 
     def _survival_by_year_id(self, t, m):
@@ -244,6 +250,7 @@ class StandardDeviationLifetimeModel(LifetimeModel):
         return {"mean": self.mean, "std": self.std}
 
     def set_prms(self, mean: FlodymArray, std: FlodymArray):
+        self.reset_cached_arrays()
         self.mean = self.cast_any_to_np_array(mean)
         self.std = self.cast_any_to_np_array(std)
 
@@ -317,6 +324,7 @@ class WeibullLifetime(LifetimeModel):
         return {"weibull_shape": self.weibull_shape, "weibull_scale": self.weibull_scale}
 
     def set_prms(self, weibull_shape: FlodymArray, weibull_scale: FlodymArray):
+        self.reset_cached_arrays()
         self.weibull_shape = self.cast_any_to_np_array(weibull_shape)
         self.weibull_scale = self.cast_any_to_np_array(weibull_scale)
 
