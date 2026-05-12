@@ -50,6 +50,7 @@ def test_cast_to():
     assert casted_flodym_array.dims == dims_incl_animals
     assert casted_flodym_array.values.shape == (4, 3, 2)
     assert_almost_equal(np.sum(casted_flodym_array.values), 2 * np.sum(values))
+    assert casted_flodym_array.name == numbers.name
 
     # example with differently ordered dimensions
     target_dims = DimensionSet(dim_list=[animals] + base_dim_list[::-1])
