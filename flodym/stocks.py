@@ -6,13 +6,15 @@ from abc import abstractmethod
 import numpy as np
 from scipy.linalg import solve_triangular
 from pydantic import BaseModel as PydanticBaseModel, ConfigDict, model_validator
-from typing import Optional, Union
+from typing import Optional, Union, TypeVar, Type
 import logging
 
 from .processes import Process
 from .flodym_arrays import StockArray, FlodymArray
 from .dimensions import DimensionSet
 from .lifetime_models import LifetimeModel, UnevenTimeDim
+
+StockSubtype = TypeVar("StockSubtype", bound="Stock")
 
 
 class Stock(PydanticBaseModel):
@@ -97,7 +99,7 @@ class Stock(PydanticBaseModel):
         """ID of the process the stock is associated with."""
         return self.process.id
 
-    def to_stock_type(self, desired_stock_type: type, **kwargs):
+    def to_stock_type(self, desired_stock_type: Type[StockSubtype], **kwargs) -> StockSubtype:
         """Return an object of a new stock type with values and dimensions the same as the original.
         `**kwargs` can be used to pass additional model attributes as required by the desired stock
         type, if these are not contained in the original stock type.
