@@ -6,7 +6,7 @@ from flodym.dimensions import Dimension, DimensionSet
 from flodym.flodym_arrays import StockArray
 from flodym.mfa_definition import StockDefinition
 from flodym.stock_helper import make_empty_stocks
-from flodym.stocks import InflowDrivenDSM, StockDrivenDSM
+from flodym.stocks import InflowDrivenDSM, StockDrivenDSM, SimpleFlowDrivenStock
 from flodym.lifetime_models import LogNormalLifetime
 
 dim_list = [
@@ -64,6 +64,61 @@ def test_stocks():
     inflow_post_invert = stock_driven_dsm.inflow
     assert np.allclose(inflow.values, inflow_post_invert.values)
     # return inflow, inflow_post, inflow_post_invert
+
+
+def test_simple_stock_copy():
+    """Copying a base (flow-driven) stock yields independent dims and arrays."""
+    inflow = StockArray(dims=dims, values=np.ones((dims["t"].len, 2)))
+    outflow = StockArray(dims=dims, values=np.zeros((dims["t"].len, 2)))
+    stock = SimpleFlowDrivenStock(dims=dims, inflow=inflow, outflow=outflow, time_letter="t")
+    stock.compute()
+
+    stock_copy = stock.copy()
+
+    # same type, equal values, but distinct objects
+    assert isinstance(stock_copy, SimpleFlowDrivenStock)
+    assert stock_copy is not stock
+    assert stock_copy.dims is not stock.dims
+    assert stock_copy.stock is not stock.stock
+    assert stock_copy.stock.values is not stock.stock.values
+    assert np.allclose(stock_copy.stock.values, stock.stock.values)
+
+    # in-place mutation of the copy does not propagate back to the original
+    stock_copy.stock.values[...] = 999.0
+    assert not np.allclose(stock.stock.values, stock_copy.stock.values)
+
+
+def test_dynamic_stock_copy():
+    """Copying a dynamic stock yields independent arrays and an independent lifetime model."""
+    inflow_values = np.exp(-np.linspace(-2, 2, 201) ** 2)
+    inflow_values = np.stack([inflow_values, inflow_values]).T
+    inflow = StockArray(dims=dims, values=inflow_values)
+    lifetime_model = LogNormalLifetime(dims=dims, time_letter="t", mean=60, std=25)
+    dsm = InflowDrivenDSM(dims=dims, inflow=inflow, lifetime_model=lifetime_model, time_letter="t")
+    dsm.compute()
+
+    dsm_copy = dsm.copy()
+
+    # subclass preserved, values equal, objects distinct (incl. lifetime model)
+    assert isinstance(dsm_copy, InflowDrivenDSM)
+    assert dsm_copy is not dsm
+    assert dsm_copy.inflow is not dsm.inflow
+    assert dsm_copy.stock.values is not dsm.stock.values
+    assert dsm_copy.lifetime_model is not dsm.lifetime_model
+    assert np.allclose(dsm_copy.stock.values, dsm.stock.values)
+
+    # in-place array mutation stays local to the copy
+    original_inflow = dsm.inflow.values.copy()
+    dsm_copy.inflow.values[...] = 0.0
+    assert np.allclose(dsm.inflow.values, original_inflow)
+
+    # changing the copy's lifetime model and recomputing leaves the original untouched
+    stock_before = dsm.stock.values.copy()
+    dsm_copy.inflow.values[...] = inflow_values  # restore so recompute is meaningful
+    dsm_copy.lifetime_model.set_prms(mean=10, std=5)
+    dsm_copy.compute()
+    assert np.allclose(dsm.stock.values, stock_before)
+    assert not np.allclose(dsm_copy.stock.values, stock_before)
 
 
 def test_lifetime_quadrature():

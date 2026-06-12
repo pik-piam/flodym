@@ -104,6 +104,22 @@ class Stock(PydanticBaseModel):
         """
         return desired_stock_type(**self.__dict__, **kwargs)
 
+    def copy(self) -> "Stock":
+        """Return a copy of the Stock.
+
+        The copy has its own :py:class:`flodym.DimensionSet` and its own stock, inflow and
+        outflow arrays (created via :py:meth:`flodym.FlodymArray.copy`), so that modifications
+        to either the copy or the original do not affect the other.
+        """
+        return self.model_copy(
+            update={
+                "dims": self.dims.copy(),
+                "stock": self.stock.copy(),
+                "inflow": self.inflow.copy(),
+                "outflow": self.outflow.copy(),
+            }
+        )
+
     def check_stock_balance(self):
         balance = self.get_stock_balance()
         balance = np.max(np.abs(balance).sum(axis=0))
@@ -213,6 +229,15 @@ class DynamicStockModel(Stock):
             "c...,tc...->tc...", self.inflow.values, self.lifetime_model.pdf
         )
         self.outflow.values[...] = self._outflow_by_cohort.sum(axis=1)
+
+    def copy(self) -> "Stock":
+        """Return a copy of the Stock, as :py:meth:`flodym.Stock.copy`, but additionally
+        giving the copy its own independent ``lifetime_model`` so that, for example, calling
+        ``set_prms`` on the copy does not affect the original.
+        """
+        new_stock = super().copy()
+        new_stock.lifetime_model = self.lifetime_model.model_copy(deep=True)
+        return new_stock
 
     def __str__(self):
         base = super().__str__()
