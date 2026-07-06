@@ -610,10 +610,11 @@ def test_copy_dimension_set():
     for o_dim, c_dim in zip(original, copied):
         assert o_dim is c_dim
 
+
 def test_from_np_with_stringarray():
     """Test that from_np() can handle a pandas array of strings."""
     string_array = pd.array(["a", "b", "c"], dtype="string")
-    definition = DimensionDefinition(name='Region', letter='r', dtype=str)
+    definition = DimensionDefinition(name="Region", letter="r", dtype=str)
     dim = Dimension.from_np(string_array, definition)
 
     # Verify the items are correctly set
