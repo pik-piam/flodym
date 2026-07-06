@@ -2,11 +2,11 @@
 name = "flodym"
 version = "0.8.1"
 authors = [
-    {name = "Jakob Dürrwächter"},
-    {name = "Sally Dacie"},
-    {name = "Merlin Hosak"},
-    {name = "Bennet Weiss"},
-    {name = "Leonie Schweiger"},
+    { name = "Jakob Dürrwächter" },
+    { name = "Sally Dacie" },
+    { name = "Merlin Hosak" },
+    { name = "Bennet Weiss" },
+    { name = "Leonie Schweiger" },
 ]
 readme = "README.md"
 requires-python = ">= 3.10"
@@ -46,6 +46,9 @@ docs = [
     "jupyter>=1.1.1",
     "jupytext>=1.16.4",
 ]
+
+[dependency-groups]
+dev = ["flodym[examples,tests,docs]"]
 
 [build-system]
 requires = ["setuptools >= 61.0"]
