@@ -239,7 +239,6 @@ class DataFrameToFlodymDataConverter:
                 )
             return np.array(self.df[self.format.value_column].values[0])
 
-
         # check for double entries in the index columns
         indices = self.df[list(self.flodym_array.dims.names)]
         if indices.duplicated().any():
