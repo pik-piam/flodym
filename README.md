@@ -11,16 +11,9 @@ The flodym (Flexibe Open Dynamic Material Systems Model) library provides key fu
 - different classes representing stocks accumulation, in- and outflows based on age cohort tracking and lifetime distributions. Those can be integrated in the `MFASystem`.
 - different options for data input and export, as well as visualization
 
-# Thanks
+flodym is based on the concepts of the Open Dynamic Material Systems Model [ODYM](https://doi.org/10.1111/jiec.12952)
+(Pauliuk & Heeren, 2020). It is a re-implementation with a fundamentally overhauled API, internal dimension management, dynamic stock model integration, and other added features. As a result, flodym enables users to write customized, flexible MFAs, designed for maintainability and future extension.
 
-flodym (flexible ODYM) is an adaptation of:
-
-ODYM<br>
-Copyright (c) 2018 Industrial Ecology<br>
-author: Stefan Pauliuk, Uni Freiburg, Germany<br>
-https://github.com/IndEcol/ODYM<br>
-
-We gratefully acknowledge funding from the TRANSIENCE project, grant number 101137606, funded by the European Commission within the Horizon Europe Research and Innovation Programme, from the Kopernikus-Projekt Ariadne through the German Federal Ministry of Education and Research (grant no. 03SFK5A0-2), and from the PRISMA project funded by the European Commission within the Horizon Europe Research and Innovation Programme under grant agreement No. 101081604 (PRISMA).
 
 # Installation
 
@@ -36,9 +29,10 @@ To install as a developer:
 
 This workflow uses a project-local virtual environment (`.venv`) managed by uv.
 
-# Why choose flodym?
 
-MFA models mainly consist on mathematical operations on different multi-dimensional arrays.
+# Dimension Management
+
+MFA models mainly consist of mathematical operations on different multi-dimensional arrays.
 
 For example, the generation of different waste types `waste` might be a 3D-array defined over the dimensions time $t$, region $r$ and waste type $w$, and might be calculated from multiplying `end_of_life_products` (defined over time, region, and product type $p$) with a `waste_share` mapping from product type to waste type.
 In numpy, the according matrix multiplication can be carried out nicely with the `einsum` function, were an index string indicates the involved dimensions:
@@ -63,6 +57,7 @@ This gives a flodym-based MFA models the following properties:
 - **Robustness:** Through the use of [Pydantic](https://docs.pydantic.dev/latest/), the setup of the system is type-checked, highlighting errors early-on. The data read-in performs extensive checks on data sorting and completeness.
 - **Performance:** The use of numpy ndarrays ensures low model runtimes compared with dimension matching through pandas dataframes.
 
+
 # How to cite
 
 If you use this software in publications, please cite our [article in the Journal of Open Source Software](https://doi.org/10.21105/joss.10105):
@@ -83,6 +78,10 @@ If you use this software in publications, please cite our [article in the Journa
 }
 ```
 
+flodym is based on the concepts of ODYM.
+Please consider also citing the according publication: [Pauliuk & Heeren, 2020](https://doi.org/10.1111/jiec.12952).
+
+
 # How to contribute
 
 If you'd like to contribute, the [issues page](https://github.com/pik-piam/flodym/issues) lists possible extensions and improvements.
@@ -94,11 +93,20 @@ To run the tests locally in the uv-managed environment, run:
 uv run pytest
 ```
 
+
 # How to report problems and get support
 
 If you encounter a bug or unexpected behaviour, please [open an issue](https://github.com/pik-piam/flodym/issues/new) on GitHub.
 
 For questions and general support, use [GitHub Discussions](https://github.com/pik-piam/flodym/discussions) or contact jakob\[dot\]duerrwaechter\[at\]pik-potsdam.de.
+
+
+# Acknowledgements
+
+We thank Stefan Pauliuk and the other contributors to ODYM, which forms the conceptual basis for flodym.
+
+We gratefully acknowledge funding from the TRANSIENCE project, grant number 101137606, funded by the European Commission within the Horizon Europe Research and Innovation Programme, from the Kopernikus-Projekt Ariadne through the German Federal Ministry of Education and Research (grant no. 03SFK5A0-2), and from the PRISMA project funded by the European Commission within the Horizon Europe Research and Innovation Programme under grant agreement No. 101081604 (PRISMA).
+
 
  <!-- stop parsing here on readthedocs -->
 # Documentation
