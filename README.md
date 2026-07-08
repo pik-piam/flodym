@@ -24,17 +24,17 @@ We gratefully acknowledge funding from the TRANSIENCE project, grant number 1011
 
 # Installation
 
-flodym dependencies are managed with [pip](https://pypi.org/project/pip/).
+flodym is published on PyPI and can be installed with your preferred Python package installer.
 
-To install as a user: run `python -m pip install flodym`
+For example, with [pip](https://pypi.org/project/pip/) run `python -m pip install flodym`.
 
 To install as a developer:
 
-1. Clone the flodym repository using git.
-2. From the project main directory, run `pip install -e ".[tests,docs,examples]"` to obtain all the necessary
-dependencies, including those for running the tests, making the documentation, and running the examples.
+1. Install [uv](https://docs.astral.sh/uv/).
+2. Clone the flodym repository using git.
+3. From the project root, run `uv sync` to create a virtual environment and install all development dependencies.
 
-Note that it is advisable to do this within a virtual environment.
+This workflow uses a project-local virtual environment (`.venv`) managed by uv.
 
 # Why choose flodym?
 
@@ -88,10 +88,10 @@ If you use this software in publications, please cite our [article in the Journa
 If you'd like to contribute, the [issues page](https://github.com/pik-piam/flodym/issues) lists possible extensions and improvements.
 If you wish to contribute your own, just create a fork and open a PR!
 
-To run the tests locally, install the package with test dependencies (`pip install -e ".[tests]"`) and run:
+To run the tests locally in the uv-managed environment, run:
 
 ```
-pytest
+uv run pytest
 ```
 
 # How to report problems and get support
