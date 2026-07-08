@@ -1,10 +1,11 @@
-import sys
+import itertools
 import logging
+import sys
+from typing import TYPE_CHECKING, Iterable, Literal, Optional
+
 import numpy as np
 import pandas as pd
-from typing import Literal, Optional, TYPE_CHECKING, Iterable
 from pydantic import BaseModel as PydanticBaseModel
-import itertools
 
 from .dimensions import Dimension
 
@@ -224,11 +225,25 @@ class DataFrameToFlodymDataConverter:
         self.df = self.df[list(self.flodym_array.dims.names) + [self.format.value_column]]
 
     def _check_data_complete(self):
+        # Special handling of the scalar case: If the FlodymArray has no dimensions, we usually expect a single value in the df.
+        if self.flodym_array.dims.ndim == 0:
+            if len(self.df) == 0:
+                if self.allow_missing_values:
+                    return np.array(0.0)
+                raise ValueError(
+                    "FlodymArray has no dimensions, but the DataFrame has no rows. Expected exactly one row."
+                )
+            if len(self.df) > 1:
+                raise ValueError(
+                    f"FlodymArray has no dimensions, but the DataFrame has {len(self.df)} rows. Expected exactly one row."
+                )
+            return np.array(self.df[self.format.value_column].values[0])
+
         # check for double entries in the index columns
         indices = self.df[list(self.flodym_array.dims.names)]
         if indices.duplicated().any():
             raise ValueError(
-                f"The following index combinations occur more than once in the data: ",
+                "The following index combinations occur more than once in the data: ",
                 indices[indices.duplicated()],
             )
 

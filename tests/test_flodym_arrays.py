@@ -1,11 +1,16 @@
-import numpy as np
-import pandas as pd
-from numpy.testing import assert_almost_equal, assert_array_almost_equal, assert_array_equal
-from pydantic_core import ValidationError
-import pytest
 from copy import deepcopy
 
-from flodym import FlodymArray, DimensionSet, Dimension
+import numpy as np
+import pandas as pd
+import pytest
+from numpy.testing import (
+    assert_almost_equal,
+    assert_array_almost_equal,
+    assert_array_equal,
+)
+from pydantic_core import ValidationError
+
+from flodym import Dimension, DimensionSet, FlodymArray
 
 places = Dimension(name="place", letter="p", items=["Earth", "Sun", "Moon", "Venus"])
 local_places = Dimension(name="local place", letter="l", items=["Earth"])
@@ -306,6 +311,17 @@ def test_from_df_does_not_strip_whitespace_when_disabled():
 
     with pytest.raises(ValueError, match="More than one value columns"):
         FlodymArray.from_df(dims=dims_subset, df=df, strip_whitespace=False)
+
+
+def test_from_df_scalar_value():
+    scalar = DimensionSet.empty()
+    df = pd.DataFrame({"value": [7.5]})
+
+    result = FlodymArray.from_df(dims=scalar, df=df)
+
+    assert result.dims.ndim == 0
+    assert result.values.shape == ()
+    assert result.values.item() == 7.5
 
 
 class TestFlodymArrayFull:
