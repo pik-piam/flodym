@@ -233,7 +233,7 @@ class DataFrameToFlodymDataConverter:
                 raise ValueError(
                     "FlodymArray has no dimensions, but the DataFrame has no rows. Expected exactly one row."
                 )
-            if len(self.df) > 1 and not self.allow_extra_values:
+            if len(self.df) > 1:
                 raise ValueError(
                     f"FlodymArray has no dimensions, but the DataFrame has {len(self.df)} rows. Expected exactly one row."
                 )
