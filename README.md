@@ -93,6 +93,16 @@ To run the tests locally in the uv-managed environment, run:
 uv run pytest
 ```
 
+This project uses [Conventional Commits](https://www.conventionalcommits.org/) for changelog generation and releases.
+Please format commit messages as:
+
+```
+<type>: <short summary>
+```
+
+Common commit types include `feat` (for new features), `fix` (for bug fixes), `docs` (for documentation), and `chore` (for other changes).
+Use `!` after the type or scope (for example `feat!:`) for breaking changes that should trigger a major version bump.
+
 
 # How to report problems and get support
 
