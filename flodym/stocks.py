@@ -10,7 +10,7 @@ from typing import Optional, Union
 import logging
 
 from .processes import Process
-from .flodym_arrays import StockArray, FlodymArray
+from .flodym_arrays import StockArray
 from .dimensions import DimensionSet
 from .lifetime_models import LifetimeModel, UnevenTimeDim
 

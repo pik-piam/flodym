@@ -1,6 +1,5 @@
 import numpy as np
 import pytest
-import time
 
 from flodym.dimensions import Dimension, DimensionSet
 from flodym.flodym_arrays import StockArray
