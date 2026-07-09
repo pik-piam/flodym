@@ -27,7 +27,7 @@ dims = DimensionSet(dim_list=dim_list)
 
 
 def test_stocks():
-    inflow_values = np.exp(-np.linspace(-2, 2, 201) ** 2)
+    inflow_values = np.exp(-(np.linspace(-2, 2, 201) ** 2))
     inflow_values = np.stack([inflow_values, inflow_values]).T
     inflow = StockArray(dims=dims, values=inflow_values)
 
@@ -94,7 +94,7 @@ def test_lifetime_quadrature():
 
 
 def get_stocks_by_quadrature(mean, std):
-    inflow_values = np.exp(-np.linspace(-2, 2, 201) ** 2)
+    inflow_values = np.exp(-(np.linspace(-2, 2, 201) ** 2))
     inflow_values = np.stack([inflow_values, inflow_values]).T
     inflow_values = np.ones_like(inflow_values)
     inflow = StockArray(dims=dims, values=inflow_values)

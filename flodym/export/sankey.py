@@ -8,7 +8,6 @@ from .helper import CustomNameDisplayer
 
 
 class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
-
     model_config = ConfigDict(arbitrary_types_allowed=True, protected_namespaces=())
 
     mfa: MFASystem
@@ -181,7 +180,6 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
 
 
 class DictOfLists:
-
     def __init__(self, list_names: list[str]):
         self.dict = {l: [] for l in list_names}
 

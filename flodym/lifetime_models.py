@@ -15,7 +15,6 @@ from .gauss_lobatto import gl_nodes, gl_weights
 
 
 class UnevenTimeDim(PydanticBaseModel):
-
     dim: Dimension
     _bounds: np.ndarray = None
 
