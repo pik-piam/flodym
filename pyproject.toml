@@ -25,10 +25,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-examples = [
-    "jupyter>=1.1.1",
-    "nbformat>=5.10.4",
-]
+examples = ["jupyter>=1.1.1", "nbformat>=5.10.4"]
 tests = [
     "pytest>=8.3.2",
     "polyfactory>=2.16.2",
@@ -48,7 +45,7 @@ docs = [
 ]
 
 [dependency-groups]
-dev = ["flodym[examples,tests,docs]"]
+dev = ["flodym[examples,tests,docs]", "ruff"]
 
 [build-system]
 requires = ["uv_build>=0.11.28,<0.12"]
@@ -58,5 +55,20 @@ build-backend = "uv_build"
 module-name = "flodym"
 module-root = ""
 
-[tool.black]
+[tool.ruff]
 line-length = 100
+target-version = "py310"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+[tool.ruff.lint]
+ignore = [
+    "E741", # ambiguous variable name
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Ignore a few import errors in howtos
+"howtos/*" = ["E402", "F401"]
