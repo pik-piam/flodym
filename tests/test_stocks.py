@@ -75,17 +75,29 @@ def test_simple_stock_copy():
 
     stock_copy = stock.copy()
 
-    # same type, equal values, but distinct objects
+    # same type, but distinct objects
     assert isinstance(stock_copy, SimpleFlowDrivenStock)
     assert stock_copy is not stock
+
+    # scalar attributes are preserved on the copy
+    assert stock_copy.name == stock.name
+    assert stock_copy.time_letter == stock.time_letter
+
+    # dims and all three arrays are distinct objects with equal values
     assert stock_copy.dims is not stock.dims
-    assert stock_copy.stock is not stock.stock
-    assert stock_copy.stock.values is not stock.stock.values
-    assert np.allclose(stock_copy.stock.values, stock.stock.values)
+    for attr in ("stock", "inflow", "outflow"):
+        original_array = getattr(stock, attr)
+        copied_array = getattr(stock_copy, attr)
+        assert copied_array is not original_array
+        assert copied_array.values is not original_array.values
+        assert np.allclose(copied_array.values, original_array.values)
 
     # in-place mutation of the copy does not propagate back to the original
-    stock_copy.stock.values[...] = 999.0
-    assert not np.allclose(stock.stock.values, stock_copy.stock.values)
+    for attr in ("stock", "inflow", "outflow"):
+        getattr(stock_copy, attr).values[...] = 999.0
+        assert not np.any(getattr(stock, attr).values == 999.0)
+        getattr(stock, attr).values[...] = -1.0
+        assert not np.any(getattr(stock_copy, attr).values == -1.0)
 
 
 def test_dynamic_stock_copy():
