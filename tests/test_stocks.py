@@ -85,6 +85,10 @@ def test_simple_stock_copy():
 
     # dims and all three arrays are distinct objects with equal values
     assert stock_copy.dims is not stock.dims
+    assert stock_copy.dims.letters == stock.dims.letters
+    assert stock_copy.dims.names == stock.dims.names
+    for letter in stock.dims.letters:
+        assert stock_copy.dims[letter].items == stock.dims[letter].items
     for attr in ("stock", "inflow", "outflow"):
         original_array = getattr(stock, attr)
         copied_array = getattr(stock_copy, attr)
@@ -111,26 +115,45 @@ def test_dynamic_stock_copy():
 
     dsm_copy = dsm.copy()
 
-    # subclass preserved, values equal, objects distinct (incl. lifetime model)
+    # same type, but distinct objects
     assert isinstance(dsm_copy, InflowDrivenDSM)
     assert dsm_copy is not dsm
-    assert dsm_copy.inflow is not dsm.inflow
-    assert dsm_copy.stock.values is not dsm.stock.values
-    assert dsm_copy.lifetime_model is not dsm.lifetime_model
-    assert np.allclose(dsm_copy.stock.values, dsm.stock.values)
 
-    # in-place array mutation stays local to the copy
-    original_inflow = dsm.inflow.values.copy()
-    dsm_copy.inflow.values[...] = 0.0
-    assert np.allclose(dsm.inflow.values, original_inflow)
+    # scalar attributes are preserved on the copy
+    assert dsm_copy.name == dsm.name
+    assert dsm_copy.time_letter == dsm.time_letter
+
+    # dims and all three arrays are distinct objects with equal values
+    assert dsm_copy.dims is not dsm.dims
+    assert dsm_copy.dims.letters == dsm.dims.letters
+    assert dsm_copy.dims.names == dsm.dims.names
+    for letter in dsm.dims.letters:
+        assert dsm_copy.dims[letter].items == dsm.dims[letter].items
+    for attr in ("stock", "inflow", "outflow"):
+        original_array = getattr(dsm, attr)
+        copied_array = getattr(dsm_copy, attr)
+        assert copied_array is not original_array
+        assert copied_array.values is not original_array.values
+        assert np.allclose(copied_array.values, original_array.values)
+
+    # the lifetime model is a distinct object whose parameters start out equal
+    assert dsm_copy.lifetime_model is not dsm.lifetime_model
+    for prm_name, prm in dsm.lifetime_model.prms.items():
+        assert np.allclose(dsm_copy.lifetime_model.prms[prm_name], prm)
 
     # changing the copy's lifetime model and recomputing leaves the original untouched
     stock_before = dsm.stock.values.copy()
-    dsm_copy.inflow.values[...] = inflow_values  # restore so recompute is meaningful
     dsm_copy.lifetime_model.set_prms(mean=10, std=5)
     dsm_copy.compute()
     assert np.allclose(dsm.stock.values, stock_before)
     assert not np.allclose(dsm_copy.stock.values, stock_before)
+
+    # in-place mutation of the copy does not propagate back to the original
+    for attr in ("stock", "inflow", "outflow"):
+        getattr(dsm_copy, attr).values[...] = 999.0
+        assert not np.any(getattr(dsm, attr).values == 999.0)
+        getattr(dsm, attr).values[...] = -1.0
+        assert not np.any(getattr(dsm_copy, attr).values == -1.0)
 
 
 def test_lifetime_quadrature():
