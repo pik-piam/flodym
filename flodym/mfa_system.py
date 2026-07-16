@@ -253,7 +253,7 @@ class MFASystem(PydanticBaseModel):
             message = "Mass balance check failed for the following processes: " + info
             self._error_or_warning(message, raise_error)
         else:
-            logging.info(f"Success - Mass balance is consistent!")
+            logging.info("Success - Mass balance is consistent!")
 
     def check_flows(
         self, exceptions: list[str] = [], raise_error: bool = False, verbose: bool = False
@@ -295,7 +295,7 @@ class MFASystem(PydanticBaseModel):
             if np.any(flow.values < -tolerance):
                 message = f"Negative value in flow {flow.name}!"
                 if verbose:
-                    message += f"\n Items:"
+                    message += "\n Items:"
                     indices = flow.items_where(lambda x: x < -tolerance)
                     for index in indices:
                         message += "\n  " + ", ".join(index)

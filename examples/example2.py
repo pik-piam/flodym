@@ -45,7 +45,6 @@
 import os
 from copy import deepcopy
 import numpy as np
-import plotly.io as pio
 
 from flodym import (
     MFADefinition,

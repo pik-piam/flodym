@@ -6,13 +6,15 @@ from abc import abstractmethod
 import numpy as np
 from scipy.linalg import solve_triangular
 from pydantic import BaseModel as PydanticBaseModel, ConfigDict, model_validator
-from typing import Optional, Union
+from typing import Optional, Union, TypeVar, Type
 import logging
 
 from .processes import Process
-from .flodym_arrays import StockArray, FlodymArray
+from .flodym_arrays import StockArray
 from .dimensions import DimensionSet
 from .lifetime_models import LifetimeModel, UnevenTimeDim
+
+StockSubtype = TypeVar("StockSubtype", bound="Stock")
 
 
 class Stock(PydanticBaseModel):
@@ -97,12 +99,28 @@ class Stock(PydanticBaseModel):
         """ID of the process the stock is associated with."""
         return self.process.id
 
-    def to_stock_type(self, desired_stock_type: type, **kwargs):
+    def to_stock_type(self, desired_stock_type: Type[StockSubtype], **kwargs) -> StockSubtype:
         """Return an object of a new stock type with values and dimensions the same as the original.
         `**kwargs` can be used to pass additional model attributes as required by the desired stock
         type, if these are not contained in the original stock type.
         """
         return desired_stock_type(**self.__dict__, **kwargs)
+
+    def copy(self) -> "Stock":
+        """Return a copy of the Stock.
+
+        The copy has its own :py:class:`flodym.DimensionSet` and its own stock, inflow and
+        outflow arrays (created via :py:meth:`flodym.FlodymArray.copy`), so that modifications
+        to either the copy or the original do not affect the other.
+        """
+        return self.model_copy(
+            update={
+                "dims": self.dims.copy(),
+                "stock": self.stock.copy(),
+                "inflow": self.inflow.copy(),
+                "outflow": self.outflow.copy(),
+            }
+        )
 
     def check_stock_balance(self):
         balance = self.get_stock_balance()
@@ -213,6 +231,15 @@ class DynamicStockModel(Stock):
             "c...,tc...->tc...", self.inflow.values, self.lifetime_model.pdf
         )
         self.outflow.values[...] = self._outflow_by_cohort.sum(axis=1)
+
+    def copy(self) -> "Stock":
+        """Return a copy of the Stock, as :py:meth:`flodym.Stock.copy`, but additionally
+        giving the copy its own independent ``lifetime_model`` so that, for example, calling
+        ``set_prms`` on the copy does not affect the original.
+        """
+        new_stock = super().copy()
+        new_stock.lifetime_model = self.lifetime_model.model_copy(deep=True)
+        return new_stock
 
     def __str__(self):
         base = super().__str__()

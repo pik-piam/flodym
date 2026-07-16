@@ -1,9 +1,12 @@
 from __future__ import annotations
+
 from copy import copy
-from pydantic import BaseModel as PydanticBaseModel, Field, AliasChoices, model_validator
 from typing import Dict, Iterator, Optional
+
 import numpy as np
 import pandas as pd
+from pydantic import AliasChoices, Field, model_validator
+from pydantic import BaseModel as PydanticBaseModel
 
 from .mfa_definition import DimensionDefinition
 
@@ -72,7 +75,8 @@ class Dimension(PydanticBaseModel):
             raise ValueError(
                 f"Dimension data for {definition.name} must have only one row or column."
             )
-        data = data.flatten().tolist()
+        if data.ndim != 1:
+            data = data.flatten()
         # delete header for items if present
         if data[0] == definition.name:
             data = data[1:]
