@@ -8,7 +8,7 @@ repos:
       - id: ruff-format
         types_or: [ python, pyi ]
   - repo: https://github.com/mwouts/jupytext
-    rev: v1.19.1
+    rev: v1.19.4
     hooks:
       - id: jupytext
         files: ^(examples|howtos)/.*\.py$

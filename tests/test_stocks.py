@@ -105,7 +105,7 @@ def test_simple_stock_copy():
 
 def test_dynamic_stock_copy():
     """Copying a dynamic stock yields independent arrays and an independent lifetime model."""
-    inflow_values = np.exp(-np.linspace(-2, 2, 201) ** 2)
+    inflow_values = np.exp(-(np.linspace(-2, 2, 201) ** 2))
     inflow_values = np.stack([inflow_values, inflow_values]).T
     inflow = StockArray(dims=dims, values=inflow_values)
     lifetime_model = LogNormalLifetime(dims=dims, time_letter="t", mean=60, std=25)
