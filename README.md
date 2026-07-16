@@ -82,17 +82,9 @@ flodym is based on the concepts of ODYM.
 Please consider also citing the according publication: [Pauliuk & Heeren, 2020](https://doi.org/10.1111/jiec.12952).
 
 
-# How to contribute
+# Contributing
 
-If you'd like to contribute, the [issues page](https://github.com/pik-piam/flodym/issues) lists possible extensions and improvements.
-If you wish to contribute your own, just create a fork and open a PR!
-
-To run the tests locally in the uv-managed environment, run:
-
-```
-uv run pytest
-```
-
+Contribution instructions and development setup is documented in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 # How to report problems and get support
 
