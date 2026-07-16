@@ -20,3 +20,5 @@ repos:
       - id: check-case-conflict
       - id: end-of-file-fixer
       - id: trailing-whitespace
+ci:
+  autoupdate_commit_msg: 'chore: update pre-commit'
