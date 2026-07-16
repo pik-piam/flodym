@@ -403,7 +403,7 @@ class FlodymArray(PydanticBaseModel):
             FlodymArray: The other object converted to a FlodymArray object.
         """
         assert isinstance(other, (FlodymArray, Number)), (
-            "Can only perform operations between two " "FlodymArrays or FlodymArray and scalar."
+            "Can only perform operations between two FlodymArrays or FlodymArray and scalar."
         )
         if isinstance(other, Number):
             other = FlodymArray(dims=self.dims, values=other * np.ones(self.shape))
@@ -649,9 +649,9 @@ class FlodymArray(PydanticBaseModel):
 
     def get_shares_over(self, dim_letters: tuple) -> "FlodymArray":
         """Get shares of the FlodymArray along a tuple of dimensions, indicated by letter."""
-        assert all(
-            [d in self.dims.letters for d in dim_letters]
-        ), "Dimensions to get share of must be in the object"
+        assert all([d in self.dims.letters for d in dim_letters]), (
+            "Dimensions to get share of must be in the object"
+        )
 
         if all([d in dim_letters for d in self.dims.letters]):
             return self / self.sum_values()

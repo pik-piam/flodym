@@ -170,13 +170,13 @@ def test_build_mfa_system():
         def compute(self):
             pass
 
-    mfa = MinimalMFASystem.from_csv(
+    MinimalMFASystem.from_csv(
         definition,
         csv_dimension_files,
         csv_parameter_files,
     )
 
-    mfa = MinimalMFASystem.from_excel(
+    MinimalMFASystem.from_excel(
         definition,
         excel_dimension_files,
         excel_parameter_files,

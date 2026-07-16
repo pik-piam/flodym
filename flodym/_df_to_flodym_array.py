@@ -14,7 +14,6 @@ if TYPE_CHECKING:
 
 
 class FlodymDataFormat(PydanticBaseModel):
-
     type: Literal["long", "wide"]
     value_column: str = "value"
     columns_dim: Optional[str] = None

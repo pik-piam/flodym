@@ -228,9 +228,9 @@ class TestFlodymArrayIndexing:
         """Test getitem with advanced indices separated by slices (NumPy dimension reordering)."""
         result = self.arr[self.mask]
         expected_shape = (80, 5, 4, 3)
-        assert (
-            result.shape == expected_shape
-        ), f"getitem: Expected {expected_shape}, got {result.shape}"
+        assert result.shape == expected_shape, (
+            f"getitem: Expected {expected_shape}, got {result.shape}"
+        )
         expected_values = self.arr[{"m": "M1"}][{"r": self.subset_regions}][
             {"p": self.subset_products}
         ]
