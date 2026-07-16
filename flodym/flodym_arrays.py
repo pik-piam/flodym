@@ -496,6 +496,53 @@ class FlodymArray(PydanticBaseModel):
         """
         return self.model_copy(update={"dims": self.dims.copy(), "values": self.values.copy()})
 
+    def to_Parameter(self, name: Optional[str] = None) -> "Parameter":
+        """Return a Parameter with the same dimensions and values.
+
+        Args:
+            name (str, optional): Name of the returned Parameter. If not given, the name of the current FlodymArray is kept.
+
+        Returns:
+            Parameter: A Parameter with copied values and dimensions.
+        """
+        return Parameter(
+            dims=self.dims.copy(),
+            values=self.values.copy(),
+            name=self.name if name is None else name,
+        )
+
+    def to_StockArray(self, name: Optional[str] = None) -> "StockArray":
+        """Return a StockArray with the same dimensions and values.
+
+        Args:
+            name (str, optional): Name of the returned StockArray. If not given, the name of the current FlodymArray is kept.
+
+        Returns:
+            StockArray: A StockArray with copied values and dimensions.
+        """
+        return StockArray(
+            dims=self.dims.copy(),
+            values=self.values.copy(),
+            name=self.name if name is None else name,
+        )
+
+    def to_FlodymArray(self, name: Optional[str] = None) -> "FlodymArray":
+        """Return a base FlodymArray with the same dimensions and values.
+
+        Re-tags a subclass instance (e.g. Parameter or StockArray) back to the base FlodymArray; see :py:meth:`to_Parameter` for the rationale.
+
+        Args:
+            name (str, optional): Name of the returned FlodymArray. If not given, the name of the current FlodymArray is kept.
+
+        Returns:
+            FlodymArray: A FlodymArray with copied values and dimensions.
+        """
+        return FlodymArray(
+            dims=self.dims.copy(),
+            values=self.values.copy(),
+            name=self.name if name is None else name,
+        )
+
     def abs(self, inplace: bool = False):
         return self.apply(np.abs, inplace=inplace)
 
