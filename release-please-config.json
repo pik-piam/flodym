@@ -4,6 +4,7 @@
     ".": {}
   },
   "release-type": "python",
+  "pull-request-title-pattern": "chore: release${component} ${version}",
   "include-component-in-tag": false,
   "changelog-sections": [
     { "type": "feat", "section": "🔖 Features", "hidden": false },
