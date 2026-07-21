@@ -1,12 +1,11 @@
 import numpy as np
 import pytest
-import time
 
 from flodym.dimensions import Dimension, DimensionSet
 from flodym.flodym_arrays import StockArray
 from flodym.mfa_definition import StockDefinition
 from flodym.stock_helper import make_empty_stocks
-from flodym.stocks import InflowDrivenDSM, StockDrivenDSM
+from flodym.stocks import InflowDrivenDSM, StockDrivenDSM, SimpleFlowDrivenStock
 from flodym.lifetime_models import LogNormalLifetime
 
 dim_list = [
@@ -28,7 +27,7 @@ dims = DimensionSet(dim_list=dim_list)
 
 
 def test_stocks():
-    inflow_values = np.exp(-np.linspace(-2, 2, 201) ** 2)
+    inflow_values = np.exp(-(np.linspace(-2, 2, 201) ** 2))
     inflow_values = np.stack([inflow_values, inflow_values]).T
     inflow = StockArray(dims=dims, values=inflow_values)
 
@@ -66,6 +65,96 @@ def test_stocks():
     # return inflow, inflow_post, inflow_post_invert
 
 
+def test_simple_stock_copy():
+    """Copying a base (flow-driven) stock yields independent dims and arrays."""
+    inflow = StockArray(dims=dims, values=np.ones((dims["t"].len, 2)))
+    outflow = StockArray(dims=dims, values=np.zeros((dims["t"].len, 2)))
+    stock = SimpleFlowDrivenStock(dims=dims, inflow=inflow, outflow=outflow, time_letter="t")
+    stock.compute()
+
+    stock_copy = stock.copy()
+
+    # same type, but distinct objects
+    assert isinstance(stock_copy, SimpleFlowDrivenStock)
+    assert stock_copy is not stock
+
+    # scalar attributes are preserved on the copy
+    assert stock_copy.name == stock.name
+    assert stock_copy.time_letter == stock.time_letter
+
+    # dims and all three arrays are distinct objects with equal values
+    assert stock_copy.dims is not stock.dims
+    assert stock_copy.dims.letters == stock.dims.letters
+    assert stock_copy.dims.names == stock.dims.names
+    for letter in stock.dims.letters:
+        assert stock_copy.dims[letter].items == stock.dims[letter].items
+    for attr in ("stock", "inflow", "outflow"):
+        original_array = getattr(stock, attr)
+        copied_array = getattr(stock_copy, attr)
+        assert copied_array is not original_array
+        assert copied_array.values is not original_array.values
+        assert np.allclose(copied_array.values, original_array.values)
+
+    # in-place mutation of the copy does not propagate back to the original
+    for attr in ("stock", "inflow", "outflow"):
+        getattr(stock_copy, attr).values[...] = 999.0
+        assert not np.any(getattr(stock, attr).values == 999.0)
+        getattr(stock, attr).values[...] = -1.0
+        assert not np.any(getattr(stock_copy, attr).values == -1.0)
+
+
+def test_dynamic_stock_copy():
+    """Copying a dynamic stock yields independent arrays and an independent lifetime model."""
+    inflow_values = np.exp(-(np.linspace(-2, 2, 201) ** 2))
+    inflow_values = np.stack([inflow_values, inflow_values]).T
+    inflow = StockArray(dims=dims, values=inflow_values)
+    lifetime_model = LogNormalLifetime(dims=dims, time_letter="t", mean=60, std=25)
+    dsm = InflowDrivenDSM(dims=dims, inflow=inflow, lifetime_model=lifetime_model, time_letter="t")
+    dsm.compute()
+
+    dsm_copy = dsm.copy()
+
+    # same type, but distinct objects
+    assert isinstance(dsm_copy, InflowDrivenDSM)
+    assert dsm_copy is not dsm
+
+    # scalar attributes are preserved on the copy
+    assert dsm_copy.name == dsm.name
+    assert dsm_copy.time_letter == dsm.time_letter
+
+    # dims and all three arrays are distinct objects with equal values
+    assert dsm_copy.dims is not dsm.dims
+    assert dsm_copy.dims.letters == dsm.dims.letters
+    assert dsm_copy.dims.names == dsm.dims.names
+    for letter in dsm.dims.letters:
+        assert dsm_copy.dims[letter].items == dsm.dims[letter].items
+    for attr in ("stock", "inflow", "outflow"):
+        original_array = getattr(dsm, attr)
+        copied_array = getattr(dsm_copy, attr)
+        assert copied_array is not original_array
+        assert copied_array.values is not original_array.values
+        assert np.allclose(copied_array.values, original_array.values)
+
+    # the lifetime model is a distinct object whose parameters start out equal
+    assert dsm_copy.lifetime_model is not dsm.lifetime_model
+    for prm_name, prm in dsm.lifetime_model.prms.items():
+        assert np.allclose(dsm_copy.lifetime_model.prms[prm_name], prm)
+
+    # changing the copy's lifetime model and recomputing leaves the original untouched
+    stock_before = dsm.stock.values.copy()
+    dsm_copy.lifetime_model.set_prms(mean=10, std=5)
+    dsm_copy.compute()
+    assert np.allclose(dsm.stock.values, stock_before)
+    assert not np.allclose(dsm_copy.stock.values, stock_before)
+
+    # in-place mutation of the copy does not propagate back to the original
+    for attr in ("stock", "inflow", "outflow"):
+        getattr(dsm_copy, attr).values[...] = 999.0
+        assert not np.any(getattr(dsm, attr).values == 999.0)
+        getattr(dsm, attr).values[...] = -1.0
+        assert not np.any(getattr(dsm_copy, attr).values == -1.0)
+
+
 def test_lifetime_quadrature():
     # Put in constant inflow and check stationary stock values
 
@@ -95,7 +184,7 @@ def test_lifetime_quadrature():
 
 
 def get_stocks_by_quadrature(mean, std):
-    inflow_values = np.exp(-np.linspace(-2, 2, 201) ** 2)
+    inflow_values = np.exp(-(np.linspace(-2, 2, 201) ** 2))
     inflow_values = np.stack([inflow_values, inflow_values]).T
     inflow_values = np.ones_like(inflow_values)
     inflow = StockArray(dims=dims, values=inflow_values)

@@ -33,8 +33,8 @@ df.head()
 # Let's try both:
 
 # %%
-from flodym.export import convert_to_dict
 from flodym.example_objects import get_example_mfa
+from flodym.export import convert_to_dict
 
 
 # printing function
@@ -84,6 +84,7 @@ export_mfa_to_pickle(mfa=mfa, export_path=export_path)
 
 # %%
 import os
+
 from flodym.export import export_mfa_flows_to_csv, export_mfa_stocks_to_csv
 
 export_dir = "output_data/flows"
@@ -107,7 +108,6 @@ print("".join(head))
 # %%
 
 import os
-from flodym.export import export_mfa_stocks_to_csv
 
 export_dir = "output_data/stocks"
 export_mfa_stocks_to_csv(mfa, export_directory=export_dir, with_in_and_out=True)
@@ -126,8 +126,9 @@ print("\n".join(os.listdir(export_dir)))
 #
 
 # %%
-from flodym.export import PlotlySankeyPlotter
 from plotly.colors import qualitative
+
+from flodym.export import PlotlySankeyPlotter
 
 # set up a dictionary of how to color the flows
 colors = {"default": "gray"}

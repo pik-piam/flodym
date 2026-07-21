@@ -1,8 +1,6 @@
-from pydantic import BaseModel as PydanticBaseModel, model_validator, ConfigDict, computed_field
-from typing import Optional, Any
-import numpy as np
+from pydantic import BaseModel as PydanticBaseModel, model_validator, ConfigDict
+from typing import Optional
 import plotly.graph_objects as go
-import plotly as pl
 
 from ..mfa_system import MFASystem
 from ..flodym_arrays import Flow
@@ -10,7 +8,6 @@ from .helper import CustomNameDisplayer
 
 
 class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
-
     model_config = ConfigDict(arbitrary_types_allowed=True, protected_namespaces=())
 
     mfa: MFASystem
@@ -52,7 +49,7 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
         for f in self.shown_flows.values():
             if "default" not in self.flow_color_dict:
                 raise ValueError(
-                    f"flow_color_dict must have a 'default' key to resort to if a flow is not in the dictionary"
+                    "flow_color_dict must have a 'default' key to resort to if a flow is not in the dictionary"
                 )
             if f.name not in self.flow_color_dict:
                 self.flow_color_dict[f.name] = self.flow_color_dict["default"]
@@ -67,7 +64,7 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
         for p in self.shown_processes:
             if "default" not in self.node_color_dict:
                 raise ValueError(
-                    f"node_color_dict must have a 'default' key to resort to if a process is not in the dictionary"
+                    "node_color_dict must have a 'default' key to resort to if a process is not in the dictionary"
                 )
             if p.name not in self.node_color_dict:
                 self.node_color_dict[p.name] = self.node_color_dict["default"]
@@ -183,7 +180,6 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
 
 
 class DictOfLists:
-
     def __init__(self, list_names: list[str]):
         self.dict = {l: [] for l in list_names}
 
