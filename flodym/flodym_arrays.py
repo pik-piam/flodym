@@ -9,7 +9,7 @@ from collections import defaultdict
 import numpy as np
 import pandas as pd
 from pydantic import BaseModel as PydanticBaseModel, ConfigDict, model_validator
-from typing import Optional, Union, Callable
+from typing import Optional, Union, Callable, TypeVar, overload, Literal
 from copy import copy
 from numbers import Number
 
@@ -20,6 +20,9 @@ from ._df_to_flodym_array import DataFrameToFlodymDataConverter
 
 def _is_iterable(arg):
     return isinstance(arg, Iterable) and not isinstance(arg, (str, Dimension))
+
+
+T = TypeVar("T", bound="FlodymArray")
 
 
 class FlodymArray(PydanticBaseModel):
@@ -64,13 +67,13 @@ class FlodymArray(PydanticBaseModel):
     """Name of the FlodymArray."""
 
     @model_validator(mode="after")
-    def copy_dims(self) -> "FlodymArray":
+    def copy_dims(self: T) -> T:
         """Ensure dims is always copied to avoid shared references."""
         self.dims = self.dims.copy()
         return self
 
     @model_validator(mode="after")
-    def validate_values(self) -> "FlodymArray":
+    def validate_values(self: T) -> T:
         if self.values is None:
             self.values = np.zeros(self.dims.shape)
         self._check_value_format()
@@ -299,6 +302,12 @@ class FlodymArray(PydanticBaseModel):
         values = np.tile(values, multiple)
         return values
 
+    @overload
+    def cast_to(
+        self, target_dims: DimensionSet, inplace: Literal[False] = ...
+    ) -> "FlodymArray": ...
+    @overload
+    def cast_to(self: T, target_dims: DimensionSet, inplace: Literal[True]) -> T: ...
     def cast_to(self, target_dims: DimensionSet, inplace: bool = False) -> "FlodymArray":
         """Cast the FlodymArray to a new set of dimensions.
 
@@ -409,7 +418,7 @@ class FlodymArray(PydanticBaseModel):
             other = FlodymArray(dims=self.dims, values=other * np.ones(self.shape))
         return other
 
-    def __add__(self, other) -> "FlodymArray":
+    def __add__(self, other: Union["FlodymArray", Number]) -> "FlodymArray":
         other = self._prepare_other(other)
         dims_out = self.dims.intersect_with(other.dims)
         return FlodymArray(
@@ -417,7 +426,7 @@ class FlodymArray(PydanticBaseModel):
             values=self.sum_values_to(dims_out.letters) + other.sum_values_to(dims_out.letters),
         )
 
-    def __sub__(self, other) -> "FlodymArray":
+    def __sub__(self, other: Union["FlodymArray", Number]) -> "FlodymArray":
         other = self._prepare_other(other)
         dims_out = self.dims.intersect_with(other.dims)
         return FlodymArray(
@@ -425,7 +434,7 @@ class FlodymArray(PydanticBaseModel):
             values=self.sum_values_to(dims_out.letters) - other.sum_values_to(dims_out.letters),
         )
 
-    def __mul__(self, other) -> "FlodymArray":
+    def __mul__(self, other: Union["FlodymArray", Number]) -> "FlodymArray":
         other = self._prepare_other(other)
         dims_out = self.dims.union_with(other.dims)
         values_out = np.einsum(
@@ -433,7 +442,7 @@ class FlodymArray(PydanticBaseModel):
         )
         return FlodymArray(dims=dims_out, values=values_out)
 
-    def __truediv__(self, other) -> "FlodymArray":
+    def __truediv__(self, other: Union["FlodymArray", Number]) -> "FlodymArray":
         other = self._prepare_other(other)
         dims_out = self.dims.union_with(other.dims)
         values_out = np.einsum(
@@ -443,7 +452,7 @@ class FlodymArray(PydanticBaseModel):
         )
         return FlodymArray(dims=dims_out, values=values_out)
 
-    def __pow__(self, power) -> "FlodymArray":
+    def __pow__(self, power: Union["FlodymArray", Number]) -> "FlodymArray":
         power = self._prepare_other(power)
         if any(l not in self.dims.letters for l in power.dims.letters):
             raise ValueError("Power must only contain dimensions also present in the base array.")
@@ -451,7 +460,7 @@ class FlodymArray(PydanticBaseModel):
         values_out = self.values**power.values
         return FlodymArray(dims=self.dims, values=values_out)
 
-    def minimum(self, other) -> "FlodymArray":
+    def minimum(self, other: Union["FlodymArray", Number]) -> "FlodymArray":
         other = self._prepare_other(other)
         dims_out = self.dims.intersect_with(other.dims)
         values_out = np.minimum(
@@ -459,7 +468,7 @@ class FlodymArray(PydanticBaseModel):
         )
         return FlodymArray(dims=dims_out, values=values_out)
 
-    def maximum(self, other) -> "FlodymArray":
+    def maximum(self, other: Union["FlodymArray", Number]) -> "FlodymArray":
         other = self._prepare_other(other)
         dims_out = self.dims.intersect_with(other.dims)
         values_out = np.maximum(
@@ -468,7 +477,7 @@ class FlodymArray(PydanticBaseModel):
         return FlodymArray(dims=dims_out, values=values_out)
 
     def apply(
-        self, func: callable, kwargs: dict = {}, inplace: bool = False
+        self, func: Callable, kwargs: dict = {}, inplace: bool = False
     ) -> Optional["FlodymArray"]:
         """Apply a function to the values of the FlodymArray.
 
@@ -485,7 +494,7 @@ class FlodymArray(PydanticBaseModel):
             return
         return FlodymArray(dims=self.dims, values=func(self.values, **kwargs))
 
-    def copy(self) -> "FlodymArray":
+    def copy(self: T) -> T:
         """Return a copy of the FlodymArray.
 
         This method creates a new FlodymArray with deep copies of both the DimensionSet and the numpy
@@ -496,12 +505,24 @@ class FlodymArray(PydanticBaseModel):
         """
         return self.model_copy(update={"dims": self.dims.copy(), "values": self.values.copy()})
 
+    @overload
+    def abs(self, inplace: Literal[False] = ...) -> "FlodymArray": ...
+    @overload
+    def abs(self, inplace: Literal[True]) -> None: ...
     def abs(self, inplace: bool = False) -> Optional["FlodymArray"]:
         return self.apply(np.abs, inplace=inplace)
 
+    @overload
+    def sign(self, inplace: Literal[False] = ...) -> "FlodymArray": ...
+    @overload
+    def sign(self, inplace: Literal[True]) -> None: ...
     def sign(self, inplace: bool = False) -> Optional["FlodymArray"]:
         return self.apply(np.sign, inplace=inplace)
 
+    @overload
+    def cumsum(self, dim_letter: str, inplace: Literal[False] = ...) -> "FlodymArray": ...
+    @overload
+    def cumsum(self, dim_letter: str, inplace: Literal[True]) -> None: ...
     def cumsum(self, dim_letter: str, inplace: bool = False) -> Optional["FlodymArray"]:
         """Calculate the cumulative sum along a dimension.
 
@@ -521,16 +542,16 @@ class FlodymArray(PydanticBaseModel):
     def __abs__(self) -> "FlodymArray":
         return FlodymArray(dims=self.dims, values=abs(self.values))
 
-    def __radd__(self, other) -> "FlodymArray":
+    def __radd__(self, other: Union["FlodymArray", Number]) -> "FlodymArray":
         return self + other
 
-    def __rsub__(self, other) -> "FlodymArray":
+    def __rsub__(self, other: Union["FlodymArray", Number]) -> "FlodymArray":
         return -self + other
 
-    def __rmul__(self, other) -> "FlodymArray":
+    def __rmul__(self, other: Union["FlodymArray", Number]) -> "FlodymArray":
         return self * other
 
-    def __rtruediv__(self, other) -> "FlodymArray":
+    def __rtruediv__(self, other: Union["FlodymArray", Number]) -> "FlodymArray":
         inv_self = FlodymArray(dims=self.dims, values=1 / self.values)
         return inv_self * other
 
