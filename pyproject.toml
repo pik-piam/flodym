@@ -54,5 +54,8 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools]
 packages = ["flodym", "flodym.export"]
 
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
 [tool.black]
 line-length = 100
