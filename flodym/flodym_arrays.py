@@ -62,7 +62,8 @@ class FlodymArray(PydanticBaseModel):
     dims: DimensionSet
     """Dimensions of the FlodymArray."""
     values: np.ndarray = Field(default=None, validate_default=True)
-    """Values of the FlodymArray. Must have the same shape as the dimensions of the FlodymArray. If not given or None, an array of zeros is created."""
+    """Values of the FlodymArray. Must have the same shape as the dimensions of the FlodymArray.
+    If not given or None, an array of zeros is created."""
     name: Optional[str] = "unnamed"
     """Name of the FlodymArray."""
 
