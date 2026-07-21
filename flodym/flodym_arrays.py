@@ -86,7 +86,8 @@ class FlodymArray(PydanticBaseModel):
             return np.array(value)
         if value is None:
             dims = info.data.get("dims")
-            return np.zeros(dims.shape)
+            if dims is not None:
+                return np.zeros(dims.shape)
         return value
 
     @model_validator(mode="after")

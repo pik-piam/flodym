@@ -8,7 +8,6 @@ from copy import deepcopy
 from flodym import FlodymArray, DimensionSet, Dimension
 
 places = Dimension(name="place", letter="p", items=["Earth", "Sun", "Moon", "Venus"])
-local_places = Dimension(name="local place", letter="l", items=["Earth"])
 time = Dimension(name="time", letter="t", items=[1990, 2000, 2010])
 historic_time = Dimension(name="historic time", letter="h", items=[1990, 2000])
 animals = Dimension(name="animal", letter="a", items=["cat", "mouse"])
@@ -24,24 +23,59 @@ animal_values = np.random.rand(4, 3, 2)
 space_animals = FlodymArray(name="space_animals", dims=dims_incl_animals, values=animal_values)
 
 
-def test_flodym_array_validations():
-    dims = DimensionSet(dim_list=[local_places, time])
+class TestFlodymArrayInit:
+    """Tests covering the different ways the FlodymArray constructor can be
+    initialized, in particular the ``values`` coercion in the field validator."""
 
-    # example with values with the correct shape
-    FlodymArray(name="numbers", dims=dims, values=np.array([[1, 2, 3]]))
+    def test_values_ndarray_correct_shape(self):
+        arr = FlodymArray(dims=dims, values=values)
+        assert_array_equal(arr.values, values)
+        assert arr.values is values  # a correctly-shaped ndarray is stored as-is
 
-    # example with dimensions reversed
-    with pytest.raises(ValidationError):
-        FlodymArray(name="numbers", dims=dims, values=np.array([[1], [2], [3]]))
+    def test_values_omitted_fills_zeros(self):
+        arr = FlodymArray(dims=dims)
+        assert arr.values.shape == dims.shape
+        assert np.all(arr.values == 0)
 
-    # example with too many values
-    with pytest.raises(ValidationError):
-        FlodymArray(name="numbers", dims=dims, values=np.array([[1, 2, 3, 4]]))
+    def test_values_none_fills_zeros(self):
+        # passing values=None explicitly must take the same path as omitting it
+        arr = FlodymArray(dims=dims, values=None)
+        assert arr.values.shape == dims.shape
+        assert np.all(arr.values == 0)
 
-    # example with no values passed -> filled with zeros
-    zero_values = FlodymArray(name="numbers", dims=dims)
-    assert zero_values.values.shape == (1, 3)
-    assert np.all([zero_values.values == 0])
+    def test_scalar_number_wrapped_in_array(self):
+        # a scalar Number is wrapped in a 0-d numpy array (needs 0-d dims to match)
+        arr = FlodymArray(dims=DimensionSet(dim_list=[]), values=5)
+        assert isinstance(arr.values, np.ndarray)
+        assert arr.values.shape == ()
+        assert arr.values.item() == 5
+
+    def test_scalar_number_with_multidim_dims_raises(self):
+        # a scalar for a multi-dimensional array is a shape mismatch
+        with pytest.raises(ValidationError):
+            FlodymArray(dims=dims, values=5)
+
+    def test_transposed_shape_raises(self):
+        # right number of elements, wrong axis order
+        with pytest.raises(ValidationError):
+            FlodymArray(dims=dims, values=values.T)
+
+    def test_too_many_values_raises(self):
+        with pytest.raises(ValidationError):
+            FlodymArray(dims=dims, values=np.zeros((4, 4)))
+
+    def test_non_array_value_raises(self):
+        # a list is neither an ndarray nor a Number and is not coerced
+        with pytest.raises(ValidationError):
+            FlodymArray(dims=dims, values=[[1, 2, 3]] * 4)
+
+    def test_name_defaults_to_unnamed(self):
+        assert FlodymArray(dims=dims).name == "unnamed"
+
+    def test_dims_required(self):
+        # dims must be provided; omitting it raises a clean validation error
+        with pytest.raises(ValidationError):
+            FlodymArray()
 
 
 def test_cast_to():
