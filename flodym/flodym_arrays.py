@@ -9,7 +9,7 @@ from collections import defaultdict
 import numpy as np
 import pandas as pd
 from pydantic import BaseModel as PydanticBaseModel, ConfigDict, model_validator
-from typing import Optional, Union, Callable
+from typing import Optional, Union, Callable, TypeVar
 from copy import copy
 from numbers import Number
 
@@ -20,6 +20,9 @@ from ._df_to_flodym_array import DataFrameToFlodymDataConverter
 
 def _is_iterable(arg):
     return isinstance(arg, Iterable) and not isinstance(arg, (str, Dimension))
+
+
+T = TypeVar("T", bound="FlodymArray")
 
 
 class FlodymArray(PydanticBaseModel):
@@ -496,51 +499,32 @@ class FlodymArray(PydanticBaseModel):
         """
         return self.model_copy(update={"dims": self.dims.copy(), "values": self.values.copy()})
 
-    def to_Parameter(self, name: Optional[str] = None) -> "Parameter":
-        """Return a Parameter with the same dimensions and values.
+    def to_class(self, array_class: type[T], name: Optional[str] = None, **kwargs) -> T:
+        """Return an instance of a FlodymArray subclass with copied dimensions and values.
+
+        Re-tags this array as a different FlodymArray (sub)class — e.g. converting a plain
+        :py:class:`FlodymArray` into a :py:class:`Parameter`, :py:class:`StockArray`, or
+        :py:class:`Flow`, or a subclass instance back to the base :py:class:`FlodymArray`.
 
         Args:
-            name (str, optional): Name of the returned Parameter. If not given, the name of the current FlodymArray is kept.
+            array_class (type): The FlodymArray subclass to convert to.
+            name (str, optional): Name of the returned array. If not given, the name of the
+                current array is kept.
+            **kwargs: Additional keyword arguments forwarded to ``array_class``'s constructor
+                (e.g. ``from_process`` and ``to_process`` for a :py:class:`Flow`).
 
         Returns:
-            Parameter: A Parameter with copied values and dimensions.
+            An ``array_class`` instance with copied values and dimensions.
         """
-        return Parameter(
+        if not (isinstance(array_class, type) and issubclass(array_class, FlodymArray)):
+            raise TypeError(
+                f"array_class must be a FlodymArray subclass, got {array_class!r}."
+            )
+        return array_class(
             dims=self.dims.copy(),
             values=self.values.copy(),
             name=self.name if name is None else name,
-        )
-
-    def to_StockArray(self, name: Optional[str] = None) -> "StockArray":
-        """Return a StockArray with the same dimensions and values.
-
-        Args:
-            name (str, optional): Name of the returned StockArray. If not given, the name of the current FlodymArray is kept.
-
-        Returns:
-            StockArray: A StockArray with copied values and dimensions.
-        """
-        return StockArray(
-            dims=self.dims.copy(),
-            values=self.values.copy(),
-            name=self.name if name is None else name,
-        )
-
-    def to_FlodymArray(self, name: Optional[str] = None) -> "FlodymArray":
-        """Return a base FlodymArray with the same dimensions and values.
-
-        Re-tags a subclass instance (e.g. Parameter or StockArray) back to the base FlodymArray; see :py:meth:`to_Parameter` for the rationale.
-
-        Args:
-            name (str, optional): Name of the returned FlodymArray. If not given, the name of the current FlodymArray is kept.
-
-        Returns:
-            FlodymArray: A FlodymArray with copied values and dimensions.
-        """
-        return FlodymArray(
-            dims=self.dims.copy(),
-            values=self.values.copy(),
-            name=self.name if name is None else name,
+            **kwargs,
         )
 
     def abs(self, inplace: bool = False):
