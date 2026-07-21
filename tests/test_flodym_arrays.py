@@ -5,7 +5,7 @@ from pydantic_core import ValidationError
 import pytest
 from copy import deepcopy
 
-from flodym import FlodymArray, DimensionSet, Dimension
+from flodym import FlodymArray, DimensionSet, Dimension, Parameter, StockArray, Flow, Process
 
 places = Dimension(name="place", letter="p", items=["Earth", "Sun", "Moon", "Venus"])
 local_places = Dimension(name="local place", letter="l", items=["Earth"])
@@ -491,6 +491,65 @@ class TestFlodymArrayCopy:
         array_copy.dims.dim_list[0] = animals
         # Original should be unchanged
         assert array.dims[0] == places
+
+
+class TestToClass:
+    """Tests for FlodymArray.to_class() ensuring correct re-tagging and deep copy behavior."""
+
+    def test_returns_exact_target_type(self):
+        array = FlodymArray.full(dims, fill_value=4, name="original")
+        assert type(array.to_class(Parameter)) is Parameter
+        assert type(array.to_class(StockArray)) is StockArray
+
+    def test_subclass_back_to_base(self):
+        param = Parameter(dims=dims, values=values.copy(), name="p")
+        base = param.to_class(FlodymArray)
+        assert type(base) is FlodymArray
+        assert_array_equal(base.values, param.values)
+
+    def test_values_equal_but_independent(self):
+        array = FlodymArray.full(dims, fill_value=4, name="original")
+        result = array.to_class(Parameter)
+        assert_array_equal(result.values, array.values)
+        assert result.values is not array.values
+        result.values[...] = 999
+        assert np.all(array.values == 4)
+
+    def test_dims_deep_copied(self):
+        array = FlodymArray.full(dims, fill_value=4, name="original")
+        result = array.to_class(StockArray)
+        assert result.dims == array.dims
+        assert result.dims is not array.dims
+
+    def test_name_preserved_by_default(self):
+        array = FlodymArray.full(dims, fill_value=4, name="my_array")
+        assert array.to_class(Parameter).name == "my_array"
+
+    def test_name_overridden_when_given(self):
+        array = FlodymArray.full(dims, fill_value=4, name="my_array")
+        assert array.to_class(Parameter, name="renamed").name == "renamed"
+
+    def test_kwargs_forwarded_to_flow(self):
+        from_process = Process(name="a", id=1)
+        to_process = Process(name="b", id=2)
+        flow = numbers.to_class(Flow, from_process=from_process, to_process=to_process)
+        assert type(flow) is Flow
+        assert flow.from_process is from_process
+        assert flow.to_process is to_process
+        assert_array_equal(flow.values, numbers.values)
+
+    def test_round_trip_preserves_values(self):
+        param = numbers.to_class(Parameter)
+        round_tripped = param.to_class(FlodymArray).to_class(Parameter)
+        assert type(round_tripped) is Parameter
+        assert_array_equal(round_tripped.values, numbers.values)
+
+    def test_invalid_target_raises_type_error(self):
+        array = FlodymArray.full(dims, fill_value=4, name="original")
+        with pytest.raises(TypeError):
+            array.to_class(dict)
+        with pytest.raises(TypeError):
+            array.to_class(int)
 
 
 if __name__ == "__main__":
