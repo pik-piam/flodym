@@ -517,9 +517,7 @@ class FlodymArray(PydanticBaseModel):
             An ``array_class`` instance with copied values and dimensions.
         """
         if not (isinstance(array_class, type) and issubclass(array_class, FlodymArray)):
-            raise TypeError(
-                f"array_class must be a FlodymArray subclass, got {array_class!r}."
-            )
+            raise TypeError(f"array_class must be a FlodymArray subclass, got {array_class!r}.")
         return array_class(
             dims=self.dims.copy(),
             values=self.values.copy(),
