@@ -8,7 +8,7 @@ from copy import deepcopy
 from collections import defaultdict
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel as PydanticBaseModel, ConfigDict, model_validator
+from pydantic import BaseModel as PydanticBaseModel, ConfigDict, field_validator, model_validator
 from typing import Optional, Union, Callable, TypeVar, overload, Literal
 from copy import copy
 from numbers import Number
@@ -61,10 +61,33 @@ class FlodymArray(PydanticBaseModel):
 
     dims: DimensionSet
     """Dimensions of the FlodymArray."""
-    values: Optional[Union[np.ndarray, Number]] = None
-    """Values of the FlodymArray. Must have the same shape as the dimensions of the FlodymArray. If None, an array of zeros is created."""
+    values: np.ndarray
+    """Values of the FlodymArray. Must have the same shape as the dimensions of the FlodymArray. If not given, an array of zeros is created."""
     name: Optional[str] = "unnamed"
     """Name of the FlodymArray."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _default_values(cls, data):
+        """Initialize ``values`` as None if not provided so the field validator is called."""
+        if isinstance(data, dict):
+            data.setdefault("values", None)
+        return data
+
+    @field_validator("values", mode="before")
+    @classmethod
+    def _values_to_numpy(cls, value, info):
+        """Convert the ``values`` input to a numpy array: fill a missing/None value
+        with zeros of the correct shape, and wrap a scalar Number in a numpy array.
+        This keeps the field type ``np.ndarray`` while preserving the flexible
+        constructor input.
+        """
+        if isinstance(value, Number):
+            return np.array(value)
+        if value is None:
+            dims = info.data.get("dims")
+            return np.zeros(dims.shape)
+        return value
 
     @model_validator(mode="after")
     def copy_dims(self: T) -> T:
@@ -74,19 +97,12 @@ class FlodymArray(PydanticBaseModel):
 
     @model_validator(mode="after")
     def validate_values(self: T) -> T:
-        if self.values is None:
-            self.values = np.zeros(self.dims.shape)
         self._check_value_format()
         return self
 
     def _check_value_format(self) -> None:
-        if not isinstance(self.values, (np.ndarray, Number)):
-            raise ValueError("Values must be a numpy array or Number.")
-        if self.dims.ndim > 0 and not isinstance(self.values, np.ndarray):
-            raise ValueError("Values must be a numpy array, except for 0-dimensional arrays.")
-        elif self.dims.ndim == 0 and isinstance(self.values, Number):
-            self.values = np.array(self.values)
-
+        if not isinstance(self.values, np.ndarray):
+            raise ValueError("Values must be a numpy array.")
         if self.values.shape != self.dims.shape:
             raise ValueError(
                 f"Values passed to {self.__class__.__name__} must have the same shape as the DimensionSet.\n"
