@@ -8,7 +8,7 @@ from copy import deepcopy
 from collections import defaultdict
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel as PydanticBaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel as PydanticBaseModel, ConfigDict, Field, field_validator, model_validator
 from typing import Optional, Union, Callable, TypeVar, overload, Literal
 from copy import copy
 from numbers import Number
@@ -61,18 +61,10 @@ class FlodymArray(PydanticBaseModel):
 
     dims: DimensionSet
     """Dimensions of the FlodymArray."""
-    values: np.ndarray
-    """Values of the FlodymArray. Must have the same shape as the dimensions of the FlodymArray. If not given, an array of zeros is created."""
+    values: np.ndarray = Field(default=None, validate_default=True)
+    """Values of the FlodymArray. Must have the same shape as the dimensions of the FlodymArray. If not given or None, an array of zeros is created."""
     name: Optional[str] = "unnamed"
     """Name of the FlodymArray."""
-
-    @model_validator(mode="before")
-    @classmethod
-    def _default_values(cls, data):
-        """Initialize ``values`` as None if not provided so the field validator is called."""
-        if isinstance(data, dict):
-            data.setdefault("values", None)
-        return data
 
     @field_validator("values", mode="before")
     @classmethod
