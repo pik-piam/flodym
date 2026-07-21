@@ -566,8 +566,3 @@ class TestToClass:
             array.to_class(dict)
         with pytest.raises(TypeError):
             array.to_class(int)
-
-
-if __name__ == "__main__":
-    t = TestFlodymArrayIndexing()
-    t.test_getitem_indexing_with_slice()
