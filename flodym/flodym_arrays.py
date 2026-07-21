@@ -96,7 +96,7 @@ class FlodymArray(PydanticBaseModel):
 
     @classmethod
     def from_dims_superset(
-        cls, dims_superset: DimensionSet, dim_letters: tuple = None, **kwargs
+        cls, dims_superset: DimensionSet, dim_letters: Optional[tuple] = None, **kwargs
     ) -> "FlodymArray":
         """Create a FlodymArray object from a superset of dimensions, by specifying which
         dimensions to take.
@@ -233,14 +233,14 @@ class FlodymArray(PydanticBaseModel):
         return SubArrayHandler(self, definition)
 
     @property
-    def shape(self) -> tuple[int]:
+    def shape(self) -> tuple[int, ...]:
         """The shape of the array, determined by the dimensions."""
         return self.dims.shape
 
     @property
     def size(self) -> int:
         """The number of elements in the array."""
-        return np.prod(self.shape)
+        return int(np.prod(self.shape))
 
     def set_values(self, values: np.ndarray) -> None:
         """Set the values of the FlodymArray and check if the shape is correct.
@@ -331,7 +331,7 @@ class FlodymArray(PydanticBaseModel):
                 name=self.name,
             )
 
-    def sum_values_to(self, result_dims: tuple[str] = ()) -> np.ndarray:
+    def sum_values_to(self, result_dims: tuple[str, ...] = ()) -> np.ndarray:
         """Return the values of the FlodymArray partially summed, such that only the dimensions given in the result_dims tuple are left.
 
         Args:
@@ -340,7 +340,7 @@ class FlodymArray(PydanticBaseModel):
         result_dims = self._tuple_to_letters(result_dims)
         return np.einsum(f"{self.dims.string}->{''.join(result_dims)}", self.values)
 
-    def sum_to(self, result_dims: tuple = ()) -> "FlodymArray":
+    def sum_to(self, result_dims: tuple[str, ...] = ()) -> "FlodymArray":
         """Return the FlodymArray summed, such that only the dimensions given in the result_dims tuple are left.
 
         Args:
@@ -415,7 +415,7 @@ class FlodymArray(PydanticBaseModel):
             "Can only perform operations between two " "FlodymArrays or FlodymArray and scalar."
         )
         if isinstance(other, Number):
-            other = FlodymArray(dims=self.dims, values=other * np.ones(self.shape))
+            other = FlodymArray(dims=self.dims, values=np.full(self.shape, other))
         return other
 
     def __add__(self, other: Union["FlodymArray", Number]) -> "FlodymArray":
@@ -491,7 +491,7 @@ class FlodymArray(PydanticBaseModel):
         """
         if inplace:
             self.values = func(self.values, **kwargs)
-            return
+            return None
         return FlodymArray(dims=self.dims, values=func(self.values, **kwargs))
 
     def copy(self: T) -> T:
@@ -578,7 +578,7 @@ class FlodymArray(PydanticBaseModel):
             self.values[slice_obj.ids] = copy(item)
 
     def to_df(
-        self, index: bool = True, dim_to_columns: str = None, sparse: bool = False
+        self, index: bool = True, dim_to_columns: Optional[str] = None, sparse: bool = False
     ) -> pd.DataFrame:
         """Export the FlodymArray to a pandas DataFrame.
 
@@ -591,7 +591,7 @@ class FlodymArray(PydanticBaseModel):
             pd.DataFrame: DataFrame representation of the FlodymArray.
         """
         if sparse:
-            non_zero_ids = np.nonzero(self.values)
+            non_zero_ids: tuple[np.ndarray, ...] = np.nonzero(self.values)
 
             def to_index(i):
                 dim = self.dims[i]
@@ -679,7 +679,7 @@ class FlodymArray(PydanticBaseModel):
 
         return self / self.sum_over(sum_over_dims=dim_letters)
 
-    def items_where(self, condition: Callable) -> np.array:
+    def items_where(self, condition: Callable) -> np.ndarray:
         """Get the dimension item tuples of all entries where a condition is met.
 
         Args:
@@ -833,7 +833,7 @@ class SubArrayHandler:
           indexes along one dimension) and replace the slice(None) with it.
         - convert lists of indexes to meshgrid arrays, if there are several dimensions with lists
         """
-        self._ids_all_dims = [slice(None) for _ in self.flodym_array.dims.letters]
+        self._ids_all_dims: list = [slice(None) for _ in self.flodym_array.dims.letters]
         for dim_letter, item_or_items in self.def_dict.items():
             self._set_ids_single_dim(dim_letter, item_or_items)
         self._convert_lists_to_meshgrid()
@@ -872,6 +872,7 @@ class SubArrayHandler:
     def _set_ids_single_dim(self, dim_letter, item_or_items) -> None:
         """Given either a single item name or a list of item names, return the corresponding item IDs, along one
         dimension 'dim_letter'."""
+        items_ids: Union[int, list[int]]
         if isinstance(item_or_items, Dimension):
             if item_or_items.is_subset(self.flodym_array.dims[dim_letter]):
                 items_ids = [
