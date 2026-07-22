@@ -9,6 +9,7 @@ permissions:
 jobs:
   release-pr:
     name: Create Release PR
+    if: github.repository_owner == 'pik-piam'
     runs-on: ubuntu-latest
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
