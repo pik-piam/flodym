@@ -521,6 +521,50 @@ class FlodymArray(PydanticBaseModel):
         """
         return self.model_copy(update={"dims": self.dims.copy(), "values": self.values.copy()})
 
+    def to_class(self, array_class: type[T], name: Optional[str] = None, **kwargs) -> T:
+        """Return an instance of a FlodymArray subclass with copied dimensions and values.
+
+        Re-tags this array as a different FlodymArray (sub)class — e.g. converting a plain
+        :py:class:`FlodymArray` into a :py:class:`Parameter`, :py:class:`StockArray`, or
+        :py:class:`Flow`, or a subclass instance back to the base :py:class:`FlodymArray`.
+
+        Args:
+            array_class (type): The FlodymArray subclass to convert to.
+            name (str, optional): Name of the returned array. If not given, the name of the
+                current array is kept.
+            **kwargs: Additional keyword arguments forwarded to ``array_class``'s constructor
+                (e.g. ``from_process`` and ``to_process`` for a :py:class:`Flow`).
+
+        Returns:
+            An ``array_class`` instance with copied values and dimensions.
+        """
+        if not (isinstance(array_class, type) and issubclass(array_class, FlodymArray)):
+            raise TypeError(f"array_class must be a FlodymArray subclass, got {array_class!r}.")
+        return array_class(
+            dims=self.dims.copy(),
+            values=self.values.copy(),
+            name=self.name if name is None else name,
+            **kwargs,
+        )
+
+    @classmethod
+    def from_array(cls: type[T], array: "FlodymArray", name: Optional[str] = None, **kwargs) -> T:
+        """Create an instance of this class from an existing FlodymArray, copying its dimensions
+        and values.
+
+        This is the class-side counterpart to :py:meth:`to_class`: ``Parameter.from_array(arr)``
+        is equivalent to ``arr.to_class(Parameter)``.
+
+        Args:
+            array (FlodymArray): Source array whose dimensions and values are copied.
+            name (str, optional): Name of the returned array. If not given, ``array``'s name is kept.
+            **kwargs: Additional keyword arguments forwarded to this class's constructor.
+
+        Returns:
+            An instance of this class with copied values and dimensions.
+        """
+        return array.to_class(cls, name=name, **kwargs)
+
     @overload
     def abs(self, inplace: Literal[False] = ...) -> "FlodymArray": ...
     @overload
@@ -936,6 +980,40 @@ class Flow(FlodymArray):
     """Process from which the flow originates."""
     to_process: Process
     """Process to which the flow goes."""
+
+    @classmethod
+    def from_array(
+        cls,
+        array: "FlodymArray",
+        from_process: Optional[Process] = None,
+        to_process: Optional[Process] = None,
+        name: Optional[str] = None,
+    ) -> "Flow":
+        """Create a Flow from an existing FlodymArray, copying its dimensions and values.
+
+        Args:
+            array (FlodymArray): Source array whose dimensions and values are copied.
+            from_process (Process, optional): Process from which the flow originates. Inherited
+                from ``array`` if it is a Flow and this is not given.
+            to_process (Process, optional): Process to which the flow goes. Inherited from
+                ``array`` if it is a Flow and this is not given.
+            name (str, optional): Name of the returned Flow. Defaults to ``array``'s name.
+
+        Returns:
+            Flow: A Flow instance with copied values and dimensions.
+        """
+        if from_process is None:
+            from_process = getattr(array, "from_process", None)
+        if to_process is None:
+            to_process = getattr(array, "to_process", None)
+        if from_process is None or to_process is None:
+            raise ValueError(
+                "from_process and to_process are required to create a Flow from a "
+                "non-Flow array; they can only be inherited when the source array is a Flow."
+            )
+        return super().from_array(
+            array, name=name, from_process=from_process, to_process=to_process
+        )
 
     @property
     def from_process_id(self) -> int:
