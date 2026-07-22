@@ -236,7 +236,7 @@ class DimensionSet(PydanticBaseModel):
         """Return a copy of the DimensionSet."""
         return self.model_copy(update={"dim_list": copy(self.dim_list)})
 
-    def get_subset(self, dims: tuple = None) -> "DimensionSet":
+    def get_subset(self, dims: Optional[tuple] = None) -> "DimensionSet":
         """Selects :py:class:`Dimension` objects from the object attribute dim_list,
         according to the dims passed, which can be either letters or names.
         Returns a copy if dims are not given.
