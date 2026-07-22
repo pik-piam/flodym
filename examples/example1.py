@@ -80,8 +80,8 @@ processes = {
 }
 
 # %%
-alpha = parameters["alpha"]['single material'].to_df()
-D = parameters["D"]['single material'].to_df()
+alpha = parameters["alpha"]["single material"].to_df()
+D = parameters["D"]["single material"].to_df()
 fig = make_subplots(shared_xaxes=True, rows=2, cols=1, subplot_titles=("alpha", "D"))
 fig.add_trace(px.line(alpha, title="alpha").data[0], row=1, col=1)
 fig.add_trace(px.line(D, title="D").data[0], row=2, col=1)
