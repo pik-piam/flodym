@@ -29,7 +29,7 @@
 # From these equations the system solution follows:
 # * $c(t) = a(t) = D(t)$
 # * $b(t) = \frac{1}{1-\alpha (t)}\cdot D(t)$
-# * $c(t) = \frac{\alpha}{1-\alpha (t)}\cdot D(t)$
+# * $d(t) = \frac{\alpha (t)}{1-\alpha (t)}\cdot D(t)$
 #
 
 # %% [markdown]
@@ -38,20 +38,22 @@
 # %%
 import numpy as np
 import plotly.express as px
+from plotly.subplots import make_subplots
 
 from flodym import (
     Dimension,
     DimensionSet,
-    Process,
-    Parameter,
     FlowDefinition,
     MFASystem,
+    Parameter,
+    Process,
     make_empty_flows,
 )
 
 # %% [markdown]
 # ## 2. Load data
 # Normally data would be loaded from a file / database, but since this is just a small example, the values are input directly into the code below.
+# For the sake of simplicity, the parameters show a linear increase over time.
 
 # %%
 time = Dimension(name="Time", letter="t", items=list(range(1980, 2011)))
@@ -76,6 +78,15 @@ processes = {
     "process 1": Process(name="process 1", id=1),
     "process 2": Process(name="process 2", id=2),
 }
+
+# %%
+alpha = parameters["alpha"]["single material"].to_df()
+D = parameters["D"]["single material"].to_df()
+fig = make_subplots(shared_xaxes=True, rows=2, cols=1, subplot_titles=("alpha", "D"))
+fig.add_trace(px.line(alpha, title="alpha").data[0], row=1, col=1)
+fig.add_trace(px.line(D, title="D").data[0], row=2, col=1)
+fig.update_layout(title_text="Parameters", showlegend=False)
+fig.show(renderer="notebook")
 
 # %% [markdown]
 # ## 3. Define flows and initialise them with zero values.
@@ -141,6 +152,18 @@ fig.show(renderer="notebook")
 flow_b = mfa_example.flows["process 1 => process 2"].to_df()
 flow_b = flow_b.reset_index(level="Elements", drop=True)
 fig = px.line(flow_b, title="process 1 => process 2")
+fig.show(renderer="notebook")
+
+# %%
+flow_c = mfa_example.flows["process 2 => sysenv"].to_df()
+flow_c = flow_c.reset_index(level="Elements", drop=True)
+fig = px.line(flow_c, title="process 2 => sysenv")
+fig.show(renderer="notebook")
+
+# %%
+flow_d = mfa_example.flows["process 2 => process 1"].to_df()
+flow_d = flow_d.reset_index(level="Elements", drop=True)
+fig = px.line(flow_d, title="process 2 => process 1")
 fig.show(renderer="notebook")
 
 # %%
