@@ -600,3 +600,37 @@ class TestToClass:
             array.to_class(dict)
         with pytest.raises(TypeError):
             array.to_class(int)
+
+
+class TestFromArray:
+    """Tests for the from_array classmethod on the base class and its Flow specialization."""
+
+    def test_base_from_array_delegates_to_to_class(self):
+        # from_array delegates to to_class (copy behavior is covered by TestToClass),
+        # so here we only check target type and name override.
+        assert type(Parameter.from_array(numbers)) is Parameter
+        assert Parameter.from_array(numbers).name == numbers.name
+        assert Parameter.from_array(numbers, name="renamed").name == "renamed"
+
+    def test_flow_from_array_with_processes(self):
+        from_process = Process(name="a", id=1)
+        to_process = Process(name="b", id=2)
+        flow = Flow.from_array(numbers, from_process=from_process, to_process=to_process)
+        assert type(flow) is Flow
+        assert flow.from_process is from_process
+        assert flow.to_process is to_process
+        assert_array_equal(flow.values, numbers.values)
+
+    def test_flow_to_flow_inherits_processes(self):
+        from_process = Process(name="a", id=1)
+        to_process = Process(name="b", id=2)
+        original = Flow.from_array(numbers, from_process=from_process, to_process=to_process)
+        copied = Flow.from_array(original)
+        assert copied.from_process is from_process
+        assert copied.to_process is to_process
+
+    def test_missing_processes_on_non_flow_raises(self):
+        with pytest.raises(ValueError):
+            Flow.from_array(numbers)
+        with pytest.raises(ValueError):
+            Flow.from_array(numbers, from_process=Process(name="a", id=1))
