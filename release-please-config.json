@@ -4,11 +4,19 @@
     ".": {}
   },
   "release-type": "python",
+  "pull-request-title-pattern": "chore: release${component} ${version}",
   "include-component-in-tag": false,
   "changelog-sections": [
     { "type": "feat", "section": "🔖 Features", "hidden": false },
     { "type": "fix", "section": "🐛 Bug Fixes", "hidden": false },
     { "type": "docs", "section": "📚 Documentation", "hidden": false },
     { "type": "chore", "section": "🧹 Miscellaneous", "hidden": false }
+  ],
+  "extra-files": [
+    {
+      "path": "uv.lock",
+      "type": "toml",
+      "jsonpath": "$.package[?(@.name.value=='my-package')].version"
+    }
   ]
 }
