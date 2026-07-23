@@ -158,3 +158,36 @@ fig.show(renderer="notebook")
 # Two versions exist: One for pyplot, and one for plotly.
 #
 # Example 2 shows how to use it. Refer to the API reference for details.
+
+# %% [markdown]
+# ## Plotting the system structure as a flow graph
+#
+# While the Sankey plot shows the computed flow *values*, you often want to inspect the *structure*
+# of a model itself: which processes exist, how flows connect them, and where stocks sit.
+# flodym can plot this graph directly from the MFA system definition, so it also works before the
+# system has been computed.
+#
+# There are two backends: one based on plotly, and one based on graphviz.
+# The plotly backend uses a simple layout algorithm. Graphviz generally produces
+# nicer graphics, but it requires the optional `graphviz` package and the Graphviz system binaries to be installed.
+
+# %% [markdown]
+# ### Plotly backend
+#
+# %%
+from flodym.export import PlotlyProcessGraphPlotter
+
+graph_plotter = PlotlyProcessGraphPlotter(mfa=mfa)
+fig = graph_plotter.plot()
+fig.show(renderer="notebook")
+
+# %% [markdown]
+# ### Graphviz backend
+#
+# %%
+from flodym.export import GraphvizProcessGraphPlotter
+
+dot = GraphvizProcessGraphPlotter(mfa=mfa, rankdir="LR").plot()
+dot
+
+# %%

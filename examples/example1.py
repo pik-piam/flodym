@@ -42,12 +42,13 @@ import plotly.express as px
 from flodym import (
     Dimension,
     DimensionSet,
-    Process,
-    Parameter,
     FlowDefinition,
     MFASystem,
+    Parameter,
+    Process,
     make_empty_flows,
 )
+from flodym.export import PlotlyProcessGraphPlotter
 
 # %% [markdown]
 # ## 2. Load data
@@ -129,6 +130,20 @@ class SimpleMFA(MFASystem):
 mfa_example = SimpleMFA(
     dims=dimensions, processes=processes, parameters=parameters, flows=flows, stocks={}
 )
+
+# %% [markdown]
+# At this point, the system is defined, but not yet computed.
+# We can visualize the structure of the system:
+
+# %%
+graph_plotter = PlotlyProcessGraphPlotter(mfa=mfa_example)
+fig = graph_plotter.plot()
+fig.show(renderer="notebook")
+
+# %% [markdown]
+# ## 5. Compute the system and plot the results
+
+# %%
 mfa_example.compute()
 
 # %%

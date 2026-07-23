@@ -44,18 +44,19 @@
 # %%
 import os
 from copy import deepcopy
+
 import numpy as np
 
 from flodym import (
-    MFADefinition,
     DimensionDefinition,
-    ParameterDefinition,
     FlowDefinition,
-    StockDefinition,
+    MFADefinition,
     MFASystem,
+    ParameterDefinition,
     SimpleFlowDrivenStock,
+    StockDefinition,
 )
-from flodym.export import PlotlyArrayPlotter
+from flodym.export import PlotlyArrayPlotter, PlotlyProcessGraphPlotter
 
 # %% [markdown]
 # ## 2. Define the data requirements, flows, stocks and MFA system equations
@@ -204,10 +205,25 @@ mfa_example = SimpleMFA.from_excel(
     parameter_sheets={p.name: p.name for p in parameter_definitions},
 )
 
+
+# %% [markdown]
+# At this point, the system is defined, but not yet computed.
+# We can visualize the structure of the system:
+
+# %%
+graph_plotter = PlotlyProcessGraphPlotter(mfa=mfa_example)
+fig = graph_plotter.plot()
+fig.show(renderer="notebook")
+
+# %% [markdown]
+# ## 5. Compute the system and plot the results
+
+# %%
+
 mfa_example.compute()
 
 # %% [markdown]
-# ## 5. Results
+# ## 6. Results
 # Here we answer the research questions from the beginning of the notebook.
 #
 # **How much copper accumulates in the secondary steel assuming that all available scrap is remelted?**

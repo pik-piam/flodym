@@ -25,12 +25,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-examples = ["jupyter>=1.1.1", "nbformat>=5.10.4"]
+graphviz = ["graphviz>=0.20"]
+examples = ["jupyter>=1.1.1", "nbformat>=5.10.4", "graphviz>=0.20"]
 tests = [
     "pytest>=8.3.2",
     "polyfactory>=2.16.2",
     "ipython>=8.0.0",
     "nbformat>=5.10.4",
+    "graphviz>=0.20",
 ]
 docs = [
     "sphinx>=7.4.0",
