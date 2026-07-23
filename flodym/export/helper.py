@@ -1,7 +1,7 @@
 import re
 import unicodedata
+
 from pydantic import BaseModel as PydanticBaseModel
-from typing import Optional
 
 
 def to_valid_file_name(value: str) -> str:
@@ -23,10 +23,10 @@ class CustomNameDisplayer(PydanticBaseModel):
         display_names: Dictionary for string replacement in figures. All strings not in this dictionary will be displayed as is.
     """
 
-    display_names: Optional[dict] = {}
+    display_names: dict[str, str] = {}
     """Dictionary for string replacement in figures. Keys are strings to be replaced (like process names, etc.), values are strings to display instead.
     All strings not in this dictionary will be displayed as is.
     """
 
-    def display_name(self, name):
+    def display_name(self, name: str) -> str:
         return self.display_names[name] if name in self.display_names else name
