@@ -9,7 +9,7 @@ Two backends are provided:
 - :py:class:`PlotlyProcessGraphPlotter` renders an interactive graph with plotly
   using a basic layout algorithm.
 - :py:class:`GraphvizProcessGraphPlotter` produces a :py:class:`graphviz.Digraph`.
-  Usually results in better graphs than plotly but it requires the ``graphviz`` package 
+  Usually results in better graphs than plotly but it requires the ``graphviz`` package
   (and, for rendering to an image, the Graphviz system binaries).
 """
 
@@ -30,6 +30,7 @@ from .helper import CustomNameDisplayer
 if TYPE_CHECKING:
     import graphviz
 
+
 class ProcessGraphPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
     """Abstract base class for plotting the structure of an MFA system as a directed graph.
 
@@ -42,7 +43,7 @@ class ProcessGraphPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
     """MFA system whose structure is visualized."""
     exclude_processes: list[str] = []
     """Processes that won't show up in the plot; neither will flows to and from them.
-    
+
     Note that the system boundary process ``sysenv`` is shown by default."""
     exclude_flows: list[str] = []
     """Flows that won't show up in the plot."""
@@ -50,7 +51,7 @@ class ProcessGraphPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
     """Whether to include the stocks (attached to their process) in the graph."""
     show_flow_labels: bool = False
     """Whether to label the edges with the flow names.
-    
+
     Off by default, as the default flow names encode the connected processes, which
     would duplicate the information in the graph."""
     process_color: str = "#8ecae6"
@@ -61,7 +62,7 @@ class ProcessGraphPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
     """Color of the flow edges (and of the connections between processes and stocks)."""
     node_colors: dict[str, str] = {}
     """Optional per-node color overrides, mapping a process or stock name to a color string.
-    
+
     Nodes not in this dictionary use ``process_color`` or ``stock_color``, respectively."""
 
     @model_validator(mode="after")
@@ -81,11 +82,19 @@ class ProcessGraphPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
 
     @property
     def shown_processes(self) -> list[Process]:
-        return [process for process in self.mfa.processes.values() if process.name not in self.exclude_processes]
+        return [
+            process
+            for process in self.mfa.processes.values()
+            if process.name not in self.exclude_processes
+        ]
 
     @property
     def _excluded_process_ids(self) -> list[int]:
-        return [process.id for process in self.mfa.processes.values() if process.name in self.exclude_processes]
+        return [
+            process.id
+            for process in self.mfa.processes.values()
+            if process.name in self.exclude_processes
+        ]
 
     @property
     def shown_flows(self) -> list[Flow]:
@@ -95,8 +104,8 @@ class ProcessGraphPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
                 or (flow.from_process_id in self._excluded_process_ids)
                 or (flow.to_process_id in self._excluded_process_ids)
             )
-        return [flow for flow in self.mfa.flows.values() if should_show(flow)]
 
+        return [flow for flow in self.mfa.flows.values() if should_show(flow)]
 
     @property
     def shown_stocks(self) -> list[Stock]:
@@ -189,6 +198,7 @@ class GraphvizProcessGraphPlotter(ProcessGraphPlotter):
             )
         return dot
 
+
 class PlotlyProcessGraphPlotter(ProcessGraphPlotter):
     """Render the structure of an MFA system with plotly.
 
@@ -248,7 +258,7 @@ class PlotlyProcessGraphPlotter(ProcessGraphPlotter):
     def _calculate_process_layers(self) -> dict[int, int]:
         """Assign each shown process to a layer via its longest path from the system boundary.
 
-        MFA systems are generally cyclic (e.g., recycling loops), so a plain 
+        MFA systems are generally cyclic (e.g., recycling loops), so a plain
         longest-path search would not terminate sensibly.
         The layering is therefore computed by first dropping the back-edges that close
         cycles, and the longest path is then computed over the remaining acyclic graph.
@@ -257,7 +267,7 @@ class PlotlyProcessGraphPlotter(ProcessGraphPlotter):
         adjacency: dict[int, list[int]] = defaultdict(list)
         for flow in self.shown_flows:
             u, v = flow.from_process_id, flow.to_process_id
-            if u != v: 
+            if u != v:
                 adjacency[u].append(v)
 
         forward_edges = self._find_forward_edges(ids, adjacency)
@@ -274,7 +284,9 @@ class PlotlyProcessGraphPlotter(ProcessGraphPlotter):
         return layer
 
     @staticmethod
-    def _find_forward_edges(ids: list[int], adjacency: dict[int, list[int]]) -> list[tuple[int, int]]:
+    def _find_forward_edges(
+        ids: list[int], adjacency: dict[int, list[int]]
+    ) -> list[tuple[int, int]]:
         """Return the edges of the graph with cycle-closing back-edges removed.
 
         A depth-first traversal is used. Edges are colored white (unvisited), grey (currently in the stack), or black (fully explored).

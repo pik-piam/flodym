@@ -20,10 +20,12 @@ def test_exclude_process_hides_it_and_its_flows(mfa: MFASystem):
         assert flow.from_process.name != "sysenv"
         assert flow.to_process.name != "sysenv"
 
+
 def test_exclude_flows(mfa: MFASystem):
     flow_name = next(iter(mfa.flows))
     plotter = PlotlyProcessGraphPlotter(mfa=mfa, exclude_flows=[flow_name])
     assert flow_name not in [flow.name for flow in plotter.shown_flows]
+
 
 def test_display_names_applied(mfa: MFASystem):
     plotter = PlotlyProcessGraphPlotter(mfa=mfa, display_names={"shredder": "Shredder Plant"})
