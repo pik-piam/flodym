@@ -16,7 +16,7 @@
     {
       "path": "uv.lock",
       "type": "toml",
-      "jsonpath": "$.package[?(@.name.value=='my-package')].version"
+      "jsonpath": "$.package[?(@.name.value=='flodym')].version"
     }
   ]
 }
