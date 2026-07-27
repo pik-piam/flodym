@@ -34,7 +34,7 @@ This workflow uses a project-local virtual environment (`.venv`) managed by uv.
 
 MFA models mainly consist of mathematical operations on different multi-dimensional arrays.
 
-For example, the generation of different waste types `waste` might be a 3D-array defined over the dimensions time $t$, region $r$ and waste type $w$, and might be calculated from multiplying `end_of_life_products` (defined over time, region, and product type $p$) with a `waste_share` mapping from product type to waste type.
+For example, the generation of different waste types `waste` might be a 3D-array defined over the dimensions time `t`, region `r` and waste type `w`, and might be calculated from multiplying `end_of_life_products` (defined over time, region, and product type `p`) with a `waste_share` mapping from product type to waste type.
 In numpy, the according matrix multiplication can be carried out nicely with the `einsum` function, were an index string indicates the involved dimensions:
 
 ```
