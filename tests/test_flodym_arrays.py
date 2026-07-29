@@ -10,7 +10,7 @@ from numpy.testing import (
 )
 from pydantic_core import ValidationError
 
-from flodym import Dimension, DimensionSet, FlodymArray
+from flodym import Dimension, DimensionSet, FlodymArray, Parameter, Process, StockArray, Flow
 
 places = Dimension(name="place", letter="p", items=["Earth", "Sun", "Moon", "Venus"])
 time = Dimension(name="time", letter="t", items=[1990, 2000, 2010])
@@ -541,3 +541,96 @@ class TestFlodymArrayCopy:
         array_copy.dims.dim_list[0] = animals
         # Original should be unchanged
         assert array.dims[0] == places
+
+
+class TestToClass:
+    """Tests for FlodymArray.to_class() ensuring correct re-tagging and deep copy behavior."""
+
+    def test_returns_exact_target_type(self):
+        array = FlodymArray.full(dims, fill_value=4, name="original")
+        assert type(array.to_class(Parameter)) is Parameter
+        assert type(array.to_class(StockArray)) is StockArray
+
+    def test_subclass_back_to_base(self):
+        param = Parameter(dims=dims, values=values.copy(), name="p")
+        base = param.to_class(FlodymArray)
+        assert type(base) is FlodymArray
+        assert_array_equal(base.values, param.values)
+
+    def test_values_equal_but_independent(self):
+        array = FlodymArray.full(dims, fill_value=4, name="original")
+        result = array.to_class(Parameter)
+        assert_array_equal(result.values, array.values)
+        assert result.values is not array.values
+        result.values[...] = 999
+        assert np.all(array.values == 4)
+
+    def test_dims_deep_copied(self):
+        array = FlodymArray.full(dims, fill_value=4, name="original")
+        result = array.to_class(StockArray)
+        assert result.dims == array.dims
+        assert result.dims is not array.dims
+
+    def test_name_preserved_by_default(self):
+        array = FlodymArray.full(dims, fill_value=4, name="my_array")
+        assert array.to_class(Parameter).name == "my_array"
+
+    def test_name_overridden_when_given(self):
+        array = FlodymArray.full(dims, fill_value=4, name="my_array")
+        assert array.to_class(Parameter, name="renamed").name == "renamed"
+
+    def test_kwargs_forwarded_to_flow(self):
+        from_process = Process(name="a", id=1)
+        to_process = Process(name="b", id=2)
+        flow = numbers.to_class(Flow, from_process=from_process, to_process=to_process)
+        assert type(flow) is Flow
+        assert flow.from_process is from_process
+        assert flow.to_process is to_process
+        assert_array_equal(flow.values, numbers.values)
+
+    def test_round_trip_preserves_values(self):
+        param = numbers.to_class(Parameter)
+        round_tripped = param.to_class(FlodymArray).to_class(Parameter)
+        assert type(round_tripped) is Parameter
+        assert_array_equal(round_tripped.values, numbers.values)
+
+    def test_invalid_target_raises_type_error(self):
+        array = FlodymArray.full(dims, fill_value=4, name="original")
+        with pytest.raises(TypeError):
+            array.to_class(dict)
+        with pytest.raises(TypeError):
+            array.to_class(int)
+
+
+class TestFromArray:
+    """Tests for the from_array classmethod on the base class and its Flow specialization."""
+
+    def test_base_from_array_delegates_to_to_class(self):
+        # from_array delegates to to_class (copy behavior is covered by TestToClass),
+        # so here we only check target type and name override.
+        assert type(Parameter.from_array(numbers)) is Parameter
+        assert Parameter.from_array(numbers).name == numbers.name
+        assert Parameter.from_array(numbers, name="renamed").name == "renamed"
+
+    def test_flow_from_array_with_processes(self):
+        from_process = Process(name="a", id=1)
+        to_process = Process(name="b", id=2)
+        flow = Flow.from_array(numbers, from_process=from_process, to_process=to_process)
+        assert type(flow) is Flow
+        assert flow.from_process is from_process
+        assert flow.to_process is to_process
+        assert_array_equal(flow.values, numbers.values)
+
+    def test_flow_to_flow_inherits_processes(self):
+        from_process = Process(name="a", id=1)
+        to_process = Process(name="b", id=2)
+        original = Flow.from_array(numbers, from_process=from_process, to_process=to_process)
+        copied = Flow.from_array(original)
+        assert copied.from_process is from_process
+        assert copied.to_process is to_process
+
+    def test_missing_processes_on_non_flow_raises(self):
+        with pytest.raises(ValueError):
+            Flow.from_array(numbers)
+        with pytest.raises(ValueError):
+            Flow.from_array(numbers, from_process=Process(name="a", id=1))
