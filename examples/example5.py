@@ -60,17 +60,17 @@ import pandas as pd
 import plotly.express as px
 
 from flodym import (
-    DimensionDefinition,
-    Dimension,
-    DimensionSet,
-    ParameterDefinition,
-    Parameter,
-    FlowDefinition,
-    StockDefinition,
-    MFASystem,
-    MFADefinition,
     DataReader,
+    Dimension,
+    DimensionDefinition,
+    DimensionSet,
+    FlowDefinition,
     InflowDrivenDSM,
+    MFADefinition,
+    MFASystem,
+    Parameter,
+    ParameterDefinition,
+    StockDefinition,
 )
 from flodym.lifetime_models import NormalLifetime
 

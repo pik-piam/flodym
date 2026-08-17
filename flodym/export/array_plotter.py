@@ -1,13 +1,16 @@
-from matplotlib import pyplot as plt
-from plotly import graph_objects as go, colors as plc
-from plotly.subplots import make_subplots
-import numpy as np
-from pydantic import BaseModel as PydanticBaseModel, model_validator, ConfigDict
-from typing import Any, Optional, Union
 from abc import ABC, abstractmethod
+from typing import Any
 
-from ..flodym_arrays import FlodymArray
+import numpy as np
+from matplotlib import pyplot as plt
+from plotly import colors as plc
+from plotly import graph_objects as go
+from plotly.subplots import make_subplots
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import ConfigDict, model_validator
+
 from ..dimensions import DimensionSet
+from ..flodym_arrays import FlodymArray
 from .helper import CustomNameDisplayer
 
 
@@ -23,23 +26,23 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
     """Values to plot, usually a Flow or Stock; sliced or summed along excess dimensions."""
     intra_line_dim: str
     """Name or letter of the dimension along which lines are plotted (if no x_array is given, this is also the x-axis)."""
-    x_array: Optional[Union[FlodymArray, None]] = None
+    x_array: FlodymArray | None = None
     """Array with x-values for each line. Must have the same dimensions as array, or a subset of them. If None, the intra_line_dim is used as x-axis."""
-    subplot_dim: Optional[str] = None
+    subplot_dim: str | None = None
     """Name or letter of the dimension by which to split the array into subplots. If None, the array is plotted in a single subplot."""
-    linecolor_dim: Optional[str] = None
+    linecolor_dim: str | None = None
     """Name or letter of the dimension along which to split the array into several lines within each subplot. If None, only one line is plotted per subplot."""
     fig: Any = None
     """Pre-existing figure to plot on. If None, a new figure is created."""
-    line_label: Optional[str] = None
+    line_label: str | None = None
     """Custom label for the line. If None, the respective item along linecolor_dim is used as label."""
-    xlabel: Optional[str] = None
+    xlabel: str | None = None
     """Custom label for the x-axis. If None, the name of the x_array or intra_line_dim is used."""
-    ylabel: Optional[str] = None
+    ylabel: str | None = None
     """Custom label for the y-axis. If None, the name of the array is used."""
-    title: Optional[str] = None
+    title: str | None = None
     """Title of the plot, if desired."""
-    color_map: Optional[list[str]] = None
+    color_map: list[str] | None = None
     """List of colors to use for the lines. If None, a default color map is used."""
     chart_type: str = "line"
     """Type of chart to plot. Can be 'line', 'scatter', or 'area'."""
@@ -249,7 +252,7 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
 
 
 class PyplotArrayPlotter(ArrayPlotter):
-    fig: Optional[plt.Figure] = None
+    fig: plt.Figure | None = None
     """A previously created pyplot figure object, for adding lines to an existing figure.
     If None, a new figure is created.
     """
@@ -308,7 +311,7 @@ class PyplotArrayPlotter(ArrayPlotter):
 
 
 class PlotlyArrayPlotter(ArrayPlotter):
-    fig: Optional[go.Figure] = None
+    fig: go.Figure | None = None
     """A previously created plotly figure object, for adding lines to an existing figure.
     If None, a new figure is created.
     """
