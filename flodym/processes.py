@@ -1,6 +1,5 @@
-from typing import List
-
-from pydantic import BaseModel as PydanticBaseModel, model_validator
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import model_validator
 
 
 class Process(PydanticBaseModel):
@@ -28,6 +27,6 @@ class Process(PydanticBaseModel):
         return self
 
 
-def make_processes(definitions: List[str]) -> dict[str, Process]:
+def make_processes(definitions: list[str]) -> dict[str, Process]:
     """Create a dictionary of processes from a list of process names."""
     return {name: Process(name=name, id=id) for id, name in enumerate(definitions)}

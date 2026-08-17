@@ -44,16 +44,17 @@
 # %%
 import os
 from copy import deepcopy
+
 import numpy as np
 
 from flodym import (
-    MFADefinition,
     DimensionDefinition,
-    ParameterDefinition,
     FlowDefinition,
-    StockDefinition,
+    MFADefinition,
     MFASystem,
+    ParameterDefinition,
     SimpleFlowDrivenStock,
+    StockDefinition,
 )
 from flodym.export import PlotlyArrayPlotter
 
@@ -279,13 +280,13 @@ fig.show(renderer="notebook")
 mfa_example_a = deepcopy(mfa_example)
 mfa_example_a.parameters["shredder yield"].set_values(np.array([0.92, 0.075, 0.92]))
 mfa_example_a.compute()
-shares_shredder = mfa_example_a.flows["remelting => sysenv"].get_shares_over(("e"))
+shares_shredder = mfa_example_a.flows["remelting => sysenv"].get_shares_over("e")
 
 # %%
 mfa_example_b = deepcopy(mfa_example)
 mfa_example_b.parameters["eol buildings"][...] *= 1.25
 mfa_example_b.compute()
-shares_demolition = mfa_example_b.flows["remelting => sysenv"].get_shares_over(("e"))
+shares_demolition = mfa_example_b.flows["remelting => sysenv"].get_shares_over("e")
 
 # %%
 plotter = PlotlyArrayPlotter(
