@@ -220,14 +220,18 @@ class PlotlyProcessGraphPlotter(ProcessGraphPlotter):
     node_size: float = 26.0
     """Marker size of the process and stock nodes."""
 
-    def plot(self, process_positions: Optional[dict[int, tuple[float | int, float | int]]] = None, stock_positions: Optional[dict[str, tuple[float | int, float | int]]] = None) -> go.Figure:
+    def plot(
+        self,
+        process_positions: Optional[dict[int, tuple[float | int, float | int]]] = None,
+        stock_positions: Optional[dict[str, tuple[float | int, float | int]]] = None,
+    ) -> go.Figure:
         """Create the graph figure.
-        
+
         Args:
 
             process_positions: Optional dictionary mapping process IDs to (x, y) positions.
             stock_positions: Optional dictionary mapping stock names to (x, y) positions.
-        
+
         """
         if process_positions is None:
             process_positions = self._calculate_process_positions()

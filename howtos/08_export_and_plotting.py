@@ -185,14 +185,7 @@ fig.show(renderer="notebook")
 # with custom node positions specified:
 
 # %%
-custom_process_positions = {
-    0: (0, 0),
-    1: (1, -1),
-    2: (2, -1),
-    3: (3, 0),
-    4: (4, 0),
-    5: (5, 0)
-}
+custom_process_positions = {0: (0, 0), 1: (1, -1), 2: (2, -1), 3: (3, 0), 4: (4, 0), 5: (5, 0)}
 custom_stock_positions = {
     "landfills": (4, 1),
     "slag piles": (5, 1),
