@@ -16,7 +16,7 @@
 # # Example 3. Dynamic Stock modelling
 # *ODYM example by Stefan Pauliuk, adapted for flodym*
 #
-# flodym defines the class DynamicStockModel for handling the inflow-driven and stock driven model of in-use stocks, see methods section 3 of the [uni-freiburg industrial ecology course](http://www.teaching.industrialecology.uni-freiburg.de/). In this notebook, we show how the dynamic stock model is used in the flodym framework. Other methods of the dynamic_stock_modelling class can be used in a similar way.
+# flodym defines the classes [InflowDrivenDSM](api.stocks.html#flodym.InflowDrivenDSM) and [StockDrivenDSM](api.stocks.html#flodym.StockDrivenDSM) for handling the inflow-driven and stock-driven model of in-use stocks, see methods section 3 of the [uni-freiburg industrial ecology course](http://www.teaching.industrialecology.uni-freiburg.de/). In this notebook, we show how the dynamic stock model is used in the flodym framework. Other methods of the dynamic_stock_modelling class can be used in a similar way.
 #
 # The research question is:
 # * How large are in-use stocks of steel in selected countries?
