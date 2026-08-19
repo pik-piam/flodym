@@ -7,6 +7,9 @@ Stocks and Lifetime Models
 .. autopydantic_model:: flodym::SimpleFlowDrivenStock
    :inherited-members: BaseModel
 
+.. autopydantic_model:: flodym::DynamicStockModel
+   :inherited-members: BaseModel
+
 .. autopydantic_model:: flodym::InflowDrivenDSM
    :inherited-members: BaseModel
 
