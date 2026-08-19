@@ -2,7 +2,7 @@
 including flow-driven stocks and dynamic (lifetime-based) stocks.
 """
 
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 import numpy as np
 from scipy.linalg import solve_triangular
 from pydantic import BaseModel as PydanticBaseModel, ConfigDict, model_validator
@@ -170,9 +170,12 @@ class SimpleFlowDrivenStock(Stock):
         self.stock.values[...] = np.cumsum(net_inflow_whole_period, axis=0)
 
 
-class DynamicStockModel(Stock):
-    """Parent class for dynamic stock models, which are based on stocks having a specified
+class _DynamicStockModel(Stock, ABC):
+    """Abstract base class for dynamic stock models, which are based on stocks having a specified
     lifetime (distribution).
+
+    Not part of the public API; use the concrete subclasses
+    :py:class:`flodym.InflowDrivenDSM` or :py:class:`flodym.StockDrivenDSM` instead.
     """
 
     lifetime_model: Union[LifetimeModel, type]
@@ -247,7 +250,7 @@ class DynamicStockModel(Stock):
         return base + "\n  Lifetime model: " + lifetime_model
 
 
-class InflowDrivenDSM(DynamicStockModel):
+class InflowDrivenDSM(_DynamicStockModel):
     """Inflow driven model.
     Given inflow and lifetime distribution calculate stocks and outflows.
     """
@@ -272,7 +275,7 @@ class InflowDrivenDSM(DynamicStockModel):
         self.stock.values[...] = self._stock_by_cohort.sum(axis=1)
 
 
-class StockDrivenDSM(DynamicStockModel):
+class StockDrivenDSM(_DynamicStockModel):
     """Stock driven model.
     Given total stock and lifetime distribution, calculate inflows and outflows.
     This involves solving the lower triangular equation system A*x=b,

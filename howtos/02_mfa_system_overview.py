@@ -46,7 +46,7 @@
 # A [Stock](api.stocks.html#flodym.Stock) is defined by its inflow, outflow and amount of stock.
 # In flodym, each of these quantities is represented by a FlodymArray object.
 # Sometimes, lifetime distributions can be used to calculate the outflow from the stock.
-# This is handled by the [DynamicStockModel class](api.stocks.html#flodym.DynamicStockModel) in flodym.
+# This is handled by the [InflowDrivenDSM](api.stocks.html#flodym.InflowDrivenDSM) and [StockDrivenDSM](api.stocks.html#flodym.StockDrivenDSM) classes in flodym.
 # Details are given in the respective HOWTO.
 #
 # ### DimensionSet
