@@ -2,17 +2,19 @@
 including flow-driven stocks and dynamic (lifetime-based) stocks.
 """
 
-from abc import ABC, abstractmethod
-import numpy as np
-from scipy.linalg import solve_triangular
-from pydantic import BaseModel as PydanticBaseModel, ConfigDict, model_validator
-from typing import Optional, Union, TypeVar, Type
 import logging
+from abc import ABC, abstractmethod
+from typing import TypeVar
 
-from .processes import Process
-from .flodym_arrays import StockArray
+import numpy as np
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import ConfigDict, model_validator
+from scipy.linalg import solve_triangular
+
 from .dimensions import DimensionSet
+from .flodym_arrays import StockArray
 from .lifetime_models import LifetimeModel, UnevenTimeDim
+from .processes import Process
 
 StockSubtype = TypeVar("StockSubtype", bound="Stock")
 
@@ -31,15 +33,15 @@ class Stock(PydanticBaseModel):
 
     dims: DimensionSet
     """Dimensions of the stock, inflow, and outflow arrays. Time must be the first dimension."""
-    stock: Optional[StockArray] = None
+    stock: StockArray | None = None
     """Accumulation of the stock"""
-    inflow: Optional[StockArray] = None
+    inflow: StockArray | None = None
     """Inflow into the stock"""
-    outflow: Optional[StockArray] = None
+    outflow: StockArray | None = None
     """Outflow from the stock"""
-    name: Optional[str] = "unnamed"
+    name: str | None = "unnamed"
     """Name of the stock"""
-    process: Optional[Process] = None
+    process: Process | None = None
     """Process the stock is associated with, if any. Needed for example for the mass balance."""
     time_letter: str = "t"
     """Letter of the time dimension in the dimensions set, to make sure it's the first one."""
@@ -99,7 +101,7 @@ class Stock(PydanticBaseModel):
         """ID of the process the stock is associated with."""
         return self.process.id
 
-    def to_stock_type(self, desired_stock_type: Type[StockSubtype], **kwargs) -> StockSubtype:
+    def to_stock_type(self, desired_stock_type: type[StockSubtype], **kwargs) -> StockSubtype:
         """Return an object of a new stock type with values and dimensions the same as the original.
         `**kwargs` can be used to pass additional model attributes as required by the desired stock
         type, if these are not contained in the original stock type.
@@ -178,7 +180,7 @@ class _DynamicStockModel(Stock, ABC):
     :py:class:`flodym.InflowDrivenDSM` or :py:class:`flodym.StockDrivenDSM` instead.
     """
 
-    lifetime_model: Union[LifetimeModel, type]
+    lifetime_model: LifetimeModel | type
     """Lifetime model, which contains the lifetime distribution function.
     Can be input either as a LifetimeModel subclass, or as an instance of a
     LifetimeModel subclass. For available subclasses, see `flodym.lifetime_models`.

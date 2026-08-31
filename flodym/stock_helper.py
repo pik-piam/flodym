@@ -1,9 +1,9 @@
 """Home to helper functions for the `Stock` class."""
 
-from .processes import Process
-from .flodym_array_helper import flodym_array_stack
 from .dimensions import Dimension, DimensionSet
+from .flodym_array_helper import flodym_array_stack
 from .mfa_definition import StockDefinition
+from .processes import Process
 from .stocks import Stock
 
 

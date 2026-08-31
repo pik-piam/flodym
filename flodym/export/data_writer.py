@@ -1,10 +1,10 @@
 import logging
 import os
 import pickle
-from typing import Callable
+from collections.abc import Callable
 
-from ..mfa_system import MFASystem
 from ..flodym_arrays import FlodymArray
+from ..mfa_system import MFASystem
 from .helper import to_valid_file_name
 
 
