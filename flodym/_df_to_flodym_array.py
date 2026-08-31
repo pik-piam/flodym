@@ -1,7 +1,8 @@
 import itertools
 import logging
 import sys
-from typing import TYPE_CHECKING, Iterable, Literal, Optional
+from collections.abc import Iterable
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pandas as pd
@@ -16,7 +17,7 @@ if TYPE_CHECKING:
 class FlodymDataFormat(PydanticBaseModel):
     type: Literal["long", "wide"]
     value_column: str = "value"
-    columns_dim: Optional[str] = None
+    columns_dim: str | None = None
 
 
 class DataFrameToFlodymDataConverter:
@@ -46,7 +47,7 @@ class DataFrameToFlodymDataConverter:
             self.target_values = self.get_target_values()
         except Exception as e:
             # add error context to all errors to ease debugging
-            raise type(e)(f"{self.error_context} {str(e)}").with_traceback(sys.exc_info()[2])
+            raise type(e)(f"{self.error_context} {e!s}").with_traceback(sys.exc_info()[2])
 
     def get_target_values(self) -> np.ndarray:
         logging.debug(
@@ -64,13 +65,13 @@ class DataFrameToFlodymDataConverter:
         return values
 
     def _reset_non_default_index(self):
-        if isinstance(self.df.index, pd.MultiIndex):
-            self.df.reset_index(inplace=True)
-        elif self.df.index.name is not None:
-            self.df.reset_index(inplace=True)
-        elif self.df.index.dtype != np.int64:
-            self.df.reset_index(inplace=True)
-        elif self.df.index.min() >= 1700 and self.df.index.max() <= 2300:
+        if (
+            isinstance(self.df.index, pd.MultiIndex)
+            or self.df.index.name is not None
+            or self.df.index.dtype != np.int64
+            or self.df.index.min() >= 1700
+            and self.df.index.max() <= 2300
+        ):
             self.df.reset_index(inplace=True)
 
     def _strip_whitespace_from_df(self):

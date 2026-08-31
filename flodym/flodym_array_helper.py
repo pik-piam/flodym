@@ -1,7 +1,7 @@
 """Home to helper functions for working with `FlodymArray`s."""
 
-from .flodym_arrays import FlodymArray
 from .dimensions import Dimension
+from .flodym_arrays import FlodymArray
 
 
 def flodym_array_stack(

@@ -1,10 +1,10 @@
-from typing import Callable
+from collections.abc import Callable
 
-from .processes import Process
-from .flodym_arrays import Flow
 from .dimensions import DimensionSet
-from .mfa_definition import FlowDefinition
+from .flodym_arrays import Flow
 from .flow_naming import process_names_with_arrow
+from .mfa_definition import FlowDefinition
+from .processes import Process
 
 
 def make_empty_flows(
