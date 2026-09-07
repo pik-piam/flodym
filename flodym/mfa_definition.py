@@ -7,14 +7,15 @@ and put it into ojects with the desired properties.
 import numpy as np
 import pandas as pd
 from pydantic import (
-    BaseModel as PydanticBaseModel,
     AliasChoices,
+    ConfigDict,
     Field,
     field_validator,
     model_validator,
-    ConfigDict,
 )
-from typing import List, Optional, Dict
+from pydantic import (
+    BaseModel as PydanticBaseModel,
+)
 
 
 class DimensionDefinition(PydanticBaseModel):
@@ -70,7 +71,7 @@ class FlowDefinition(DefinitionWithDimLetters):
     """Process from which the flow originates."""
     to_process_name: str = Field(validation_alias=AliasChoices("to_process_name", "to_process"))
     """Process to which the flow goes."""
-    name_override: Optional[str] = None
+    name_override: str | None = None
     """Optional name for the flow. Will be generated from the connecting process names if not provided."""
 
 
@@ -79,7 +80,7 @@ class StockDefinition(DefinitionWithDimLetters):
 
     name: str = "undefined stock"
     """Name of the stock."""
-    process_name: Optional[str] = Field(
+    process_name: str | None = Field(
         default=None, validation_alias=AliasChoices("process", "process_name")
     )
     """Name of the process to which the stock is connected."""
@@ -87,11 +88,11 @@ class StockDefinition(DefinitionWithDimLetters):
     """Letter of the time dimension, to ensure it's the first appearing in dim_letters."""
     subclass: type
     """type of stock. Can be any found in :py:data:`flodym.stocks`."""
-    lifetime_model_class: Optional[type] = None
+    lifetime_model_class: type | None = None
     """Lifetime model used for the stock. Only needed if type is not simple_flow_driven.
     Available lifetime models can be found in :py:data:`flodym.lifetime_models`.
     """
-    solver: Optional[str] = "manual"
+    solver: str | None = "manual"
     """Algorithm to use for solving the equation system in the stock-driven DSM.
     Options are: "manual" (default), which uses
     an own python implementation, and "lapack", which calls the lapack trtrs routine via scipy.
@@ -131,15 +132,15 @@ class MFADefinition(PydanticBaseModel):
 
     model_config = ConfigDict(protected_namespaces=())
 
-    dimensions: List[DimensionDefinition]
+    dimensions: list[DimensionDefinition]
     """List of definitions of dimensions used in the model."""
-    processes: List[str]
+    processes: list[str]
     """List of process names used in the model."""
-    flows: List[FlowDefinition]
+    flows: list[FlowDefinition]
     """List of definitions of flows used in the model."""
-    stocks: List[StockDefinition] = []
+    stocks: list[StockDefinition] = []
     """List of definitions of stocks used in the model."""
-    parameters: List[ParameterDefinition] = []
+    parameters: list[ParameterDefinition] = []
     """List of definitions of parameters used in the model."""
 
     @model_validator(mode="after")
@@ -152,7 +153,7 @@ class MFADefinition(PydanticBaseModel):
                 raise ValueError(f"Undefined dimension in {item}")
         return self
 
-    def to_dfs(self) -> Dict[str, pd.DataFrame]:
+    def to_dfs(self) -> dict[str, pd.DataFrame]:
         """Export definition information to pandas DataFrames.
         Column names are the field names, rows have the lists.
 

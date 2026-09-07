@@ -21,7 +21,7 @@
 # Here, inflow and/or outflow are given, and the stock is calculated as the cumulative sum over time of inflow minus outflow.
 
 # %%
-from flodym import SimpleFlowDrivenStock, Dimension, DimensionSet
+from flodym import Dimension, DimensionSet, SimpleFlowDrivenStock
 
 dims = DimensionSet(
     dim_list=[
@@ -67,6 +67,7 @@ my_stock.check_stock_balance()
 
 # %%
 import numpy as np
+
 from flodym import InflowDrivenDSM, NormalLifetime, Parameter
 
 my_dsm = InflowDrivenDSM(

@@ -1,15 +1,16 @@
 """Home to various lifetime models, for use in dynamic stock modelling."""
 
 from abc import abstractmethod
+from typing import Any
+
 import numpy as np
 import scipy.stats
-from pydantic import BaseModel as PydanticBaseModel, model_validator
-from typing import Any
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import model_validator
 
 # from scipy.special import gammaln, logsumexp
 # from scipy.optimize import root_scalar
-
-from .dimensions import DimensionSet, Dimension
+from .dimensions import Dimension, DimensionSet
 from .flodym_arrays import FlodymArray
 from .gauss_lobatto import gl_nodes, gl_weights
 
@@ -168,7 +169,7 @@ class LifetimeModel(PydanticBaseModel):
         """
         self._check_prms_set()
         quad_eta, quad_weights = self.get_quad_points_and_weights()
-        for m in range(0, self._n_t):  # cohort index
+        for m in range(self._n_t):  # cohort index
             for eta, weight in zip(list(quad_eta), list(quad_weights)):
                 t = self._remaining_ages(m, eta)
                 self._sf[m::, m, ...] += weight * self._survival_by_year_id(t, m)
@@ -216,7 +217,7 @@ class LifetimeModel(PydanticBaseModel):
         """
         t_diag_indices = np.diag_indices(self._n_t) + (slice(None),) * len(self._shape_no_t)
         self._pdf[t_diag_indices] = 1.0 - np.moveaxis(self.sf.diagonal(0, 0, 1), -1, 0)
-        for m in range(0, self._n_t):
+        for m in range(self._n_t):
             self._pdf[m + 1 :, m, ...] = -1 * np.diff(self.sf[m:, m, ...], axis=0)
 
 
