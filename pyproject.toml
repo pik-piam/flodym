@@ -74,3 +74,18 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # Ignore a few import errors in howtos
 "howtos/*" = ["E402", "F401"]
+
+[tool.ty.rules]
+invalid-argument-type = "ignore"
+unresolved-attribute = "ignore"
+unsupported-operator = "ignore"
+not-subscriptable = "ignore"
+invalid-assignment = "ignore"
+invalid-method-override = "ignore"
+invalid-return-type = "ignore"
+pydantic-discarded-extra-argument = "ignore"
+invalid-parameter-default = "ignore"
+no-matching-overload = "ignore"
+not-iterable = "ignore"
+missing-argument = "ignore"
+too-many-positional-arguments = "ignore"
