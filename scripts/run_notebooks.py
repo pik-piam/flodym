@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import argparse
 import os
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 NOTEBOOK_FOLDERS = ("examples", "howtos")
@@ -37,17 +37,16 @@ def run_notebook(
     repo_root: Path = REPO_ROOT,
     inplace: bool = False,
 ) -> subprocess.CompletedProcess[str]:
-    run_kwargs = dict(
-        cwd=notebook_path.parent,
-        capture_output=True,
-        text=True,
-        check=False,
-        env=_build_execution_env(repo_root),
-    )
+    run_kwargs = {
+        "cwd": notebook_path.parent,
+        "capture_output": True,
+        "text": True,
+        "env": _build_execution_env(repo_root),
+    }
 
     if notebook_path.suffix == ".py":
         command = [sys.executable, str(notebook_path)]
-        return subprocess.run(command, **run_kwargs)
+        return subprocess.run(command, check=False, **run_kwargs)
 
     if notebook_path.suffix != ".ipynb":
         raise ValueError(f"Unsupported notebook source format: {notebook_path}")
@@ -64,11 +63,11 @@ def run_notebook(
 
     if inplace:
         command.extend(["--inplace", str(notebook_path)])
-        return subprocess.run(command, **run_kwargs)
+        return subprocess.run(command, check=True, **run_kwargs)
 
     with tempfile.TemporaryDirectory() as output_dir:
         command.extend(["--output-dir", output_dir, str(notebook_path)])
-        return subprocess.run(command, **run_kwargs)
+        return subprocess.run(command, check=True, **run_kwargs)
 
 
 def main(argv: list[str] | None = None) -> int:

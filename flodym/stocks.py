@@ -2,19 +2,23 @@
 including flow-driven stocks and dynamic (lifetime-based) stocks.
 """
 
-from abc import ABC, abstractmethod
-import numpy as np
-from scipy.linalg import solve_triangular
-from pydantic import BaseModel as PydanticBaseModel, ConfigDict, model_validator
-from typing import Optional, Union, TypeVar, Type
 import logging
+from abc import ABC, abstractmethod
+from typing import TypeVar
 
-from .processes import Process
-from .flodym_arrays import StockArray
+import numpy as np
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import ConfigDict, model_validator
+from scipy.linalg import solve_triangular
+
 from .dimensions import DimensionSet
+from .flodym_arrays import StockArray
 from .lifetime_models import LifetimeModel, UnevenTimeDim
+from .processes import Process
 
 StockSubtype = TypeVar("StockSubtype", bound="Stock")
+
+logger = logging.getLogger(__name__)
 
 
 class Stock(PydanticBaseModel):
@@ -31,15 +35,15 @@ class Stock(PydanticBaseModel):
 
     dims: DimensionSet
     """Dimensions of the stock, inflow, and outflow arrays. Time must be the first dimension."""
-    stock: Optional[StockArray] = None
+    stock: StockArray | None = None
     """Accumulation of the stock"""
-    inflow: Optional[StockArray] = None
+    inflow: StockArray | None = None
     """Inflow into the stock"""
-    outflow: Optional[StockArray] = None
+    outflow: StockArray | None = None
     """Outflow from the stock"""
-    name: Optional[str] = "unnamed"
+    name: str | None = "unnamed"
     """Name of the stock"""
-    process: Optional[Process] = None
+    process: Process | None = None
     """Process the stock is associated with, if any. Needed for example for the mass balance."""
     time_letter: str = "t"
     """Letter of the time dimension in the dimensions set, to make sure it's the first one."""
@@ -99,7 +103,7 @@ class Stock(PydanticBaseModel):
         """ID of the process the stock is associated with."""
         return self.process.id
 
-    def to_stock_type(self, desired_stock_type: Type[StockSubtype], **kwargs) -> StockSubtype:
+    def to_stock_type(self, desired_stock_type: type[StockSubtype], **kwargs) -> StockSubtype:
         """Return an object of a new stock type with values and dimensions the same as the original.
         `**kwargs` can be used to pass additional model attributes as required by the desired stock
         type, if these are not contained in the original stock type.
@@ -161,7 +165,7 @@ class SimpleFlowDrivenStock(Stock):
             np.max(np.abs(self.inflow.values)) < 1e-10
             and np.max(np.abs(self.outflow.values)) < 1e-10
         ):
-            logging.warning("Inflow and Outflow are zero. This will lead to a zero stock.")
+            logger.warning("Inflow and Outflow are zero. This will lead to a zero stock.")
 
     def compute(self):
         self._check_needed_arrays()
@@ -178,7 +182,7 @@ class DynamicStockModel(Stock, ABC):
     :py:class:`flodym.InflowDrivenDSM` or :py:class:`flodym.StockDrivenDSM`, which implement inflow-driven and stock-driven dynamic stock models, respectively.
     """
 
-    lifetime_model: Union[LifetimeModel, type]
+    lifetime_model: LifetimeModel | type
     """Lifetime model, which contains the lifetime distribution function.
     Can be input either as a LifetimeModel subclass, or as an instance of a
     LifetimeModel subclass. For available subclasses, see `flodym.lifetime_models`.
@@ -196,7 +200,7 @@ class DynamicStockModel(Stock, ABC):
     def init_lifetime_model(self):
         if isinstance(self.lifetime_model, type):
             if not issubclass(self.lifetime_model, LifetimeModel):
-                raise ValueError("lifetime_model must be a subclass of LifetimeModel.")
+                raise TypeError("lifetime_model must be a subclass of LifetimeModel.")
             self.lifetime_model = self.lifetime_model(dims=self.dims, time_letter=self.time_letter)
         elif self.lifetime_model.dims.letters != self.dims.letters:
             raise ValueError("Lifetime model dimensions do not match stock dimensions.")
@@ -207,7 +211,7 @@ class DynamicStockModel(Stock, ABC):
 
     @property
     def _n_t(self) -> int:
-        return list(self.shape)[0]
+        return next(iter(self.shape))
 
     @property
     def _shape_cohort(self) -> tuple:
@@ -258,7 +262,7 @@ class InflowDrivenDSM(DynamicStockModel):
     def _check_needed_arrays(self):
         super()._check_needed_arrays()
         if np.allclose(self.inflow.values, np.zeros(self.shape)):
-            logging.warning("Inflow is zero. This will lead to a zero stock and outflow.")
+            logger.warning("Inflow is zero. This will lead to a zero stock and outflow.")
 
     def compute(self):
         """Determine stocks and outflows and store values in the class instance."""
@@ -298,7 +302,7 @@ class StockDrivenDSM(DynamicStockModel):
     def _check_needed_arrays(self):
         super()._check_needed_arrays()
         if np.allclose(self.stock.values, np.zeros(self.shape)):
-            logging.warning("Stock is zero. This will lead to a zero inflow and outflow.")
+            logger.warning("Stock is zero. This will lead to a zero inflow and outflow.")
 
     def compute(self):
         """Determine inflows and outflows and store values in the class instance."""

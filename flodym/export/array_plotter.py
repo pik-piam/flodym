@@ -1,13 +1,16 @@
-from matplotlib import pyplot as plt
-from plotly import graph_objects as go, colors as plc
-from plotly.subplots import make_subplots
-import numpy as np
-from pydantic import BaseModel as PydanticBaseModel, model_validator, ConfigDict
-from typing import Any, Optional, Union
 from abc import ABC, abstractmethod
+from typing import Any
 
-from ..flodym_arrays import FlodymArray
+import numpy as np
+from matplotlib import pyplot as plt
+from plotly import colors as plc
+from plotly import graph_objects as go
+from plotly.subplots import make_subplots
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import ConfigDict, model_validator
+
 from ..dimensions import DimensionSet
+from ..flodym_arrays import FlodymArray
 from .helper import CustomNameDisplayer
 
 
@@ -23,23 +26,23 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
     """Values to plot, usually a Flow or Stock; sliced or summed along excess dimensions."""
     intra_line_dim: str
     """Name or letter of the dimension along which lines are plotted (if no x_array is given, this is also the x-axis)."""
-    x_array: Optional[Union[FlodymArray, None]] = None
+    x_array: FlodymArray | None = None
     """Array with x-values for each line. Must have the same dimensions as array, or a subset of them. If None, the intra_line_dim is used as x-axis."""
-    subplot_dim: Optional[str] = None
+    subplot_dim: str | None = None
     """Name or letter of the dimension by which to split the array into subplots. If None, the array is plotted in a single subplot."""
-    linecolor_dim: Optional[str] = None
+    linecolor_dim: str | None = None
     """Name or letter of the dimension along which to split the array into several lines within each subplot. If None, only one line is plotted per subplot."""
     fig: Any = None
     """Pre-existing figure to plot on. If None, a new figure is created."""
-    line_label: Optional[str] = None
+    line_label: str | None = None
     """Custom label for the line. If None, the respective item along linecolor_dim is used as label."""
-    xlabel: Optional[str] = None
+    xlabel: str | None = None
     """Custom label for the x-axis. If None, the name of the x_array or intra_line_dim is used."""
-    ylabel: Optional[str] = None
+    ylabel: str | None = None
     """Custom label for the y-axis. If None, the name of the array is used."""
-    title: Optional[str] = None
+    title: str | None = None
     """Title of the plot, if desired."""
-    color_map: Optional[list[str]] = None
+    color_map: list[str] | None = None
     """List of colors to use for the lines. If None, a default color map is used."""
     chart_type: str = "line"
     """Type of chart to plot. Can be 'line', 'scatter', or 'area'."""
@@ -104,14 +107,13 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
                 + f"Excess dimensions: {', '.join(excess_dims)}; "
                 + "Sum or slice array along these dims before passing it to the plotter."
             )
-        if self.x_array is not None:
-            if any(d not in self.array.dims for d in self.x_array.dims.names):
-                raise ValueError(
-                    "x_array must have the same dimensions as array, or a subset of them."
-                )
+        if self.x_array is not None and any(
+            d not in self.array.dims for d in self.x_array.dims.names
+        ):
+            raise ValueError("x_array must have the same dimensions as array, or a subset of them.")
         return self
 
-    def plot(self, save_path: str = None, do_show: bool = False):
+    def plot(self, save_path: str | None = None, do_show: bool = False):
         self._fill_fig()
         subplots_array, subplots_x_array = self._prepare_arrays()
         self._plot_all_subplots(subplots_array, subplots_x_array)
@@ -208,7 +210,7 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
         return nx, ny
 
     @abstractmethod
-    def save(self, save_path: str = None):
+    def save(self, save_path: str | None = None):
         raise NotImplementedError
 
     @abstractmethod
@@ -249,12 +251,12 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
 
 
 class PyplotArrayPlotter(ArrayPlotter):
-    fig: Optional[plt.Figure] = None
+    fig: plt.Figure | None = None
     """A previously created pyplot figure object, for adding lines to an existing figure.
     If None, a new figure is created.
     """
 
-    def save(self, save_path: str = None, **kwargs):
+    def save(self, save_path: str | None = None, **kwargs):
         self.fig.savefig(save_path, **kwargs)
 
     def show(self):
@@ -308,14 +310,14 @@ class PyplotArrayPlotter(ArrayPlotter):
 
 
 class PlotlyArrayPlotter(ArrayPlotter):
-    fig: Optional[go.Figure] = None
+    fig: go.Figure | None = None
     """A previously created plotly figure object, for adding lines to an existing figure.
     If None, a new figure is created.
     """
     color_map: list[str] = plc.qualitative.Dark24
     """List of colors to use for the lines. If None, a default color map is used."""
 
-    def save(self, save_path: str = None, **kwargs):
+    def save(self, save_path: str | None = None, **kwargs):
         self.fig.write_image(save_path, **kwargs)
 
     def show(self):
@@ -361,29 +363,29 @@ class PlotlyArrayPlotter(ArrayPlotter):
     def add_line(self, i_subplot, x, y, prev_y, label, i_line):
         i_color = i_line + self.n_previous_lines
         color = self.color_map[i_color]
-        common_dict = dict(
-            x=x,
-            y=y,
-            name=label,
-            showlegend=i_subplot == 0 and not self.suppress_legend,
-        )
+        common_dict = {
+            "x": x,
+            "y": y,
+            "name": label,
+            "showlegend": i_subplot == 0 and not self.suppress_legend,
+        }
         if self.chart_type == "line":
             trace = go.Scatter(
                 **common_dict,
-                line=dict(color=color, dash=self.line_type),
+                line={"color": color, "dash": self.line_type},
             )
         elif self.chart_type == "scatter":
             trace = go.Scatter(
                 **common_dict,
                 mode="markers",
-                marker=dict(color=color),
+                marker={"color": color},
             )
         elif self.chart_type == "area":
             trace = go.Scatter(
                 **common_dict,
                 fill="tozeroy" if prev_y is None else "tonexty",
                 fillcolor=color,
-                line=dict(color=color),
+                line={"color": color},
             )
         else:
             raise ValueError("chart_type must be either 'line' or 'scatter'.")

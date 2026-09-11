@@ -73,7 +73,9 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 # Ignore a few import errors in howtos
-"howtos/*" = ["E402", "F401"]
+# B018: A bare trailing expression is the intended way to display a value in a notebook cell
+"howtos/*" = ["E402", "F401", "B018"]
+"examples/*" = ["B018"]
 
 [tool.ty.rules]
 invalid-argument-type = "ignore"

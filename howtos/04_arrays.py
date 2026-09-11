@@ -18,6 +18,7 @@
 
 # %%
 import numpy as np
+
 from flodym import Dimension, DimensionSet, FlodymArray
 
 # Create a dimension set

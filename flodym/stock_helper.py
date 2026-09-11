@@ -1,9 +1,9 @@
 """Home to helper functions for the `Stock` class."""
 
-from .processes import Process
-from .flodym_array_helper import flodym_array_stack
 from .dimensions import Dimension, DimensionSet
+from .flodym_array_helper import flodym_array_stack
 from .mfa_definition import StockDefinition
+from .processes import Process
 from .stocks import Stock
 
 
@@ -43,12 +43,12 @@ def make_empty_stocks(
             except KeyError:
                 raise KeyError(f"Process {stock_definition.process_name} not in processes.")
 
-        init_args = dict(
-            dims=dim_subset,
-            time_letter=stock_definition.time_letter,
-            name=stock_definition.name,
-            process=process,
-        )
+        init_args = {
+            "dims": dim_subset,
+            "time_letter": stock_definition.time_letter,
+            "name": stock_definition.name,
+            "process": process,
+        }
         if stock_definition.lifetime_model_class is not None:
             lifetime_model = stock_definition.lifetime_model_class(
                 dims=dim_subset, time_letter=stock_definition.time_letter

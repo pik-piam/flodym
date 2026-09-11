@@ -1,4 +1,5 @@
 from copy import deepcopy
+from typing import ClassVar
 
 import numpy as np
 import pandas as pd
@@ -10,7 +11,7 @@ from numpy.testing import (
 )
 from pydantic_core import ValidationError
 
-from flodym import Dimension, DimensionSet, FlodymArray, Parameter, Process, StockArray, Flow
+from flodym import Dimension, DimensionSet, FlodymArray, Flow, Parameter, Process, StockArray
 
 places = Dimension(name="place", letter="p", items=["Earth", "Sun", "Moon", "Venus"])
 time = Dimension(name="time", letter="t", items=[1990, 2000, 2010])
@@ -249,7 +250,7 @@ class TestFlodymArrayIndexing:
     # 3 products in subset
     subset_products = Dimension(name="sub_products", letter="y", items=["P1", "P2", "P3"])
     # mask includes one material, subset regions and subset products
-    mask = {"m": "M1", "r": subset_regions, "p": subset_products}
+    mask: ClassVar[dict] = {"m": "M1", "r": subset_regions, "p": subset_products}
 
     def test_get_item(self):
         cats_on_the_moon = space_animals["Moon"]["cat"]

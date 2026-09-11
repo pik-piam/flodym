@@ -4,26 +4,28 @@ Specific MFA models can be built that inherit from this class.
 """
 
 import logging
-from typing import Dict, Optional
 
 import numpy as np
-from pydantic import BaseModel as PydanticBaseModel, ConfigDict
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import ConfigDict
 
-from .mfa_definition import MFADefinition
-from .dimensions import DimensionSet
-from .flodym_arrays import Flow, Parameter, FlodymArray
-from .stocks import Stock
-from .processes import Process, make_processes
-from .stock_helper import make_empty_stocks
-from .flow_helper import make_empty_flows
 from .data_reader import (
-    DataReader,
     CompoundDataReader,
     CSVDimensionReader,
     CSVParameterReader,
+    DataReader,
     ExcelDimensionReader,
     ExcelParameterReader,
 )
+from .dimensions import DimensionSet
+from .flodym_arrays import FlodymArray, Flow, Parameter
+from .flow_helper import make_empty_flows
+from .mfa_definition import MFADefinition
+from .processes import Process, make_processes
+from .stock_helper import make_empty_stocks
+from .stocks import Stock
+
+logger = logging.getLogger(__name__)
 
 
 class MFASystem(PydanticBaseModel):
@@ -47,19 +49,19 @@ class MFASystem(PydanticBaseModel):
 
     dims: DimensionSet
     """All dimensions that appear in the MFA system."""
-    parameters: Dict[str, Parameter]
+    parameters: dict[str, Parameter]
     """The parameters of the MFA system,
     as a dictionary mapping the names of the MFA system parameters to the parameters themselves.
     """
-    processes: Dict[str, Process]
+    processes: dict[str, Process]
     """The processes of the MFA system, i.e. the nodes of the MFA system graph,
     as a dictionary mapping the names of the MFA system processes to the processes themselves.
     """
-    flows: Dict[str, Flow]
+    flows: dict[str, Flow]
     """The flows of the MFA system, i.e. the edges of the MFA system graph,
     as a dictionary mapping the names of the MFA system flows to the flows themselves.
     """
-    stocks: Optional[Dict[str, Stock]] = {}
+    stocks: dict[str, Stock] | None = {}
     """The stocks of the MFA system,
     as a dictionary mapping the names of the MFA system stocks to the stocks themselves.
     """
@@ -126,8 +128,8 @@ class MFASystem(PydanticBaseModel):
         definition: MFADefinition,
         dimension_files: dict,
         parameter_files: dict,
-        dimension_sheets: dict = None,
-        parameter_sheets: dict = None,
+        dimension_sheets: dict | None = None,
+        parameter_sheets: dict | None = None,
         allow_missing_parameter_values: bool = False,
         allow_extra_parameter_values: bool = False,
     ):
@@ -171,7 +173,7 @@ class MFASystem(PydanticBaseModel):
             "The compute method must be implemented in a subclass of MFASystem if it is to be used."
         )
 
-    def get_new_array(self, dim_letters: tuple = None, **kwargs) -> FlodymArray:
+    def get_new_array(self, dim_letters: tuple | None = None, **kwargs) -> FlodymArray:
         """get a new FlodymArray object.
 
         :param dim_letters: tuple of dimension letters to include in the new FlodymArray. If None, all dimensions are included.
@@ -180,7 +182,7 @@ class MFASystem(PydanticBaseModel):
         dims = self.dims.get_subset(dim_letters)
         return FlodymArray(dims=dims, **kwargs)
 
-    def _get_mass_balance(self) -> Dict[str, FlodymArray]:
+    def _get_mass_balance(self) -> dict[str, FlodymArray]:
         """Calculate the mass balance for each process, by summing the contributions.
         - all flows entering (positive)
         - all flows leaving (negative)
@@ -190,7 +192,7 @@ class MFASystem(PydanticBaseModel):
             A dictionary mapping process names to their mass balance contributions.
             Each contribution is a :py:class:`flodym.FlodymArray` with dimensions common to all contributions.
         """
-        contributions = {p: [] for p in self.processes.keys()}
+        contributions = {p: [] for p in self.processes}
 
         # Add flows to mass balance
         for flow in self.flows.values():
@@ -239,7 +241,7 @@ class MFASystem(PydanticBaseModel):
                 Else, logs a warning and continues execution.
         """
 
-        logging.info(f"Checking mass balance of {self.__class__.__name__} object...")
+        logger.info(f"Checking mass balance of {self.__class__.__name__} object...")
 
         if tolerance is None:
             tolerance = 100 * self._absolute_float_precision
@@ -253,10 +255,13 @@ class MFASystem(PydanticBaseModel):
             message = "Mass balance check failed for the following processes: " + info
             self._error_or_warning(message, raise_error)
         else:
-            logging.info("Success - Mass balance is consistent!")
+            logger.info("Success - Mass balance is consistent!")
 
     def check_flows(
-        self, exceptions: list[str] = [], raise_error: bool = False, verbose: bool = False
+        self,
+        exceptions: list[str] | None = None,
+        raise_error: bool = False,
+        verbose: bool = False,
     ):
         """Check if all flows are non-negative.
 
@@ -272,7 +277,8 @@ class MFASystem(PydanticBaseModel):
             Warning: If a negative flow is found and `raise_error` is False.
             Info: If no negative flows are found.
         """
-        logging.info("Checking flows for NaN and negative values...")
+        exceptions = exceptions or []
+        logger.info("Checking flows for NaN and negative values...")
 
         flows = [f for f in self.flows.values() if f.name not in exceptions]
         flows = [
@@ -303,11 +309,11 @@ class MFASystem(PydanticBaseModel):
                 all_good = False
 
         if all_good:
-            logging.info(f"Success - No negative flows or NaN values in {self.__class__.__name__}")
+            logger.info(f"Success - No negative flows or NaN values in {self.__class__.__name__}")
 
     @staticmethod
     def _error_or_warning(message: str, raise_error: bool) -> bool:
         if raise_error:
             raise ValueError(message)
         else:
-            logging.warning(message)
+            logger.warning(message)
