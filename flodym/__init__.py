@@ -18,6 +18,7 @@ from flodym.processes import Process as Process, make_processes as make_processe
 from flodym.stocks import (
     Stock as Stock,
     SimpleFlowDrivenStock as SimpleFlowDrivenStock,
+    DynamicStockModel as DynamicStockModel,
     InflowDrivenDSM as InflowDrivenDSM,
     StockDrivenDSM as StockDrivenDSM,
 )
