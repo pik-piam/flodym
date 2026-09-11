@@ -107,14 +107,13 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
                 + f"Excess dimensions: {', '.join(excess_dims)}; "
                 + "Sum or slice array along these dims before passing it to the plotter."
             )
-        if self.x_array is not None:
-            if any(d not in self.array.dims for d in self.x_array.dims.names):
-                raise ValueError(
-                    "x_array must have the same dimensions as array, or a subset of them."
-                )
+        if self.x_array is not None and any(
+            d not in self.array.dims for d in self.x_array.dims.names
+        ):
+            raise ValueError("x_array must have the same dimensions as array, or a subset of them.")
         return self
 
-    def plot(self, save_path: str = None, do_show: bool = False):
+    def plot(self, save_path: str | None = None, do_show: bool = False):
         self._fill_fig()
         subplots_array, subplots_x_array = self._prepare_arrays()
         self._plot_all_subplots(subplots_array, subplots_x_array)
@@ -211,7 +210,7 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
         return nx, ny
 
     @abstractmethod
-    def save(self, save_path: str = None):
+    def save(self, save_path: str | None = None):
         raise NotImplementedError
 
     @abstractmethod
@@ -257,7 +256,7 @@ class PyplotArrayPlotter(ArrayPlotter):
     If None, a new figure is created.
     """
 
-    def save(self, save_path: str = None, **kwargs):
+    def save(self, save_path: str | None = None, **kwargs):
         self.fig.savefig(save_path, **kwargs)
 
     def show(self):
@@ -318,7 +317,7 @@ class PlotlyArrayPlotter(ArrayPlotter):
     color_map: list[str] = plc.qualitative.Dark24
     """List of colors to use for the lines. If None, a default color map is used."""
 
-    def save(self, save_path: str = None, **kwargs):
+    def save(self, save_path: str | None = None, **kwargs):
         self.fig.write_image(save_path, **kwargs)
 
     def show(self):
@@ -364,29 +363,29 @@ class PlotlyArrayPlotter(ArrayPlotter):
     def add_line(self, i_subplot, x, y, prev_y, label, i_line):
         i_color = i_line + self.n_previous_lines
         color = self.color_map[i_color]
-        common_dict = dict(
-            x=x,
-            y=y,
-            name=label,
-            showlegend=i_subplot == 0 and not self.suppress_legend,
-        )
+        common_dict = {
+            "x": x,
+            "y": y,
+            "name": label,
+            "showlegend": i_subplot == 0 and not self.suppress_legend,
+        }
         if self.chart_type == "line":
             trace = go.Scatter(
                 **common_dict,
-                line=dict(color=color, dash=self.line_type),
+                line={"color": color, "dash": self.line_type},
             )
         elif self.chart_type == "scatter":
             trace = go.Scatter(
                 **common_dict,
                 mode="markers",
-                marker=dict(color=color),
+                marker={"color": color},
             )
         elif self.chart_type == "area":
             trace = go.Scatter(
                 **common_dict,
                 fill="tozeroy" if prev_y is None else "tonexty",
                 fillcolor=color,
-                line=dict(color=color),
+                line={"color": color},
             )
         else:
             raise ValueError("chart_type must be either 'line' or 'scatter'.")

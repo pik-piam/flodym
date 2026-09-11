@@ -7,6 +7,8 @@ from ..flodym_arrays import FlodymArray
 from ..mfa_system import MFASystem
 from .helper import to_valid_file_name
 
+logger = logging.getLogger(__name__)
+
 
 def export_mfa_to_pickle(mfa: MFASystem, export_path: str):
     """Write an MFA system to a pickle file.
@@ -16,8 +18,9 @@ def export_mfa_to_pickle(mfa: MFASystem, export_path: str):
         export_path (str): The path to the file where the MFA system should be saved.
     """
     dict_out = convert_to_dict(mfa)
-    pickle.dump(dict_out, open(export_path, "wb"))
-    logging.info(f"Data saved to {export_path}")
+    with open(export_path, "wb") as f:
+        pickle.dump(dict_out, f)
+    logger.info(f"Data saved to {export_path}")
 
 
 def export_mfa_flows_to_csv(mfa: MFASystem, export_directory: str):
@@ -32,7 +35,7 @@ def export_mfa_flows_to_csv(mfa: MFASystem, export_directory: str):
     for flow_name, flow in mfa.flows.items():
         path_out = os.path.join(export_directory, f"{to_valid_file_name(flow_name)}.csv")
         flow.to_df().to_csv(path_out)
-    logging.info(f"Data saved in directory {export_directory}")
+    logger.info(f"Data saved in directory {export_directory}")
 
 
 def export_mfa_stocks_to_csv(mfa: MFASystem, export_directory: str, with_in_and_out: bool = False):
@@ -56,7 +59,7 @@ def export_mfa_stocks_to_csv(mfa: MFASystem, export_directory: str, with_in_and_
                 export_directory, f"{to_valid_file_name(stock_name)}_{attribute_name}.csv"
             )
             df.to_csv(path_out)
-    logging.info(f"Data saved in directory {export_directory}")
+    logger.info(f"Data saved in directory {export_directory}")
 
 
 def convert_to_dict(mfa: MFASystem, type: str = "numpy") -> dict:

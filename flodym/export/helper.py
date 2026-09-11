@@ -29,4 +29,4 @@ class CustomNameDisplayer(PydanticBaseModel):
     """
 
     def display_name(self, name: str) -> str:
-        return self.display_names[name] if name in self.display_names else name
+        return self.display_names.get(name, name)

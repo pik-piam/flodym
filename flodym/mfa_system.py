@@ -25,6 +25,8 @@ from .processes import Process, make_processes
 from .stock_helper import make_empty_stocks
 from .stocks import Stock
 
+logger = logging.getLogger(__name__)
+
 
 class MFASystem(PydanticBaseModel):
     """An MFASystem class handles the calculation of a Material Flow Analysis system, which
@@ -126,8 +128,8 @@ class MFASystem(PydanticBaseModel):
         definition: MFADefinition,
         dimension_files: dict,
         parameter_files: dict,
-        dimension_sheets: dict = None,
-        parameter_sheets: dict = None,
+        dimension_sheets: dict | None = None,
+        parameter_sheets: dict | None = None,
         allow_missing_parameter_values: bool = False,
         allow_extra_parameter_values: bool = False,
     ):
@@ -171,7 +173,7 @@ class MFASystem(PydanticBaseModel):
             "The compute method must be implemented in a subclass of MFASystem if it is to be used."
         )
 
-    def get_new_array(self, dim_letters: tuple = None, **kwargs) -> FlodymArray:
+    def get_new_array(self, dim_letters: tuple | None = None, **kwargs) -> FlodymArray:
         """get a new FlodymArray object.
 
         :param dim_letters: tuple of dimension letters to include in the new FlodymArray. If None, all dimensions are included.
@@ -190,7 +192,7 @@ class MFASystem(PydanticBaseModel):
             A dictionary mapping process names to their mass balance contributions.
             Each contribution is a :py:class:`flodym.FlodymArray` with dimensions common to all contributions.
         """
-        contributions = {p: [] for p in self.processes.keys()}
+        contributions = {p: [] for p in self.processes}
 
         # Add flows to mass balance
         for flow in self.flows.values():
@@ -239,7 +241,7 @@ class MFASystem(PydanticBaseModel):
                 Else, logs a warning and continues execution.
         """
 
-        logging.info(f"Checking mass balance of {self.__class__.__name__} object...")
+        logger.info(f"Checking mass balance of {self.__class__.__name__} object...")
 
         if tolerance is None:
             tolerance = 100 * self._absolute_float_precision
@@ -253,10 +255,13 @@ class MFASystem(PydanticBaseModel):
             message = "Mass balance check failed for the following processes: " + info
             self._error_or_warning(message, raise_error)
         else:
-            logging.info("Success - Mass balance is consistent!")
+            logger.info("Success - Mass balance is consistent!")
 
     def check_flows(
-        self, exceptions: list[str] = [], raise_error: bool = False, verbose: bool = False
+        self,
+        exceptions: list[str] | None = None,
+        raise_error: bool = False,
+        verbose: bool = False,
     ):
         """Check if all flows are non-negative.
 
@@ -272,7 +277,8 @@ class MFASystem(PydanticBaseModel):
             Warning: If a negative flow is found and `raise_error` is False.
             Info: If no negative flows are found.
         """
-        logging.info("Checking flows for NaN and negative values...")
+        exceptions = exceptions or []
+        logger.info("Checking flows for NaN and negative values...")
 
         flows = [f for f in self.flows.values() if f.name not in exceptions]
         flows = [
@@ -303,11 +309,11 @@ class MFASystem(PydanticBaseModel):
                 all_good = False
 
         if all_good:
-            logging.info(f"Success - No negative flows or NaN values in {self.__class__.__name__}")
+            logger.info(f"Success - No negative flows or NaN values in {self.__class__.__name__}")
 
     @staticmethod
     def _error_or_warning(message: str, raise_error: bool) -> bool:
         if raise_error:
             raise ValueError(message)
         else:
-            logging.warning(message)
+            logger.warning(message)

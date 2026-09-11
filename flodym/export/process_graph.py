@@ -73,7 +73,7 @@ class ProcessGraphPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
         for flow in self.exclude_flows:
             if flow not in self.mfa.flows:
                 raise ValueError(f"Flow {flow} given in exclude_flows not in MFASystem.")
-        for node in self.node_colors.keys():
+        for node in self.node_colors:
             if node not in self.mfa.processes and node not in self.mfa.stocks:
                 raise ValueError(
                     f"Node {node} given in node_colors not in MFASystem processes or stocks."
@@ -264,8 +264,8 @@ class PlotlyProcessGraphPlotter(ProcessGraphPlotter):
             title=self.title,
             showlegend=False,
             plot_bgcolor="white",
-            xaxis=dict(visible=False),
-            yaxis=dict(visible=False, scaleanchor="x", scaleratio=1),
+            xaxis={"visible": False},
+            yaxis={"visible": False, "scaleanchor": "x", "scaleratio": 1},
         )
         return fig
 
@@ -401,9 +401,9 @@ class PlotlyProcessGraphPlotter(ProcessGraphPlotter):
                 x=label_x,
                 y=label_y,
                 mode="markers+text" if self.show_flow_labels else "markers",
-                marker=dict(size=1, color="rgba(0,0,0,0)"),
+                marker={"size": 1, "color": "rgba(0,0,0,0)"},
                 text=label_text if self.show_flow_labels else None,
-                textfont=dict(size=10, color=self.flow_color),
+                textfont={"size": 10, "color": self.flow_color},
                 textposition="middle center",
                 hovertext=label_text,
                 hoverinfo="text",
@@ -425,7 +425,7 @@ class PlotlyProcessGraphPlotter(ProcessGraphPlotter):
                 y0=py,
                 x1=sx,
                 y1=sy,
-                line=dict(color=self.flow_color, width=1.5, dash="dash"),
+                line={"color": self.flow_color, "width": 1.5, "dash": "dash"},
             )
 
     def _add_nodes(
@@ -458,12 +458,12 @@ class PlotlyProcessGraphPlotter(ProcessGraphPlotter):
                 x=x_vals,
                 y=y_vals,
                 mode="markers+text",
-                marker=dict(
-                    size=self.node_size,
-                    symbol=marker_symbol,
-                    color=colors,
-                    line=dict(color=self.flow_color, width=1),
-                ),
+                marker={
+                    "size": self.node_size,
+                    "symbol": marker_symbol,
+                    "color": colors,
+                    "line": {"color": self.flow_color, "width": 1},
+                },
                 text=labels,
                 textposition=textposition,
                 hovertext=labels,

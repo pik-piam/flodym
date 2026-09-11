@@ -18,6 +18,8 @@ from .processes import Process
 
 StockSubtype = TypeVar("StockSubtype", bound="Stock")
 
+logger = logging.getLogger(__name__)
+
 
 class Stock(PydanticBaseModel):
     """Stock objects are components of an MFASystem, where materials can accumulate over time.
@@ -163,7 +165,7 @@ class SimpleFlowDrivenStock(Stock):
             np.max(np.abs(self.inflow.values)) < 1e-10
             and np.max(np.abs(self.outflow.values)) < 1e-10
         ):
-            logging.warning("Inflow and Outflow are zero. This will lead to a zero stock.")
+            logger.warning("Inflow and Outflow are zero. This will lead to a zero stock.")
 
     def compute(self):
         self._check_needed_arrays()
@@ -198,7 +200,7 @@ class DynamicStockModel(Stock, ABC):
     def init_lifetime_model(self):
         if isinstance(self.lifetime_model, type):
             if not issubclass(self.lifetime_model, LifetimeModel):
-                raise ValueError("lifetime_model must be a subclass of LifetimeModel.")
+                raise TypeError("lifetime_model must be a subclass of LifetimeModel.")
             self.lifetime_model = self.lifetime_model(dims=self.dims, time_letter=self.time_letter)
         elif self.lifetime_model.dims.letters != self.dims.letters:
             raise ValueError("Lifetime model dimensions do not match stock dimensions.")
@@ -209,7 +211,7 @@ class DynamicStockModel(Stock, ABC):
 
     @property
     def _n_t(self) -> int:
-        return list(self.shape)[0]
+        return next(iter(self.shape))
 
     @property
     def _shape_cohort(self) -> tuple:
@@ -260,7 +262,7 @@ class InflowDrivenDSM(DynamicStockModel):
     def _check_needed_arrays(self):
         super()._check_needed_arrays()
         if np.allclose(self.inflow.values, np.zeros(self.shape)):
-            logging.warning("Inflow is zero. This will lead to a zero stock and outflow.")
+            logger.warning("Inflow is zero. This will lead to a zero stock and outflow.")
 
     def compute(self):
         """Determine stocks and outflows and store values in the class instance."""
@@ -300,7 +302,7 @@ class StockDrivenDSM(DynamicStockModel):
     def _check_needed_arrays(self):
         super()._check_needed_arrays()
         if np.allclose(self.stock.values, np.zeros(self.shape)):
-            logging.warning("Stock is zero. This will lead to a zero inflow and outflow.")
+            logger.warning("Stock is zero. This will lead to a zero inflow and outflow.")
 
     def compute(self):
         """Determine inflows and outflows and store values in the class instance."""

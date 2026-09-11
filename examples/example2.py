@@ -239,9 +239,9 @@ plotter = PlotlyArrayPlotter(
     title="Absolute copper and manganese flows in remelted steel",
 )
 fig = plotter.plot()
-fig.update_traces(visible="legendonly", selector=dict(name="Fe"))
+fig.update_traces(visible="legendonly", selector={"name": "Fe"})
 fig.update_layout(
-    title=dict(text=f"{fig.layout.title.text}<br><sup><i>{legend_hint_subtitle}</i></sup>")
+    title={"text": f"{fig.layout.title.text}<br><sup><i>{legend_hint_subtitle}</i></sup>"}
 )
 fig.show(renderer="notebook")
 
@@ -256,9 +256,9 @@ plotter = PlotlyArrayPlotter(
     title="Share of copper and manganese in secondary steel",
 )
 fig = plotter.plot()
-fig.update_traces(visible="legendonly", selector=dict(name="Fe"))
+fig.update_traces(visible="legendonly", selector={"name": "Fe"})
 fig.update_layout(
-    title=dict(text=f"{fig.layout.title.text}<br><sup><i>{legend_hint_subtitle}</i></sup>")
+    title={"text": f"{fig.layout.title.text}<br><sup><i>{legend_hint_subtitle}</i></sup>"}
 )
 fig.show(renderer="notebook")
 

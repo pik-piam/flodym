@@ -105,7 +105,7 @@ class FlodymArray(PydanticBaseModel):
 
     def _check_value_format(self) -> None:
         if not isinstance(self.values, np.ndarray):
-            raise ValueError("Values must be a numpy array.")
+            raise TypeError("Values must be a numpy array.")
         if self.values.shape != self.dims.shape:
             raise ValueError(
                 f"Values passed to {self.__class__.__name__} must have the same shape as the DimensionSet.\n"
@@ -303,7 +303,7 @@ class FlodymArray(PydanticBaseModel):
         Returns:
             np.ndarray: The values of the FlodymArray cast to the new dimensions.
         """
-        assert all([d in target_dims.letters for d in self.dims.letters]), (
+        assert all(d in target_dims.letters for d in self.dims.letters), (
             "Target of cast must contain all "
             f"dimensions of the object! Source dims '{self.dims.string}' are not all contained in target dims "
             f"'{target_dims.string}'. Maybe use sum_values_to() before casting"
@@ -496,7 +496,7 @@ class FlodymArray(PydanticBaseModel):
         return FlodymArray(dims=dims_out, values=values_out)
 
     def apply(
-        self, func: Callable, kwargs: dict = {}, inplace: bool = False
+        self, func: Callable, kwargs: dict|None = None, inplace: bool = False
     ) -> Optional["FlodymArray"]:
         """Apply a function to the values of the FlodymArray.
 
@@ -508,6 +508,7 @@ class FlodymArray(PydanticBaseModel):
         Returns:
             FlodymArray: FlodymArray object with the values transformed by the function.
         """
+        kwargs = kwargs or {}
         if inplace:
             self.values = func(self.values, **kwargs)
             return None
@@ -733,11 +734,11 @@ class FlodymArray(PydanticBaseModel):
 
     def get_shares_over(self, dim_letters: tuple) -> "FlodymArray":
         """Get shares of the FlodymArray along a tuple of dimensions, indicated by letter."""
-        assert all([d in self.dims.letters for d in dim_letters]), (
+        assert all(d in self.dims.letters for d in dim_letters), (
             "Dimensions to get share of must be in the object"
         )
 
-        if all([d in dim_letters for d in self.dims.letters]):
+        if all(d in dim_letters for d in self.dims.letters):
             return self / self.sum_values()
 
         return self / self.sum_over(sum_over_dims=dim_letters)
@@ -825,7 +826,7 @@ class SubArrayHandler:
 
     def _get_key_single_item(self, item) -> str:
         if isinstance(item, slice):
-            raise ValueError(
+            raise TypeError(
                 "Numpy indexing of FlodymArrays is not supported. Details are given in the FlodymArray class "
                 "docstring."
             )

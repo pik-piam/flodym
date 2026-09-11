@@ -86,7 +86,7 @@ relative_std = 0.3
 
 
 # %%
-years = sorted(list(steel_consumption["Time"].unique()))
+years = sorted(steel_consumption["Time"].unique())
 dimensions = DimensionSet(
     dim_list=[
         Dimension(letter="t", name="Time", dtype=np.int64, items=years),

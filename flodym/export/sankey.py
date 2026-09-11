@@ -29,7 +29,7 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
 
     @model_validator(mode="after")
     def check_dims(self):
-        for dim_letter in self.slice_dict.keys():
+        for dim_letter in self.slice_dict:
             if dim_letter not in self.mfa.dims.letters:
                 raise ValueError(f"Dimension {dim_letter} given in slice_dict not in DimensionSet.")
         return self
@@ -72,7 +72,7 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
             else:
                 fallback_str = ""
             if not isinstance(self.node_color_dict[p.name], str):
-                raise ValueError(
+                raise TypeError(
                     f"Color for process {p.name}{fallback_str} must be a string, not a {type(self.node_color_dict[p.name])}."
                 )
         return self
@@ -82,7 +82,7 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
         if isinstance(color, str):
             return
         elif not isinstance(color, tuple):
-            raise ValueError(
+            raise TypeError(
                 f"In flow_color_dict, the value for flow {f.name}{fallback_str} must be either a color string or a tuple of dimension name and color list"
             )
 
@@ -95,7 +95,7 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
                 f"In flow_color_dict, first element of color tuple for flow {f.name}{fallback_str} must be a dimension in flow {f.name}"
             )
         if not isinstance(color[1], list):
-            raise ValueError(
+            raise TypeError(
                 f"In flow_color_dict, second element of color tuple for flow {f.name}{fallback_str} must be a list of colors"
             )
         if len(color[1]) < self.mfa.dims[color[0]].len:

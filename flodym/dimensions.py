@@ -41,7 +41,7 @@ class Dimension(PydanticBaseModel):
     @model_validator(mode="after")
     def items_have_datatype(self):
         """If a datatype is specified, check that all items have this datatype."""
-        if self.dtype is not None and any([not isinstance(i, self.dtype) for i in self.items]):
+        if self.dtype is not None and any(not isinstance(i, self.dtype) for i in self.items):
             raise ValueError("All items must have the same datatype as specified in dtype.")
         return self
 
@@ -259,7 +259,7 @@ class DimensionSet(PydanticBaseModel):
         Returns:
             None if inplace=True, otherwise a new DimensionSet with the new dimensions added
         """
-        if not all([dim.letter not in self.letters for dim in added_dims]):
+        if not all(dim.letter not in self.letters for dim in added_dims):
             raise ValueError(
                 "DimensionSet already contains one or more of the dimensions to be added."
             )

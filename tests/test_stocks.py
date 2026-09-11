@@ -161,7 +161,7 @@ def test_lifetime_quadrature():
     # Long lifetimes:
     # Inflow at start/end of time step under/overestimate stock by half a year,
     # others should work well
-    inflow, stocks = get_stocks_by_quadrature(mean=30, std=10)
+    _inflow, stocks = get_stocks_by_quadrature(mean=30, std=10)
     targets = {
         "ltm_start": 29.5,
         "ltm_end": 30.5,
@@ -175,7 +175,7 @@ def test_lifetime_quadrature():
 
     # Short lifetimes:
     # only high-order quadrature should work well
-    inflow, stocks = get_stocks_by_quadrature(mean=0.3, std=0.1)
+    _inflow, stocks = get_stocks_by_quadrature(mean=0.3, std=0.1)
     for name, stock in stocks.items():
         if name == "ltm_6":
             assert np.abs(stock["automotive"].values[-1] - 0.3) < eps
