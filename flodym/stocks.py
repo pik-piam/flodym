@@ -172,12 +172,12 @@ class SimpleFlowDrivenStock(Stock):
         self.stock.values[...] = np.cumsum(net_inflow_whole_period, axis=0)
 
 
-class _DynamicStockModel(Stock, ABC):
+class DynamicStockModel(Stock, ABC):
     """Abstract base class for dynamic stock models, which are based on stocks having a specified
     lifetime (distribution).
 
-    Not part of the public API; use the concrete subclasses
-    :py:class:`flodym.InflowDrivenDSM` or :py:class:`flodym.StockDrivenDSM` instead.
+    Use the concrete subclasses
+    :py:class:`flodym.InflowDrivenDSM` or :py:class:`flodym.StockDrivenDSM`, which implement inflow-driven and stock-driven dynamic stock models, respectively.
     """
 
     lifetime_model: LifetimeModel | type
@@ -252,7 +252,7 @@ class _DynamicStockModel(Stock, ABC):
         return base + "\n  Lifetime model: " + lifetime_model
 
 
-class InflowDrivenDSM(_DynamicStockModel):
+class InflowDrivenDSM(DynamicStockModel):
     """Inflow driven model.
     Given inflow and lifetime distribution calculate stocks and outflows.
     """
@@ -277,7 +277,7 @@ class InflowDrivenDSM(_DynamicStockModel):
         self.stock.values[...] = self._stock_by_cohort.sum(axis=1)
 
 
-class StockDrivenDSM(_DynamicStockModel):
+class StockDrivenDSM(DynamicStockModel):
     """Stock driven model.
     Given total stock and lifetime distribution, calculate inflows and outflows.
     This involves solving the lower triangular equation system A*x=b,

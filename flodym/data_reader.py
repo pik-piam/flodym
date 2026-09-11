@@ -1,6 +1,8 @@
 """Home to some data readers."""
 
 from abc import ABC, abstractmethod
+from os import PathLike
+from typing import Dict, List
 
 import pandas as pd
 
@@ -14,23 +16,25 @@ class DataReader:
     use in the MFASystem model.
     """
 
-    def read_dimensions(self, dimension_definitions: list[DimensionDefinition]) -> DimensionSet:
+    def read_dimensions(self, dimension_definitions: List[DimensionDefinition]) -> DimensionSet:
         """Method to read data for multiple dimensions, by looping over `read_dimension`."""
         dimensions = [self.read_dimension(definition) for definition in dimension_definitions]
         return DimensionSet(dim_list=dimensions)
 
     @abstractmethod
-    def read_dimension(self, dimension_definition: DimensionDefinition) -> Dimension:
+    def read_dimension(self, definition: DimensionDefinition) -> Dimension:
         """Required method to read data for a single dimension,
         corresponding to the dimension definition."""
+        pass
 
     @abstractmethod
     def read_parameter_values(self, parameter_name: str, dims: DimensionSet) -> Parameter:
         """Required method to read data for a particular parameter."""
+        pass
 
     def read_parameters(
-        self, parameter_definitions: list[ParameterDefinition], dims: DimensionSet
-    ) -> dict[str, Parameter]:
+        self, parameter_definitions: List[ParameterDefinition], dims: DimensionSet
+    ) -> Dict[str, Parameter]:
         """Method to read data for a list of parameters, by looping over `read_parameter_values`."""
         parameters = {}
         for parameter_definition in parameter_definitions:
@@ -48,7 +52,7 @@ class DimensionReader(ABC):
     read_dimensions = DataReader.read_dimensions
 
     @abstractmethod
-    def read_dimension(self, dimension_definition: DimensionDefinition) -> Dimension:
+    def read_dimension(self, definition: DimensionDefinition) -> Dimension:
         pass
 
 
@@ -64,7 +68,7 @@ class CSVDimensionReader(DimensionReader):
 
     def __init__(
         self,
-        dimension_files,
+        dimension_files: dict[str, str | PathLike[str]],
         **read_csv_kwargs,
     ):
         self.dimension_files = dimension_files
@@ -84,22 +88,22 @@ class ExcelDimensionReader(DimensionReader):
     Args:
         dimension_files (dict): {dimension_name: file_path, ...}
         dimension_sheets (dict): {dimension_name: sheet_name, ...}
-        ead_excel_kwargs: Additional keyword arguments passed to pandas.read_excel.
+        read_excel_kwargs: Additional keyword arguments passed to pandas.read_excel.
             The default is {"header": None}. Not encouraged to use, since it may not lead to the
             intended DataFrame format. Sticking to recommended excel file format is preferred.
     """
 
     def __init__(
         self,
-        dimension_files: dict,
-        dimension_sheets: dict = None,
+        dimension_files: dict[str, str | PathLike[str]],
+        dimension_sheets: dict[str, str] | None = None,
         **read_excel_kwargs,
     ):
         self.dimension_files = dimension_files
         self.dimension_sheets = dimension_sheets
         self.read_excel_kwargs = read_excel_kwargs
 
-    def read_dimension(self, definition: DimensionDefinition):
+    def read_dimension(self, definition: DimensionDefinition) -> Dimension:
         path = self.dimension_files[definition.name]
         # load data from excel
         if self.dimension_sheets is None:
@@ -144,18 +148,18 @@ class CSVParameterReader(ParameterReader):
 
     def __init__(
         self,
-        parameter_files: dict = None,
+        parameter_files: dict[str, str | PathLike[str]],
         allow_missing_values: bool = False,
         allow_extra_values: bool = False,
         **read_csv_kwargs,
     ):
-        self.parameter_filenames = parameter_files  # {parameter_name: file_path, ...}
+        self.parameter_filenames = parameter_files
         self.allow_missing_values = allow_missing_values
         self.allow_extra_values = allow_extra_values
         self.read_csv_kwargs = read_csv_kwargs
 
-    def read_parameter_values(self, parameter_name: str, dims):
-        if self.parameter_filenames is None:
+    def read_parameter_values(self, parameter_name: str, dims: DimensionSet) -> Parameter:
+        if not self.parameter_filenames:
             raise ValueError("No parameter files specified.")
         datasets_path = self.parameter_filenames[parameter_name]
         data = pd.read_csv(datasets_path, **self.read_csv_kwargs)
@@ -194,8 +198,8 @@ class ExcelParameterReader(ParameterReader):
 
     def __init__(
         self,
-        parameter_files: dict,
-        parameter_sheets: dict = None,
+        parameter_files: dict[str, str | PathLike[str]],
+        parameter_sheets: dict[str, str] | None = None,
         allow_missing_values: bool = False,
         allow_extra_values: bool = False,
         **read_excel_kwargs,
@@ -206,7 +210,7 @@ class ExcelParameterReader(ParameterReader):
         self.allow_extra_values = allow_extra_values
         self.read_excel_kwargs = read_excel_kwargs
 
-    def read_parameter_values(self, parameter_name: str, dims):
+    def read_parameter_values(self, parameter_name: str, dims: DimensionSet) -> Parameter:
         datasets_path = self.parameter_files[parameter_name]
         if self.parameter_sheets is None:
             sheet_name = None
@@ -235,8 +239,8 @@ class CompoundDataReader(DataReader):
         self.dimension_reader = dimension_reader
         self.parameter_reader = parameter_reader
 
-    def read_dimension(self, dimension_definition: DimensionDefinition) -> Dimension:
-        return self.dimension_reader.read_dimension(dimension_definition)
+    def read_dimension(self, definition: DimensionDefinition) -> Dimension:
+        return self.dimension_reader.read_dimension(definition)
 
     def read_parameter_values(self, parameter_name: str, dims: DimensionSet) -> Parameter:
         return self.parameter_reader.read_parameter_values(parameter_name, dims)
