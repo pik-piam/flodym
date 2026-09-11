@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.1.0](https://github.com/pik-piam/flodym/compare/v1.0.0...v1.1.0) (2026-09-11)
+
+
+### 🔖 Features
+
+* add typing to `data_reader` ([#186](https://github.com/pik-piam/flodym/issues/186)) ([ef4eb9e](https://github.com/pik-piam/flodym/commit/ef4eb9e81830d1cc8fa9cdb33c46bfae44043bda))
+* make dynamic stock model base public ([#190](https://github.com/pik-piam/flodym/issues/190)) ([f754db9](https://github.com/pik-piam/flodym/commit/f754db921fa236720d36872bbd18d205c0d0698b))
+
+
+### 🧹 Miscellaneous
+
+* add agents and claude config ([#188](https://github.com/pik-piam/flodym/issues/188)) ([7e7f94a](https://github.com/pik-piam/flodym/commit/7e7f94ae5eeed20b53565b00726b00ef75ad1f26))
+* add type rules and checker step to CI ([#187](https://github.com/pik-piam/flodym/issues/187)) ([e5bb580](https://github.com/pik-piam/flodym/commit/e5bb5804fb72d76ad2613417d1c3605f1e2c3480))
+
 ## [1.0.0](https://github.com/pik-piam/flodym/compare/v0.8.1...v1.0.0) (2026-08-19)
 
 
