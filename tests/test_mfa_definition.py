@@ -1,5 +1,5 @@
-from pydantic_core import ValidationError
 import pytest
+from pydantic_core import ValidationError
 
 from flodym import DimensionDefinition, MFADefinition, SimpleFlowDrivenStock
 
