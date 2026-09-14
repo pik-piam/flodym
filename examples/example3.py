@@ -43,6 +43,7 @@
 
 # %%
 import os
+
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -50,9 +51,9 @@ import plotly.express as px
 from flodym import (
     Dimension,
     DimensionSet,
+    InflowDrivenDSM,
     Parameter,
     StockArray,
-    InflowDrivenDSM,
 )
 from flodym.lifetime_models import NormalLifetime
 
