@@ -10,7 +10,7 @@ from numpy.testing import (
 )
 from pydantic_core import ValidationError
 
-from flodym import Dimension, DimensionSet, FlodymArray, Parameter, Process, StockArray, Flow
+from flodym import Dimension, DimensionSet, FlodymArray, Flow, Parameter, Process, StockArray
 
 places = Dimension(name="place", letter="p", items=["Earth", "Sun", "Moon", "Venus"])
 time = Dimension(name="time", letter="t", items=[1990, 2000, 2010])
