@@ -4,26 +4,26 @@ Specific MFA models can be built that inherit from this class.
 """
 
 import logging
-from typing import Dict, Optional
 
 import numpy as np
-from pydantic import BaseModel as PydanticBaseModel, ConfigDict
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import ConfigDict
 
-from .mfa_definition import MFADefinition
-from .dimensions import DimensionSet
-from .flodym_arrays import Flow, Parameter, FlodymArray
-from .stocks import Stock
-from .processes import Process, make_processes
-from .stock_helper import make_empty_stocks
-from .flow_helper import make_empty_flows
 from .data_reader import (
-    DataReader,
     CompoundDataReader,
     CSVDimensionReader,
     CSVParameterReader,
+    DataReader,
     ExcelDimensionReader,
     ExcelParameterReader,
 )
+from .dimensions import DimensionSet
+from .flodym_arrays import FlodymArray, Flow, Parameter
+from .flow_helper import make_empty_flows
+from .mfa_definition import MFADefinition
+from .processes import Process, make_processes
+from .stock_helper import make_empty_stocks
+from .stocks import Stock
 
 
 class MFASystem(PydanticBaseModel):
@@ -47,19 +47,19 @@ class MFASystem(PydanticBaseModel):
 
     dims: DimensionSet
     """All dimensions that appear in the MFA system."""
-    parameters: Dict[str, Parameter]
+    parameters: dict[str, Parameter]
     """The parameters of the MFA system,
     as a dictionary mapping the names of the MFA system parameters to the parameters themselves.
     """
-    processes: Dict[str, Process]
+    processes: dict[str, Process]
     """The processes of the MFA system, i.e. the nodes of the MFA system graph,
     as a dictionary mapping the names of the MFA system processes to the processes themselves.
     """
-    flows: Dict[str, Flow]
+    flows: dict[str, Flow]
     """The flows of the MFA system, i.e. the edges of the MFA system graph,
     as a dictionary mapping the names of the MFA system flows to the flows themselves.
     """
-    stocks: Optional[Dict[str, Stock]] = {}
+    stocks: dict[str, Stock] | None = {}
     """The stocks of the MFA system,
     as a dictionary mapping the names of the MFA system stocks to the stocks themselves.
     """
@@ -180,7 +180,7 @@ class MFASystem(PydanticBaseModel):
         dims = self.dims.get_subset(dim_letters)
         return FlodymArray(dims=dims, **kwargs)
 
-    def _get_mass_balance(self) -> Dict[str, FlodymArray]:
+    def _get_mass_balance(self) -> dict[str, FlodymArray]:
         """Calculate the mass balance for each process, by summing the contributions.
         - all flows entering (positive)
         - all flows leaving (negative)

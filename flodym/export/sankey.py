@@ -1,9 +1,9 @@
-from pydantic import BaseModel as PydanticBaseModel, model_validator, ConfigDict
-from typing import Optional
 import plotly.graph_objects as go
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import ConfigDict, model_validator
 
-from ..mfa_system import MFASystem
 from ..flodym_arrays import Flow
+from ..mfa_system import MFASystem
 from .helper import CustomNameDisplayer
 
 
@@ -12,19 +12,19 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
 
     mfa: MFASystem
     """MFA system to visualize."""
-    slice_dict: Optional[dict] = {}
+    slice_dict: dict | None = {}
     """for selection of a subset of the data; all other dimensions are summed over"""
-    node_color_dict: Optional[dict] = {"default": "gray"}
+    node_color_dict: dict | None = {"default": "gray"}
     """color of the nodes (processes and stocks)"""
-    flow_color_dict: Optional[dict] = {"default": "hsl(230,20,70)"}
+    flow_color_dict: dict | None = {"default": "hsl(230,20,70)"}
     """dictionary of colors for flows.
     Keys are flow names, values are either a single color or a tuple of the dimension names
     to split the flow by, and a color scheme as a list of colors. There must be a "default" key
     to resort to if a flow is not in the dictionary.
     """
-    exclude_processes: Optional[list[str]] = ["sysenv"]
+    exclude_processes: list[str] | None = ["sysenv"]
     """processes that won't show up in the plot; neither will flows to and from them"""
-    exclude_flows: Optional[list[str]] = []
+    exclude_flows: list[str] | None = []
     """flows that won't show up in the plot"""
 
     @model_validator(mode="after")
