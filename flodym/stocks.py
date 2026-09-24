@@ -331,6 +331,7 @@ class DynamicStockModel(Stock, ABC):
             cohort_dim=self.cohort_dim,
             lifetime_model=self.lifetime_model,
             inflow_by_cohort=inflow_by_cohort,
+            time_letter=self.time_letter,
             name=f"{self.name}_ISD",
         )
         iiy = self._initial_year_index
