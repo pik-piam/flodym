@@ -220,7 +220,10 @@ class MFASystem(PydanticBaseModel):
     def _absolute_float_precision(self) -> float:
         """The numpy float precision, multiplied by the maximum absolute flow or stock value."""
         max_flow_value = max([np.max(np.abs(f.values)) for f in self.flows.values()])
-        max_stock_value = max([np.max(np.abs(s.stock.values)) for s in self.stocks.values()])
+        if self.stocks:
+            max_stock_value = max([np.max(np.abs(s.stock.values)) for s in self.stocks.values()])
+        else:
+            max_stock_value = 0
         epsilon = np.finfo(next(iter(self.flows.values())).values.dtype).eps
         return epsilon * max(max_flow_value, max_stock_value)
 
@@ -250,7 +253,7 @@ class MFASystem(PydanticBaseModel):
             message = "Mass balance check failed for the following processes: " + info
             self._error_or_warning(message, raise_error)
         else:
-            logging.info(f"Success - Mass balance is consistent!")
+            logging.info("Success - Mass balance is consistent!")
 
     def check_flows(
         self, exceptions: list[str] = [], raise_error: bool = False, verbose: bool = False
@@ -292,7 +295,7 @@ class MFASystem(PydanticBaseModel):
             if np.any(flow.values < -tolerance):
                 message = f"Negative value in flow {flow.name}!"
                 if verbose:
-                    message += f"\n Items:"
+                    message += "\n Items:"
                     indices = flow.items_where(lambda x: x < -tolerance)
                     for index in indices:
                         message += "\n  " + ", ".join(index)

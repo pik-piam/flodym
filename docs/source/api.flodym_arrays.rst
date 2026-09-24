@@ -20,3 +20,5 @@ FlodymArrays
 .. autofunction:: flodym.flow_naming.process_ids
 
 .. autofunction:: flodym.make_empty_flows
+
+.. autofunction:: flodym.flodym_array_stack

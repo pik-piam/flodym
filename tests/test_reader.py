@@ -10,7 +10,6 @@ from flodym.data_reader import (
 from flodym.mfa_definition import DimensionDefinition, ParameterDefinition, MFADefinition
 from flodym.mfa_system import MFASystem
 
-
 csv_dimension_files = {
     "animals": "tests/tests_data/dimension_animals_horizontal.csv",
     "time": "tests/tests_data/dimension_time_vertical.csv",
@@ -171,13 +170,13 @@ def test_build_mfa_system():
         def compute(self):
             pass
 
-    mfa = MinimalMFASystem.from_csv(
+    MinimalMFASystem.from_csv(
         definition,
         csv_dimension_files,
         csv_parameter_files,
     )
 
-    mfa = MinimalMFASystem.from_excel(
+    MinimalMFASystem.from_excel(
         definition,
         excel_dimension_files,
         excel_parameter_files,
@@ -221,15 +220,3 @@ def test_mixed_dimension_letters_and_names():
     param_def_p1 = ParameterDefinition(name="p1", dim_letters=["t", "r"])
     params_p1 = reader_mixed.read_parameters([param_def_p1], dims)
     assert np.array_equal(params_p1["p1"].values, [[1], [2], [3]])
-
-
-if __name__ == "__main__":
-    test_dimensions()
-    test_valid_parameter_reader()
-    test_wrong_parameter_reader()
-    test_allow_incomplete_data()
-    test_allow_extra_data()
-    test_build_mfa_system()
-    test_dimension_letters_as_column_names()
-    test_mixed_dimension_letters_and_names()
-    print("All tests passed.")

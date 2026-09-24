@@ -1,12 +1,12 @@
 [project]
 name = "flodym"
-version = "0.5.2"
+version = "1.0.0"
 authors = [
-    {name = "Jakob Dürrwächter"},
-    {name = "Sally Dacie"},
-    {name = "Merlin Hosak"},
-    {name = "Bennet Weiß"},
-    {name = "Leonie Schweiger"},
+    { name = "Jakob Dürrwächter" },
+    { name = "Sally Dacie" },
+    { name = "Merlin Hosak" },
+    { name = "Bennet Weiss" },
+    { name = "Leonie Schweiger" },
 ]
 readme = "README.md"
 requires-python = ">= 3.10"
@@ -25,13 +25,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-examples = [
-    "jupyter>=1.1.1",
-    "nbformat>=5.10.4",
-]
+graphviz = ["graphviz>=0.20"]
+examples = ["jupyter>=1.1.1", "nbformat>=5.10.4", "graphviz>=0.20"]
 tests = [
     "pytest>=8.3.2",
     "polyfactory>=2.16.2",
+    "ipython>=8.0.0",
+    "nbformat>=5.10.4",
+    "graphviz>=0.20",
 ]
 docs = [
     "sphinx>=7.4.0",
@@ -45,12 +46,46 @@ docs = [
     "jupytext>=1.16.4",
 ]
 
+[dependency-groups]
+dev = ["flodym[examples,tests,docs]", "ruff"]
+
 [build-system]
-requires = ["setuptools >= 61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["uv_build>=0.11.28,<0.12"]
+build-backend = "uv_build"
 
-[tool.setuptools]
-packages = ["flodym", "flodym.export"]
+[tool.uv.build-backend]
+module-name = "flodym"
+module-root = ""
 
-[tool.black]
+[tool.ruff]
 line-length = 100
+target-version = "py310"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+[tool.ruff.lint]
+ignore = [
+    "E741", # ambiguous variable name
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Ignore a few import errors in howtos
+"howtos/*" = ["E402", "F401"]
+
+[tool.ty.rules]
+invalid-argument-type = "ignore"
+unresolved-attribute = "ignore"
+unsupported-operator = "ignore"
+not-subscriptable = "ignore"
+invalid-assignment = "ignore"
+invalid-method-override = "ignore"
+invalid-return-type = "ignore"
+pydantic-discarded-extra-argument = "ignore"
+invalid-parameter-default = "ignore"
+no-matching-overload = "ignore"
+not-iterable = "ignore"
+missing-argument = "ignore"
+too-many-positional-arguments = "ignore"

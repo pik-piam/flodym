@@ -1,10 +1,11 @@
-import sys
+import itertools
 import logging
+import sys
+from typing import TYPE_CHECKING, Iterable, Literal, Optional
+
 import numpy as np
 import pandas as pd
-from typing import Literal, Optional, TYPE_CHECKING, Iterable
 from pydantic import BaseModel as PydanticBaseModel
-import itertools
 
 from .dimensions import Dimension
 
@@ -13,7 +14,6 @@ if TYPE_CHECKING:
 
 
 class FlodymDataFormat(PydanticBaseModel):
-
     type: Literal["long", "wide"]
     value_column: str = "value"
     columns_dim: Optional[str] = None
@@ -35,11 +35,13 @@ class DataFrameToFlodymDataConverter:
         flodym_array: "FlodymArray",
         allow_missing_values: bool = False,
         allow_extra_values: bool = False,
+        strip_whitespace: bool = True,
     ):
         self.df = df.copy()
         self.flodym_array = flodym_array
         self.allow_missing_values = allow_missing_values
         self.allow_extra_values = allow_extra_values
+        self.strip_whitespace = strip_whitespace
         try:
             self.target_values = self.get_target_values()
         except Exception as e:
@@ -51,6 +53,8 @@ class DataFrameToFlodymDataConverter:
             f"Start setting values for FlodymArray {self.flodym_array.name} with dimensions {self.flodym_array.dims.names} from dataframe."
         )
         self._reset_non_default_index()
+        if self.strip_whitespace:
+            self._strip_whitespace_from_df()
         self._determine_format()
         self._df_to_long_format()
         self._check_missing_dim_columns()
@@ -68,6 +72,18 @@ class DataFrameToFlodymDataConverter:
             self.df.reset_index(inplace=True)
         elif self.df.index.min() >= 1700 and self.df.index.max() <= 2300:
             self.df.reset_index(inplace=True)
+
+    def _strip_whitespace_from_df(self):
+        logging.debug("Stripping whitespace from string values in the DataFrame.")
+
+        def strip_if_string(x):
+            if isinstance(x, str):
+                return x.strip()
+            return x
+
+        self.df.columns = self.df.columns.map(strip_if_string)
+        self.df.index = self.df.index.map(strip_if_string)
+        self.df = self.df.map(strip_if_string)
 
     def _determine_format(self):
         self._get_dim_columns_by_name_or_letter()
@@ -164,7 +180,7 @@ class DataFrameToFlodymDataConverter:
             logging.debug(f"Value column name is {value_cols[0]}.")
         else:
             raise ValueError(
-                f"More than one value columns. Could not find a dimension the items of which match the set of value column names. "
+                f"More than one value columns. Could not find a dimension whose items match the set of value column names. "
                 f"Value columns: {value_cols}. Please check input data for format, typos, data types and missing items."
             )
 
@@ -208,11 +224,25 @@ class DataFrameToFlodymDataConverter:
         self.df = self.df[list(self.flodym_array.dims.names) + [self.format.value_column]]
 
     def _check_data_complete(self):
+        # Special handling of the scalar case: If the FlodymArray has no dimensions, we usually expect a single value in the df.
+        if self.flodym_array.dims.ndim == 0:
+            if len(self.df) == 0:
+                if self.allow_missing_values:
+                    return np.array(0.0)
+                raise ValueError(
+                    "FlodymArray has no dimensions, but the DataFrame has no rows. Expected exactly one row."
+                )
+            if len(self.df) > 1:
+                raise ValueError(
+                    f"FlodymArray has no dimensions, but the DataFrame has {len(self.df)} rows. Expected exactly one row."
+                )
+            return np.array(self.df[self.format.value_column].values[0])
+
         # check for double entries in the index columns
         indices = self.df[list(self.flodym_array.dims.names)]
         if indices.duplicated().any():
             raise ValueError(
-                f"The following index combinations occur more than once in the data: ",
+                "The following index combinations occur more than once in the data: ",
                 indices[indices.duplicated()],
             )
 

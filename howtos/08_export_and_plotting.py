@@ -33,8 +33,8 @@ df.head()
 # Let's try both:
 
 # %%
-from flodym.export import convert_to_dict
 from flodym.example_objects import get_example_mfa
+from flodym.export import convert_to_dict
 
 
 # printing function
@@ -84,6 +84,7 @@ export_mfa_to_pickle(mfa=mfa, export_path=export_path)
 
 # %%
 import os
+
 from flodym.export import export_mfa_flows_to_csv, export_mfa_stocks_to_csv
 
 export_dir = "output_data/flows"
@@ -107,7 +108,6 @@ print("".join(head))
 # %%
 
 import os
-from flodym.export import export_mfa_stocks_to_csv
 
 export_dir = "output_data/stocks"
 export_mfa_stocks_to_csv(mfa, export_directory=export_dir, with_in_and_out=True)
@@ -126,8 +126,9 @@ print("\n".join(os.listdir(export_dir)))
 #
 
 # %%
-from flodym.export import PlotlySankeyPlotter
 from plotly.colors import qualitative
+
+from flodym.export import PlotlySankeyPlotter
 
 # set up a dictionary of how to color the flows
 colors = {"default": "gray"}
@@ -157,3 +158,50 @@ fig.show(renderer="notebook")
 # Two versions exist: One for pyplot, and one for plotly.
 #
 # Example 2 shows how to use it. Refer to the API reference for details.
+
+# %% [markdown]
+# ## Plotting the system structure as a flow graph
+#
+# While the Sankey plot shows the computed flow *values*, you often want to inspect the *structure*
+# of a model itself: which processes exist, how flows connect them, and where stocks sit.
+# flodym can plot this graph directly from the MFA system definition, so it also works before the
+# system has been computed.
+#
+# There are two backends: one based on plotly, and one based on graphviz.
+# The plotly backend uses a simple layout algorithm. Graphviz generally produces
+# nicer graphics, but it requires the optional `graphviz` package and the Graphviz system binaries to be installed.
+
+# %% [markdown]
+# ### Plotly backend
+#
+# %%
+from flodym.export import PlotlyProcessGraphPlotter
+
+graph_plotter = PlotlyProcessGraphPlotter(mfa=mfa)
+fig = graph_plotter.plot()
+fig.show(renderer="notebook")
+
+# %% [markdown]
+# with custom node positions specified:
+
+# %%
+custom_process_positions = {0: (0, 0), 1: (1, -1), 2: (2, -1), 3: (3, 0), 4: (4, 0), 5: (5, 0)}
+custom_stock_positions = {
+    "landfills": (4, 1),
+    "slag piles": (5, 1),
+}
+fig = PlotlyProcessGraphPlotter(mfa=mfa).plot(
+    process_positions=custom_process_positions, stock_positions=custom_stock_positions
+)
+fig.show(renderer="notebook")
+
+# %% [markdown]
+# ### Graphviz backend
+#
+# %%
+from flodym.export import GraphvizProcessGraphPlotter
+
+dot = GraphvizProcessGraphPlotter(mfa=mfa, rankdir="LR").plot()
+dot
+
+# %%
