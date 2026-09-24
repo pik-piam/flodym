@@ -63,9 +63,9 @@ class LifetimeModel(PydanticBaseModel):
     Default is 1, meaning that the inflow is evaluated only once per time period.
     """
     _sf: np.ndarray = None
-    _conditional_sf: np.ndarray = None
+    _sf_conditional: np.ndarray = None
     _pdf: np.ndarray = None
-    _conditional_pdf: np.ndarray = None
+    _pdf_conditional: np.ndarray = None
     _t: UnevenTimeDim = None
 
     @model_validator(mode="after")
@@ -147,7 +147,7 @@ class LifetimeModel(PydanticBaseModel):
     def pdf_conditional(self):
         if self._pdf_conditional is None:
             self._pdf_conditional = np.zeros(self._shape_conditional)
-            self._compute_outflow_pdf(self._pdf_conditional, self.sf)
+            self._compute_outflow_pdf(self._pdf_conditional, self.sf_conditional)
         return self._pdf_conditional
 
     def _tile(self, a: np.ndarray) -> np.ndarray:
@@ -234,16 +234,24 @@ class LifetimeModel(PydanticBaseModel):
         """Returns an array year-by-cohort of the probability that an item
         added to stock in year m (aka cohort m) leaves in in year n. This value equals pdf(n,m).
         """
+        # For conditional pdf, the diagonal is still along the first 2 dims:
+        # All of the inflow in a year i which hasn't survived until year t leaves the stock
         t_diag_indices = np.diag_indices(self._n_t) + (slice(None),) * (pdf.ndim - 2)
         pdf[t_diag_indices] = 1.0 - np.moveaxis(sf.diagonal(0, 0, 1), -1, 0)
         for m in range(0, self._n_t):
             pdf[m + 1 :, m, ...] = -1 * np.diff(sf[m:, m, ...], axis=0)
 
     def _compute_sf_conditional(self):
+        # If an item flows into the stock during year i, it must still be present by the end of year i-1.
+        # The share built in year c which is still present at the end of year i-1 is sf(i-1,c)
+        # The share built in year c which is still present at the end of year t is sf(t,c)
+        # The conditional probability that an item built in year c is still present at the end
+        # of year t, given that it is still present at the end of year i-1, is
+        # sf_c(t,i,c) = sf(t,c) / sf(i-1,c)
         self._sf_conditional[:, 0, :, ...] = self.sf
         i_sf = np.where(self.sf == 0, 1, self.sf)
         self._sf_conditional[:, 1:, :, ...] = np.einsum(
-            "tc...,ic...->tic...", self.sf, i_sf[:-1, :, ...]
+            "tc...,ic...->tic...", self.sf, 1 / i_sf[:-1, :, ...]
         )
 
 
