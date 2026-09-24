@@ -258,9 +258,7 @@ class DynamicStockModel(Stock, ABC):
     def dims_cohort(self):
         if self._dims_cohort is None:
             if self.cohort_dim is None:
-                raise ValueError(
-                    f"Cohort dimension must be provided at DSM initialization"
-                )
+                raise ValueError("Cohort dimension must be provided at DSM initialization")
             self.validate_cohort_dim()
             t = self.dims[self.time_letter]
             c = self.cohort_dim
@@ -352,9 +350,13 @@ class DynamicStockModel(Stock, ABC):
 
     def _add_initial_stock_contribution(self):
         self.inflow.values[...] += self._initial_stock_dsm.inflow.values
-        self.stock.values[self._initial_year_index:, ...] += self._initial_stock_dsm.stock.values[self._initial_year_index:, ...]
+        self.stock.values[self._initial_year_index :, ...] += self._initial_stock_dsm.stock.values[
+            self._initial_year_index :, ...
+        ]
         self.outflow.values[...] += self._initial_stock_dsm.outflow.values
-        self._stock_by_cohort[self._initial_year_index:, ...] += self._initial_stock_dsm._stock_by_cohort[self._initial_year_index:, ...]
+        self._stock_by_cohort[self._initial_year_index :, ...] += (
+            self._initial_stock_dsm._stock_by_cohort[self._initial_year_index :, ...]
+        )
         self._outflow_by_cohort[...] += self._initial_stock_dsm._outflow_by_cohort
 
     def copy(self) -> "Stock":
@@ -364,7 +366,9 @@ class DynamicStockModel(Stock, ABC):
         """
         new_stock = super().copy()
         new_stock.lifetime_model = self.lifetime_model.model_copy(deep=True)
-        new_stock._initial_stock_dsm = self._initial_stock_dsm.copy() if self._initial_stock_dsm is not None else None
+        new_stock._initial_stock_dsm = (
+            self._initial_stock_dsm.copy() if self._initial_stock_dsm is not None else None
+        )
         new_stock._initial_stock_year = self._initial_stock_year
         return new_stock
 
@@ -592,7 +596,6 @@ class FlexibleDSM(DynamicStockModel):
 
     # replaces decorator, since inner functions are already decorated
     compute.is_decorated = True
-
 
     # TODO initial stocks:
     # - np allclose in all checks
