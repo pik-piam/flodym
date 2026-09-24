@@ -509,7 +509,6 @@ class StockDrivenDSM(DynamicStockModel):
 
 
 class InflowByCohortDrivenDSM(InflowDrivenDSM):
-
     inflow_by_cohort: StockArray = None
     cohort_dim: Dimension  # require for this subclass
 
