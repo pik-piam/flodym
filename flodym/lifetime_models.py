@@ -63,7 +63,9 @@ class LifetimeModel(PydanticBaseModel):
     Default is 1, meaning that the inflow is evaluated only once per time period.
     """
     _sf: np.ndarray = None
+    _sf_conditional: np.ndarray = None
     _pdf: np.ndarray = None
+    _pdf_conditional: np.ndarray = None
     _t: UnevenTimeDim = None
 
     @model_validator(mode="after")
@@ -113,6 +115,10 @@ class LifetimeModel(PydanticBaseModel):
         return (self._n_t,) + self.shape
 
     @property
+    def _shape_conditional(self):
+        return (self._n_t, self._n_t) + self.shape
+
+    @property
     def _shape_no_t(self):
         return tuple(list(self.shape)[1:])
 
@@ -120,15 +126,29 @@ class LifetimeModel(PydanticBaseModel):
     def sf(self):
         if self._sf is None:
             self._sf = np.zeros(self._shape_cohort)
-            self.compute_survival_factor()
+            self._compute_survival_factor()
         return self._sf
+
+    @property
+    def sf_conditional(self):
+        if self._sf_conditional is None:
+            self._sf_conditional = np.zeros(self._shape_conditional)
+            self._compute_sf_conditional()
+        return self._sf_conditional
 
     @property
     def pdf(self):
         if self._pdf is None:
             self._pdf = np.zeros(self._shape_cohort)
-            self.compute_outflow_pdf()
+            self._compute_outflow_pdf(self._pdf, self.sf)
         return self._pdf
+
+    @property
+    def pdf_conditional(self):
+        if self._pdf_conditional is None:
+            self._pdf_conditional = np.zeros(self._shape_conditional)
+            self._compute_outflow_pdf(self._pdf_conditional, self.sf_conditional)
+        return self._pdf_conditional
 
     def _tile(self, a: np.ndarray) -> np.ndarray:
         """tiles the input array a to the shape of the lifetime model, by adding non-time dimensions
@@ -148,7 +168,7 @@ class LifetimeModel(PydanticBaseModel):
         t = eta * self._t.bounds[m + 1] + (1 - eta) * self._t.bounds[m]
         return self._tile(self._t.bounds[m + 1 :] - t)
 
-    def compute_survival_factor(self):
+    def _compute_survival_factor(self):
         """Survival table self.sf(m,n) denotes the share of an inflow in year n (age-cohort) still
         present at the end of year m (after m-n years).
         The computation is self.sf(m,n) = ProbDist.sf(m-n), where ProbDist is the appropriate
@@ -167,13 +187,13 @@ class LifetimeModel(PydanticBaseModel):
         to save time.
         """
         self._check_prms_set()
-        quad_eta, quad_weights = self.get_quad_points_and_weights()
+        quad_eta, quad_weights = self._get_quad_points_and_weights()
         for m in range(0, self._n_t):  # cohort index
             for eta, weight in zip(list(quad_eta), list(quad_weights)):
                 t = self._remaining_ages(m, eta)
                 self._sf[m::, m, ...] += weight * self._survival_by_year_id(t, m)
 
-    def get_quad_points_and_weights(self):
+    def _get_quad_points_and_weights(self):
         """Returns the quadrature points and weights for the inflow time periods."""
         if self.n_pts_per_interval > 10:
             raise ValueError("quad_order must be between 0 and 9.")
@@ -210,14 +230,29 @@ class LifetimeModel(PydanticBaseModel):
             prm_out[...] = prm_in
         return prm_out
 
-    def compute_outflow_pdf(self):
+    def _compute_outflow_pdf(self, pdf: np.ndarray, sf: np.ndarray):
         """Returns an array year-by-cohort of the probability that an item
         added to stock in year m (aka cohort m) leaves in in year n. This value equals pdf(n,m).
         """
-        t_diag_indices = np.diag_indices(self._n_t) + (slice(None),) * len(self._shape_no_t)
-        self._pdf[t_diag_indices] = 1.0 - np.moveaxis(self.sf.diagonal(0, 0, 1), -1, 0)
+        # For conditional pdf, the diagonal is still along the first 2 dims:
+        # All of the inflow in a year i which hasn't survived until year t leaves the stock
+        t_diag_indices = np.diag_indices(self._n_t) + (slice(None),) * (pdf.ndim - 2)
+        pdf[t_diag_indices] = 1.0 - np.moveaxis(sf.diagonal(0, 0, 1), -1, 0)
         for m in range(0, self._n_t):
-            self._pdf[m + 1 :, m, ...] = -1 * np.diff(self.sf[m:, m, ...], axis=0)
+            pdf[m + 1 :, m, ...] = -1 * np.diff(sf[m:, m, ...], axis=0)
+
+    def _compute_sf_conditional(self):
+        # If an item flows into the stock during year i, it must still be present by the end of year i-1.
+        # The share built in year c which is still present at the end of year i-1 is sf(i-1,c)
+        # The share built in year c which is still present at the end of year t is sf(t,c)
+        # The conditional probability that an item built in year c is still present at the end
+        # of year t, given that it is still present at the end of year i-1, is
+        # sf_c(t,i,c) = sf(t,c) / sf(i-1,c)
+        self._sf_conditional[:, 0, :, ...] = self.sf
+        i_sf = np.where(self.sf == 0, 1, self.sf)
+        self._sf_conditional[:, 1:, :, ...] = np.einsum(
+            "tc...,ic...->tic...", self.sf, 1 / i_sf[:-1, :, ...]
+        )
 
 
 class FixedLifetime(LifetimeModel):

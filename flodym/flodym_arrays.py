@@ -14,8 +14,9 @@ from pydantic import (
     Field,
     field_validator,
     model_validator,
+    ModelWrapValidatorHandler,
 )
-from typing import Optional, Union, Callable, TypeVar, overload, Literal
+from typing import Optional, Union, Callable, TypeVar, overload, Literal, Any, Self
 from copy import copy
 from numbers import Number
 
@@ -72,6 +73,8 @@ class FlodymArray(PydanticBaseModel):
     If not given or None, an array of zeros is created."""
     name: Optional[str] = "unnamed"
     """Name of the FlodymArray."""
+    _is_set: bool = False
+    """Flag indicating whether the flow has been set or not."""
 
     @field_validator("values", mode="before")
     @classmethod
@@ -109,6 +112,14 @@ class FlodymArray(PydanticBaseModel):
                 f"Array shape: {self.dims.shape}\n"
                 f"Values shape: {self.values.shape}\n"
             )
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def mark_set_or_unset(cls, data: Any, handler: ModelWrapValidatorHandler[Self]) -> Self:
+        obj = handler(data)
+        if isinstance(data, dict):
+            obj._is_set = "values" in data
+        return obj
 
     @classmethod
     def from_dims_superset(
@@ -273,6 +284,7 @@ class FlodymArray(PydanticBaseModel):
             self._check_value_format()
         else:
             self.values[...] = values
+        self._is_set = True
 
     def sum_values(self) -> np.ndarray:
         """Return the sum of all values in the FlodymArray."""
@@ -636,6 +648,7 @@ class FlodymArray(PydanticBaseModel):
             self.set_values(copy(item))
         else:
             self.values[slice_obj.ids] = copy(item)
+        self.mark_set()
 
     def to_df(
         self, index: bool = True, dim_to_columns: Optional[str] = None, sparse: bool = False
@@ -755,6 +768,19 @@ class FlodymArray(PydanticBaseModel):
             for i, letter in enumerate(self.dims.letters)
         ]
         return np.array(items).transpose()
+
+    @property
+    def is_set(self) -> bool:
+        """A boolean to indicate whether the flow's values are known or not."""
+        return self._is_set
+
+    def mark_set(self):
+        """Mark the flow as having values."""
+        self._is_set = True
+
+    def mark_unset(self):
+        """Mark the flow as not having values"""
+        self._is_set = False
 
     def __str__(self) -> str:
         base = f"{self.__class__.__name__} '{self.name}'"
