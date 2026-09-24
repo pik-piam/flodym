@@ -5,7 +5,12 @@ from flodym.dimensions import Dimension, DimensionSet
 from flodym.flodym_arrays import StockArray
 from flodym.mfa_definition import StockDefinition
 from flodym.stock_helper import make_empty_stocks
-from flodym.stocks import InflowDrivenDSM, StockDrivenDSM, SimpleFlowDrivenStock, InflowByCohortDrivenDSM
+from flodym.stocks import (
+    InflowDrivenDSM,
+    StockDrivenDSM,
+    SimpleFlowDrivenStock,
+    InflowByCohortDrivenDSM,
+)
 from flodym.lifetime_models import LogNormalLifetime
 
 dim_list = [

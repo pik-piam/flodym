@@ -417,6 +417,7 @@ class DynamicStockModel(Stock, ABC):
         self.outflow.values[...] += self._initial_stock_dsm.outflow.values
         self._stock_by_cohort[...] += self._initial_stock_dsm._stock_by_cohort
         self._outflow_by_cohort[...] += self._initial_stock_dsm._outflow_by_cohort
+
     def copy(self) -> "Stock":
         """Return a copy of the Stock, as :py:meth:`flodym.Stock.copy`, but additionally
         giving the copy its own independent ``lifetime_model`` so that, for example, calling
@@ -514,7 +515,6 @@ class StockDrivenDSM(DynamicStockModel):
 
 
 class InflowByCohortDrivenDSM(InflowDrivenDSM):
-
     inflow_by_cohort: StockArray = None
     cohort_dim: Dimension  # require for this subclass
 
