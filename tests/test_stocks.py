@@ -1,7 +1,10 @@
 import numpy as np
+from numpy.testing import assert_almost_equal
 import pytest
 
+from flodym import Dimension, DimensionSet, FlodymArray, InflowDrivenDSM, StockArray, WeibullLifetime
 from flodym.dimensions import Dimension, DimensionSet
+from flodym.export import PlotlyArrayPlotter
 from flodym.flodym_arrays import StockArray
 from flodym.mfa_definition import StockDefinition
 from flodym.stock_helper import make_empty_stocks
@@ -289,3 +292,90 @@ def test_make_empty_stocks_accepts_explicit_nondefault_time_letter():
     stocks = make_empty_stocks([stock_definition], processes={}, dims=stock_dims)
 
     assert stocks["stock_with_nondefault_time"].time_letter == "s"
+
+
+def test_lifetime_ext_nurture(plot = False):
+    EXT_FAC = 2
+
+    dim_list = [
+        Dimension(
+            name="time",
+            letter="t",
+            items=list(range(31)),
+            dtype=int,
+        ),
+        Dimension(
+            name="product",
+            letter="p",
+            items=["Base", "All ext", "Sudden ext", "Smooth ext"],
+            dtype=str,
+        ),
+    ]
+
+    dims = DimensionSet(dim_list=dim_list)
+
+    inflow = StockArray(dims=dims)
+    inflow[{"t": 0}] = 1
+
+
+    factor = FlodymArray(dims=dims)
+    factor[...] = 1.
+    factor["All ext"] = EXT_FAC
+    factor[{"p": "Sudden ext", "t": range(10, 31)}] = EXT_FAC
+    # blend from 5 to 14 years for product D
+    x_clip = np.clip((np.arange(31) - 5) / 10, 0, 1)
+    factor["Smooth ext"] = 1 + (EXT_FAC - 1) * x_clip
+
+    lifetime_model = WeibullLifetime(
+        dims=dims,
+        time_letter="t",
+        weibull_scale=10,
+        weibull_shape=2,
+        lt_factor_by_year=factor,
+    )
+
+    dsm = InflowDrivenDSM(
+        dims=dims,
+        inflow=inflow,
+        lifetime_model=lifetime_model,
+        time_letter="t",
+    )
+    dsm.compute()
+
+    assert_almost_equal(dsm.stock[{"t": 4, "p": "Base"}].values,
+                        dsm.stock[{"t": 4, "p": "Sudden ext"}].values)
+
+    assert_almost_equal(dsm.stock[{"t": 4, "p": "Base"}].values,
+                        dsm.stock[{"t": 4, "p": "Smooth ext"}].values)
+
+    base = dsm.stock[{"t": 15, "p": "Base"}].values
+    all_ext = dsm.stock[{"t": 15, "p": "All ext"}].values
+    sudden_ext = dsm.stock[{"t": 15, "p": "Sudden ext"}].values
+    smooth_ext = dsm.stock[{"t": 15, "p": "Smooth ext"}].values
+
+    assert all_ext > smooth_ext > sudden_ext > base
+
+    if plot:
+        plotter = PlotlyArrayPlotter(
+            array=factor,
+            intra_line_dim="t",
+            linecolor_dim="p",
+        )
+        fig = plotter.plot()
+        fig.show()
+
+        plotter = PlotlyArrayPlotter(
+            array=dsm.stock,
+            intra_line_dim="t",
+            linecolor_dim="p",
+        )
+        fig = plotter.plot()
+        fig.show()
+
+        plotter = PlotlyArrayPlotter(
+            array=dsm.outflow,
+            intra_line_dim="t",
+            linecolor_dim="p",
+        )
+        fig = plotter.plot()
+        fig.show()
