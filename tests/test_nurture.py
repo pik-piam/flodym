@@ -30,7 +30,7 @@ inflow[{"t": 0}] = 1
 
 
 factor = FlodymArray(dims=dims)
-factor[...] = 1.
+factor[...] = 1.0
 factor["All ext"] = EXT_FAC
 factor[{"p": "Sudden ext", "t": range(10, 31)}] = EXT_FAC
 # blend from 5 to 14 years for product D

@@ -4,7 +4,7 @@ from abc import abstractmethod
 import copy
 import numpy as np
 import scipy.stats
-from pydantic import BaseModel as PydanticBaseModel, ConfigDict, PrivateAttr, field_validator, model_validator
+from pydantic import BaseModel as PydanticBaseModel, ConfigDict, PrivateAttr, model_validator
 from typing import Any, ClassVar, TypeAlias, Literal
 from numbers import Number
 from functools import cached_property
@@ -117,13 +117,17 @@ class LifetimeModel(PydanticBaseModel):
             prm_out = np.ndarray(self.shape)
             try:
                 prm_out[...] = prm_in
-            except ValueError as e:
-                raise ValueError(f"Parameter {name} (shape {prm_in.shape}) has incompatible dimensions with lifetime model shape ({self._shape})")
+            except ValueError:
+                raise ValueError(
+                    f"Parameter {name} (shape {prm_in.shape}) has incompatible dimensions with lifetime model shape ({self._shape})"
+                )
         elif isinstance(prm_in, Number):
             prm_out = np.ndarray(self.shape)
             prm_out[...] = prm_in
         else:
-            raise ValueError(f"Parameter {name} must be a FlodymArray, np.ndarray, or number, but is {type(prm_in)}")
+            raise ValueError(
+                f"Parameter {name} must be a FlodymArray, np.ndarray, or number, but is {type(prm_in)}"
+            )
         return prm_out
 
     @model_validator(mode="after")
@@ -198,7 +202,6 @@ class LifetimeModel(PydanticBaseModel):
         out = a[index]
         return np.tile(out, self._shape_no_t)
 
-
     def _qp_time(self, m, eta):
         """Returns the time point within the inflow time period m, given the quadrature point eta."""
         return eta * self._t.bounds[m + 1] + (1 - eta) * self._t.bounds[m]
@@ -258,7 +261,6 @@ class LifetimeModel(PydanticBaseModel):
         self._sf = None
         self._pdf = None
 
-
     def compute_outflow_pdf(self):
         """Returns an array year-by-cohort of the probability that an item
         added to stock in year m (aka cohort m) leaves in in year n. This value equals pdf(n,m).
@@ -288,14 +290,18 @@ class LifetimeModel(PydanticBaseModel):
             # scale mean and stddev by lifetime extension factor
             for name in self.prms_to_scale:
                 # apply factor per time step - broadcast to all age cohorts
-                self.prms_to_scale[name][...] = scaled_prms_orig[name][...] * factor.values[i_t, ...][np.newaxis, ...]
+                self.prms_to_scale[name][...] = (
+                    scaled_prms_orig[name][...] * factor.values[i_t, ...][np.newaxis, ...]
+                )
             # curr_survival calculates sf_e(t-1) ans sf_e(t) in one array
             # for i_t = 0, the previous time step sf_e(t-1) is omitted
             curr_survival = np.zeros((min(2, i_t + 1), self._n_t) + self._shape_no_t)
             for quad_pt, quad_wt in zip(self._qp, self._qw):
-                for i_c in range(0, i_t+1):  # cohort index
+                for i_c in range(0, i_t + 1):  # cohort index
                     # max(i_t, 1) omits prev time step for i_t = 0
-                    ages = self._tile(self._t.bounds[max(i_t,1) : i_t + 2] - self._qp_time(i_c, quad_pt))
+                    ages = self._tile(
+                        self._t.bounds[max(i_t, 1) : i_t + 2] - self._qp_time(i_c, quad_pt)
+                    )
                     curr_survival[:, i_c, ...] += quad_wt * self._survival_by_year_id(ages, i_c)
             # main diagonal: sf(t) = sf_e(t)
             self._sf[i_t, i_t, ...] = curr_survival[-1, i_t, ...]
