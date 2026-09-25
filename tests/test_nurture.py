@@ -28,7 +28,6 @@ dims = DimensionSet(dim_list=dim_list)
 inflow = StockArray(dims=dims)
 inflow[{"t": 0}] = 1
 
-lifetime_model = WeibullLifetime(dims=dims, time_letter="t", weibull_scale=10, weibull_shape=2)
 
 factor = FlodymArray(dims=dims)
 factor[...] = 1.
@@ -38,7 +37,13 @@ factor[{"p": "Sudden ext", "t": range(10, 31)}] = EXT_FAC
 x_clip = np.clip((np.arange(31) - 5) / 10, 0, 1)
 factor["Smooth ext"] = 1 + (EXT_FAC - 1) * x_clip
 
-lifetime_model.extend_by_nurture(factor=factor)
+lifetime_model = WeibullLifetime(
+    dims=dims,
+    time_letter="t",
+    weibull_scale=10,
+    weibull_shape=2,
+    lt_factor_by_year=factor,
+)
 
 dsm = InflowDrivenDSM(
     dims=dims,
