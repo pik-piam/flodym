@@ -294,9 +294,48 @@ def test_make_empty_stocks_accepts_explicit_nondefault_time_letter():
     assert stocks["stock_with_nondefault_time"].time_letter == "s"
 
 
-def test_lifetime_ext_nurture(plot = False):
+def test_lifetime_ext(plot = False):
     EXT_FAC = 2
 
+    # Nurture
+
+    dsm = _get_dsm_with_lifetime_ext(EXT_FAC, nurture=True)
+
+    assert_almost_equal(dsm.stock[{"t": 4, "p": "Base"}].values,
+                        dsm.stock[{"t": 4, "p": "Sudden ext"}].values)
+
+    assert_almost_equal(dsm.stock[{"t": 4, "p": "Base"}].values,
+                        dsm.stock[{"t": 4, "p": "Smooth ext"}].values)
+
+    base = dsm.stock[{"t": 15, "p": "Base"}].values
+    all_ext = dsm.stock[{"t": 15, "p": "All ext"}].values
+    sudden_ext = dsm.stock[{"t": 15, "p": "Sudden ext"}].values
+    smooth_ext = dsm.stock[{"t": 15, "p": "Smooth ext"}].values
+
+    assert all_ext > smooth_ext > sudden_ext > base
+
+    # Nature
+
+    dsm = _get_dsm_with_lifetime_ext(EXT_FAC, nurture=False)
+
+    assert_almost_equal(dsm.stock[{"t": 4, "p": "Base"}].values,
+                        dsm.stock[{"t": 4, "p": "Sudden ext"}].values)
+
+    assert_almost_equal(dsm.stock[{"t": 4, "p": "Base"}].values,
+                        dsm.stock[{"t": 4, "p": "Smooth ext"}].values)
+
+    base = dsm.stock[{"t": 20, "p": "Base"}].values
+    all_ext = dsm.stock[{"t": 20, "p": "All ext"}].values
+    sudden_ext = dsm.stock[{"t": 20, "p": "Sudden ext"}].values
+    smooth_ext = dsm.stock[{"t": 20, "p": "Smooth ext"}].values
+
+    assert all_ext > sudden_ext > base
+    assert all_ext > smooth_ext > base
+
+    assert dsm.stock[{"t": 9, "p": "Sudden ext"}].values < dsm.stock[{"t": 9, "p": "Smooth ext"}].values
+
+
+def _get_dsm_with_lifetime_ext(EXT_FAC, nurture = True):
     dim_list = [
         Dimension(
             name="time",
@@ -315,8 +354,13 @@ def test_lifetime_ext_nurture(plot = False):
     dims = DimensionSet(dim_list=dim_list)
 
     inflow = StockArray(dims=dims)
-    inflow[{"t": 0}] = 1
 
+    if nurture:
+        # effect of extension through repair etc is clearest for only one cohort
+        inflow[{"t": 0}] = 1
+    else:
+        # extension through product design needs several inflow years
+        inflow[...] = 1
 
     factor = FlodymArray(dims=dims)
     factor[...] = 1.
@@ -326,12 +370,13 @@ def test_lifetime_ext_nurture(plot = False):
     x_clip = np.clip((np.arange(31) - 5) / 10, 0, 1)
     factor["Smooth ext"] = 1 + (EXT_FAC - 1) * x_clip
 
+    ext_prm_name = "lt_factor_by_year" if nurture else "lt_factor_by_cohort"
     lifetime_model = WeibullLifetime(
         dims=dims,
         time_letter="t",
         weibull_scale=10,
         weibull_shape=2,
-        lt_factor_by_year=factor,
+        **{ext_prm_name: factor}
     )
 
     dsm = InflowDrivenDSM(
@@ -341,41 +386,4 @@ def test_lifetime_ext_nurture(plot = False):
         time_letter="t",
     )
     dsm.compute()
-
-    assert_almost_equal(dsm.stock[{"t": 4, "p": "Base"}].values,
-                        dsm.stock[{"t": 4, "p": "Sudden ext"}].values)
-
-    assert_almost_equal(dsm.stock[{"t": 4, "p": "Base"}].values,
-                        dsm.stock[{"t": 4, "p": "Smooth ext"}].values)
-
-    base = dsm.stock[{"t": 15, "p": "Base"}].values
-    all_ext = dsm.stock[{"t": 15, "p": "All ext"}].values
-    sudden_ext = dsm.stock[{"t": 15, "p": "Sudden ext"}].values
-    smooth_ext = dsm.stock[{"t": 15, "p": "Smooth ext"}].values
-
-    assert all_ext > smooth_ext > sudden_ext > base
-
-    if plot:
-        plotter = PlotlyArrayPlotter(
-            array=factor,
-            intra_line_dim="t",
-            linecolor_dim="p",
-        )
-        fig = plotter.plot()
-        fig.show()
-
-        plotter = PlotlyArrayPlotter(
-            array=dsm.stock,
-            intra_line_dim="t",
-            linecolor_dim="p",
-        )
-        fig = plotter.plot()
-        fig.show()
-
-        plotter = PlotlyArrayPlotter(
-            array=dsm.outflow,
-            intra_line_dim="t",
-            linecolor_dim="p",
-        )
-        fig = plotter.plot()
-        fig.show()
+    return factor,dsm
