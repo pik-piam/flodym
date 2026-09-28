@@ -314,7 +314,9 @@ class LifetimeModel(PydanticBaseModel):
             self._pdf[m + 1 :, m, ...] = -1 * np.diff(self.sf[m:, m, ...], axis=0)
 
     def _compute_survival_factor_with_nurture(self):
-        """Extend the lifetime by a factor, e.g. to account for product care or maintenance.
+        """
+        Compute the survival factor in presence of lifetime extension by year, i.e. the "nurture"
+        approach in Krych et al. 2024.
         Math:
         sf_e = plain survival function with extended lifetime
         sf = resulting combined survival function based on previous survival
