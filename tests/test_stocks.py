@@ -13,7 +13,7 @@ from flodym import (
     StockDefinition,
     WeibullLifetime,
     LogNormalLifetime,
-    make_empty_stocks
+    make_empty_stocks,
 )
 
 dim_list = [
