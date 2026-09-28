@@ -2,9 +2,15 @@ import numpy as np
 from numpy.testing import assert_almost_equal
 import pytest
 
-from flodym import Dimension, DimensionSet, FlodymArray, InflowDrivenDSM, StockArray, WeibullLifetime
+from flodym import (
+    Dimension,
+    DimensionSet,
+    FlodymArray,
+    InflowDrivenDSM,
+    StockArray,
+    WeibullLifetime,
+)
 from flodym.dimensions import Dimension, DimensionSet
-from flodym.export import PlotlyArrayPlotter
 from flodym.flodym_arrays import StockArray
 from flodym.mfa_definition import StockDefinition
 from flodym.stock_helper import make_empty_stocks
@@ -294,18 +300,20 @@ def test_make_empty_stocks_accepts_explicit_nondefault_time_letter():
     assert stocks["stock_with_nondefault_time"].time_letter == "s"
 
 
-def test_lifetime_ext(plot = False):
+def test_lifetime_ext(plot=False):
     EXT_FAC = 2
 
     # Nurture
 
     dsm = _get_dsm_with_lifetime_ext(EXT_FAC, nurture=True)
 
-    assert_almost_equal(dsm.stock[{"t": 4, "p": "Base"}].values,
-                        dsm.stock[{"t": 4, "p": "Sudden ext"}].values)
+    assert_almost_equal(
+        dsm.stock[{"t": 4, "p": "Base"}].values, dsm.stock[{"t": 4, "p": "Sudden ext"}].values
+    )
 
-    assert_almost_equal(dsm.stock[{"t": 4, "p": "Base"}].values,
-                        dsm.stock[{"t": 4, "p": "Smooth ext"}].values)
+    assert_almost_equal(
+        dsm.stock[{"t": 4, "p": "Base"}].values, dsm.stock[{"t": 4, "p": "Smooth ext"}].values
+    )
 
     base = dsm.stock[{"t": 15, "p": "Base"}].values
     all_ext = dsm.stock[{"t": 15, "p": "All ext"}].values
@@ -318,11 +326,13 @@ def test_lifetime_ext(plot = False):
 
     dsm = _get_dsm_with_lifetime_ext(EXT_FAC, nurture=False)
 
-    assert_almost_equal(dsm.stock[{"t": 4, "p": "Base"}].values,
-                        dsm.stock[{"t": 4, "p": "Sudden ext"}].values)
+    assert_almost_equal(
+        dsm.stock[{"t": 4, "p": "Base"}].values, dsm.stock[{"t": 4, "p": "Sudden ext"}].values
+    )
 
-    assert_almost_equal(dsm.stock[{"t": 4, "p": "Base"}].values,
-                        dsm.stock[{"t": 4, "p": "Smooth ext"}].values)
+    assert_almost_equal(
+        dsm.stock[{"t": 4, "p": "Base"}].values, dsm.stock[{"t": 4, "p": "Smooth ext"}].values
+    )
 
     base = dsm.stock[{"t": 20, "p": "Base"}].values
     all_ext = dsm.stock[{"t": 20, "p": "All ext"}].values
@@ -332,10 +342,13 @@ def test_lifetime_ext(plot = False):
     assert all_ext > sudden_ext > base
     assert all_ext > smooth_ext > base
 
-    assert dsm.stock[{"t": 9, "p": "Sudden ext"}].values < dsm.stock[{"t": 9, "p": "Smooth ext"}].values
+    assert (
+        dsm.stock[{"t": 9, "p": "Sudden ext"}].values
+        < dsm.stock[{"t": 9, "p": "Smooth ext"}].values
+    )
 
 
-def _get_dsm_with_lifetime_ext(EXT_FAC, nurture = True):
+def _get_dsm_with_lifetime_ext(EXT_FAC, nurture=True):
     dim_list = [
         Dimension(
             name="time",
@@ -363,7 +376,7 @@ def _get_dsm_with_lifetime_ext(EXT_FAC, nurture = True):
         inflow[...] = 1
 
     factor = FlodymArray(dims=dims)
-    factor[...] = 1.
+    factor[...] = 1.0
     factor["All ext"] = EXT_FAC
     factor[{"p": "Sudden ext", "t": range(10, 31)}] = EXT_FAC
     # blend from 5 to 14 years for product D
@@ -372,11 +385,7 @@ def _get_dsm_with_lifetime_ext(EXT_FAC, nurture = True):
 
     ext_prm_name = "lt_factor_by_year" if nurture else "lt_factor_by_cohort"
     lifetime_model = WeibullLifetime(
-        dims=dims,
-        time_letter="t",
-        weibull_scale=10,
-        weibull_shape=2,
-        **{ext_prm_name: factor}
+        dims=dims, time_letter="t", weibull_scale=10, weibull_shape=2, **{ext_prm_name: factor}
     )
 
     dsm = InflowDrivenDSM(
@@ -386,4 +395,4 @@ def _get_dsm_with_lifetime_ext(EXT_FAC, nurture = True):
         time_letter="t",
     )
     dsm.compute()
-    return factor,dsm
+    return factor, dsm

@@ -48,7 +48,9 @@ class UnevenTimeDim(PydanticBaseModel):
 class LifetimeModel(PydanticBaseModel):
     """Contains shared functionality across the various lifetime models."""
 
-    model_config = ConfigDict(validate_assignment=True, arbitrary_types_allowed=True, extra="forbid")
+    model_config = ConfigDict(
+        validate_assignment=True, arbitrary_types_allowed=True, extra="forbid"
+    )
 
     dims: DimensionSet
     time_letter: str = "t"
@@ -128,13 +130,17 @@ class LifetimeModel(PydanticBaseModel):
             prm_out = np.ndarray(self.shape)
             try:
                 prm_out[...] = prm_in
-            except ValueError as e:
-                raise ValueError(f"Parameter {name} (shape {prm_in.shape}) has incompatible dimensions with lifetime model shape ({self._shape})")
+            except ValueError:
+                raise ValueError(
+                    f"Parameter {name} (shape {prm_in.shape}) has incompatible dimensions with lifetime model shape ({self._shape})"
+                )
         elif isinstance(prm_in, Number):
             prm_out = np.ndarray(self.shape)
             prm_out[...] = prm_in
         else:
-            raise ValueError(f"Parameter {name} must be a FlodymArray, np.ndarray, or number, but is {type(prm_in)}")
+            raise ValueError(
+                f"Parameter {name} must be a FlodymArray, np.ndarray, or number, but is {type(prm_in)}"
+            )
         return prm_out
 
     def _check_prms_set(self):
@@ -211,7 +217,6 @@ class LifetimeModel(PydanticBaseModel):
         out = a[index]
         return np.tile(out, self._shape_no_t)
 
-
     def _qp_time(self, m, eta):
         """Returns the time point within the inflow time period m, given the quadrature point eta."""
         return eta * self._t.bounds[m + 1] + (1 - eta) * self._t.bounds[m]
@@ -283,7 +288,9 @@ class LifetimeModel(PydanticBaseModel):
             raise ValueError("Cannot set parameters with both positional and keyword arguments.")
         if len(args) > 0:
             if len(args) != len(self._prm_names):
-                raise ValueError(f"Expected {len(self._prm_names)} parameters, but got {len(args)}.")
+                raise ValueError(
+                    f"Expected {len(self._prm_names)} parameters, but got {len(args)}."
+                )
             for prm_name, prm_value in zip(self._prm_names, args):
                 setattr(self, prm_name, prm_value)
         elif len(kwargs) > 0:
@@ -322,14 +329,18 @@ class LifetimeModel(PydanticBaseModel):
             # scale such that mean and stddev are increased by lifetime extension factor
             for name in self._prm_names_to_scale:
                 # apply factor per time step - broadcast to all age cohorts
-                self._scaled_prms[name][...] = scaled_prms_orig[name][...] * factor[i_t, ...][np.newaxis, ...]
+                self._scaled_prms[name][...] = (
+                    scaled_prms_orig[name][...] * factor[i_t, ...][np.newaxis, ...]
+                )
             # curr_survival calculates sf_e(t-1) ans sf_e(t) in one array
             # for i_t = 0, the previous time step sf_e(t-1) is omitted
             curr_survival = np.zeros((min(2, i_t + 1), self._n_t) + self._shape_no_t)
             for quad_pt, quad_wt in zip(self._qp, self._qw):
-                for i_c in range(0, i_t+1):  # cohort index
+                for i_c in range(0, i_t + 1):  # cohort index
                     # max(i_t, 1) omits prev time step for i_t = 0
-                    ages = self._tile(self._t.bounds[max(i_t,1) : i_t + 2] - self._qp_time(i_c, quad_pt))
+                    ages = self._tile(
+                        self._t.bounds[max(i_t, 1) : i_t + 2] - self._qp_time(i_c, quad_pt)
+                    )
                     curr_survival[:, i_c, ...] += quad_wt * self._survival_by_year_id(ages, i_c)
             # main diagonal: sf(t) = sf_e(t)
             self._sf[i_t, i_t, ...] = curr_survival[-1, i_t, ...]
