@@ -394,4 +394,4 @@ def _get_dsm_with_lifetime_ext(EXT_FAC, nurture=True):
         time_letter="t",
     )
     dsm.compute()
-    return factor, dsm
+    return dsm
