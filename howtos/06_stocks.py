@@ -177,10 +177,10 @@ stock = StockArray(dims=dims, values=stock_values)
 
 # Initialize prescribed extension factors
 # linear increase from 1 to 2 between 2030 and 2040, then constant at 2
-factor_np = 1 + np.clip((np.array(YEARS) - 2030) / 10 , 0, 1)
+factor_np = 1 + np.clip((np.array(YEARS) - 2030) / 10, 0, 1)
 
 factor = FlodymArray(dims=dims)
-factor[...] = 1.
+factor[...] = 1.0
 
 factor_by_year = factor.copy()
 factor_by_year["extension by year"] = factor_np
