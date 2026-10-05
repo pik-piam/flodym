@@ -22,6 +22,7 @@ dependencies = [
     "openpyxl>=3.1.5",
     "tabulate>=0.9.0",
     "deprecated>=1.3.1",
+    "typing-extensions>=4.6.1",
 ]
 
 [project.optional-dependencies]
@@ -89,3 +90,7 @@ no-matching-overload = "ignore"
 not-iterable = "ignore"
 missing-argument = "ignore"
 too-many-positional-arguments = "ignore"
+
+[[tool.ty.overrides]]
+include = ["tests/check_typing.py"]
+rules = { invalid-argument-type = "error", unsupported-operator = "error" }

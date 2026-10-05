@@ -4,26 +4,29 @@ Specific MFA models can be built that inherit from this class.
 """
 
 import logging
-from typing import Dict, Optional
+from os import PathLike
+from typing import Dict, Optional, SupportsFloat
 
 import numpy as np
-from pydantic import BaseModel as PydanticBaseModel, ConfigDict
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import ConfigDict
+from typing_extensions import Self
 
-from .mfa_definition import MFADefinition
-from .dimensions import DimensionSet
-from .flodym_arrays import Flow, Parameter, FlodymArray
-from .stocks import Stock
-from .processes import Process, make_processes
-from .stock_helper import make_empty_stocks
-from .flow_helper import make_empty_flows
 from .data_reader import (
-    DataReader,
     CompoundDataReader,
     CSVDimensionReader,
     CSVParameterReader,
+    DataReader,
     ExcelDimensionReader,
     ExcelParameterReader,
 )
+from .dimensions import DimensionSet
+from .flodym_arrays import FlodymArray, Flow, Parameter
+from .flow_helper import make_empty_flows
+from .mfa_definition import MFADefinition
+from .processes import Process, make_processes
+from .stock_helper import make_empty_stocks
+from .stocks import Stock
 
 
 class MFASystem(PydanticBaseModel):
@@ -59,13 +62,13 @@ class MFASystem(PydanticBaseModel):
     """The flows of the MFA system, i.e. the edges of the MFA system graph,
     as a dictionary mapping the names of the MFA system flows to the flows themselves.
     """
-    stocks: Optional[Dict[str, Stock]] = {}
+    stocks: Dict[str, Stock] = {}
     """The stocks of the MFA system,
     as a dictionary mapping the names of the MFA system stocks to the stocks themselves.
     """
 
     @classmethod
-    def from_data_reader(cls, definition: MFADefinition, data_reader: DataReader) -> "MFASystem":
+    def from_data_reader(cls, definition: MFADefinition, data_reader: DataReader) -> Self:
         """Define and set up the MFA system and load all required data.
         Initialises stocks and flows with all zero values."""
         dims = data_reader.read_dimensions(definition.dimensions)
@@ -87,11 +90,11 @@ class MFASystem(PydanticBaseModel):
     def from_csv(
         cls,
         definition: MFADefinition,
-        dimension_files: dict,
-        parameter_files: dict,
+        dimension_files: dict[str, str | PathLike[str]],
+        parameter_files: dict[str, str | PathLike[str]],
         allow_missing_parameter_values: bool = False,
         allow_extra_parameter_values: bool = False,
-    ):
+    ) -> Self:
         """Define and set up the MFA system and load all required data from CSV files.
         Initialises stocks and flows with all zero values.
 
@@ -124,13 +127,13 @@ class MFASystem(PydanticBaseModel):
     def from_excel(
         cls,
         definition: MFADefinition,
-        dimension_files: dict,
-        parameter_files: dict,
-        dimension_sheets: dict = None,
-        parameter_sheets: dict = None,
+        dimension_files: dict[str, str | PathLike[str]],
+        parameter_files: dict[str, str | PathLike[str]],
+        dimension_sheets: Optional[dict[str, str]] = None,
+        parameter_sheets: Optional[dict[str, str]] = None,
         allow_missing_parameter_values: bool = False,
         allow_extra_parameter_values: bool = False,
-    ):
+    ) -> Self:
         """Define and set up the MFA system and load all required data from Excel files.
         Initialises stocks and flows with all zero values.
         Builds a CompoundDataReader from Excel readers, and calls the from_data_reader class method.
@@ -171,8 +174,8 @@ class MFASystem(PydanticBaseModel):
             "The compute method must be implemented in a subclass of MFASystem if it is to be used."
         )
 
-    def get_new_array(self, dim_letters: tuple = None, **kwargs) -> FlodymArray:
-        """get a new FlodymArray object.
+    def get_new_array(self, dim_letters: Optional[tuple[str, ...]] = None, **kwargs) -> FlodymArray:
+        """Get a new FlodymArray object.
 
         :param dim_letters: tuple of dimension letters to include in the new FlodymArray. If None, all dimensions are included.
         :param kwargs: keyword arguments to pass to the FlodymArray constructor.
@@ -227,7 +230,7 @@ class MFASystem(PydanticBaseModel):
         epsilon = np.finfo(next(iter(self.flows.values())).values.dtype).eps
         return epsilon * max(max_flow_value, max_stock_value)
 
-    def check_mass_balance(self, tolerance=None, raise_error: bool = True):
+    def check_mass_balance(self, tolerance: SupportsFloat | None = None, raise_error: bool = True):
         """Compute mass balance, and check whether it is within a certain tolerance.
         Throw an error if it isn't.
 
@@ -306,7 +309,7 @@ class MFASystem(PydanticBaseModel):
             logging.info(f"Success - No negative flows or NaN values in {self.__class__.__name__}")
 
     @staticmethod
-    def _error_or_warning(message: str, raise_error: bool) -> bool:
+    def _error_or_warning(message: str, raise_error: bool) -> None:
         if raise_error:
             raise ValueError(message)
         else:
