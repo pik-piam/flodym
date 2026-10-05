@@ -361,6 +361,8 @@ class FixedLifetime(LifetimeModel):
     specified as 'Mean', is reached."""
 
     mean: LifetimeArrayType | None = None
+    """The fixed lifetime, i.e. the age at which the age-cohort leaves the stock.
+    """
 
     _prm_names: ClassVar[list[str]] = ["mean"]
     _prm_names_to_scale: ClassVar[list[str]] = ["mean"]
@@ -374,8 +376,11 @@ class FixedLifetime(LifetimeModel):
 
 class StandardDeviationLifetimeModel(LifetimeModel):
     mean: LifetimeArrayType | None = None
+    """Mean lifetime.
+    """
     std: LifetimeArrayType | None = None
-
+    """Standard deviation of lifetime.
+    """
     _prm_names: ClassVar[list[str]] = ["mean", "std"]
     _prm_names_to_scale: ClassVar[list[str]] = ["mean", "std"]
 
@@ -445,7 +450,11 @@ class WeibullLifetime(LifetimeModel):
     """Weibull distribution with standard definition of scale and shape parameters."""
 
     weibull_scale: LifetimeArrayType | None = None
+    """Scale parameter of the Weibull distribution.
+    """
     weibull_shape: LifetimeArrayType | None = None
+    """Shape parameter of the Weibull distribution.
+    """
 
     _prm_names: ClassVar[list[str]] = ["weibull_scale", "weibull_shape"]
     _prm_names_to_scale: ClassVar[list[str]] = ["weibull_scale"]
