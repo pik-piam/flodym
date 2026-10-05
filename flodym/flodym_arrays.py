@@ -19,6 +19,11 @@ from typing import (
     overload,
 )
 
+from collections.abc import Iterable
+from copy import copy, deepcopy
+from numbers import Number
+from typing import Callable, Literal, Optional, SupportsFloat, TypeVar, Union, overload
+
 import numpy as np
 import pandas as pd
 from pydantic import (
@@ -34,6 +39,8 @@ from typing_extensions import Self
 
 from ._df_to_flodym_array import DataFrameToFlodymDataConverter
 from ._typing import DimLetterT, OtherDimLetterT, keep_unparametrized_instances
+from .dimensions import Dimension, DimensionSet
+from .processes import Process
 from .dimensions import Dimension, DimensionSet
 from .processes import Process
 
@@ -445,9 +452,12 @@ class FlodymArray(PydanticBaseModel, Generic[DimLetterT]):
 
     def _prepare_other(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
         """If a math operation between a FlodymArray and a scalar is performed, the scalar is converted to a FlodymArray object.
+    def _prepare_other(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
+        """If a math operation between a FlodymArray and a scalar is performed, the scalar is converted to a FlodymArray object.
         The following operations are then performed between the two FlodymArray objects.
 
         Args:
+            other: The other object to perform the operation with.
             other: The other object to perform the operation with.
 
         Returns:
