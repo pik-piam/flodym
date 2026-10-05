@@ -90,3 +90,7 @@ no-matching-overload = "ignore"
 not-iterable = "ignore"
 missing-argument = "ignore"
 too-many-positional-arguments = "ignore"
+
+[[tool.ty.overrides]]
+include = ["tests/check_typing.py"]
+rules = { invalid-argument-type = "error", unsupported-operator = "error" }
