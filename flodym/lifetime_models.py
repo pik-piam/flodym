@@ -222,7 +222,6 @@ class LifetimeModel(PydanticBaseModel):
         """Returns the time point within the inflow time period m, given the quadrature point eta."""
         return quad_point * self._t.bounds[m + 1] + (1 - quad_point) * self._t.bounds[m]
 
-
     def _remaining_ages(self, i_t, quad_point):
         return self._tile(self._t.bounds[i_t + 1 :] - self._quad_point_time(i_t, quad_point))
 
@@ -345,7 +344,9 @@ class LifetimeModel(PydanticBaseModel):
                     curr_time = self._t.bounds[max(i_t, 1) : i_t + 2]
                     cohort_time = self._quad_point_time(i_c, quad_point)
                     curr_ages = self._tile(curr_time - cohort_time)
-                    curr_survival[:, i_c, ...] += quad_weight * self._survival_by_cohort(curr_ages, i_c)
+                    curr_survival[:, i_c, ...] += quad_weight * self._survival_by_cohort(
+                        curr_ages, i_c
+                    )
             # main diagonal: sf(t) = sf_e(t)
             self._sf[i_t, i_t, ...] = curr_survival[-1, i_t, ...]
             if i_t > 0:
