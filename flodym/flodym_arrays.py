@@ -450,8 +450,7 @@ class FlodymArray(PydanticBaseModel, Generic[DimLetterT]):
         else:
             raise KeyError(f"Dimension {dim} not found in FlodymArray dims.")
 
-    def _prepare_other(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
-        """If a math operation between a FlodymArray and a scalar is performed, the scalar is converted to a FlodymArray object.
+
     def _prepare_other(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
         """If a math operation between a FlodymArray and a scalar is performed, the scalar is converted to a FlodymArray object.
         The following operations are then performed between the two FlodymArray objects.
