@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 from copy import copy
-from typing import Dict, Iterator, Optional
+from typing import Dict, Generic, Iterator, Optional, overload
 
 import numpy as np
 import pandas as pd
 from pydantic import AliasChoices, Field, model_validator
 from pydantic import BaseModel as PydanticBaseModel
 
+from ._typing import DimLetterT, OtherDimLetterT, keep_unparametrized_instances
 from .mfa_definition import DimensionDefinition
 
 
-class Dimension(PydanticBaseModel):
+class Dimension(PydanticBaseModel, Generic[DimLetterT]):
     """One of multiple dimensions over which MFA arrays are defined.
 
     Defined by a name, a letter for shorter addressing, and a list of items.
@@ -27,7 +28,7 @@ class Dimension(PydanticBaseModel):
 
     name: str = Field(..., min_length=2)
     """The full name of the dimension"""
-    letter: str = Field(
+    letter: DimLetterT = Field(
         ..., min_length=1, max_length=1, validation_alias=AliasChoices("letter", "dim_letter")
     )
     """A single index letter for shorter addressing of the dimension"""
@@ -126,7 +127,7 @@ class Dimension(PydanticBaseModel):
         return base + item_base + type_info + list_str
 
 
-class DimensionSet(PydanticBaseModel):
+class DimensionSet(PydanticBaseModel, Generic[DimLetterT]):
     """A set of Dimension objects which MFA arrays are defined over.
 
     **Example**
@@ -157,6 +158,8 @@ class DimensionSet(PydanticBaseModel):
     dim_list: list[Dimension]
     """A list of Dimension objects defining the set"""
 
+    _keep_unparametrized_instances = model_validator(mode="wrap")(keep_unparametrized_instances)
+
     @model_validator(mode="after")
     def no_repeated_dimensions(self):
         """Check that all dimensions have unique letters."""
@@ -185,7 +188,13 @@ class DimensionSet(PydanticBaseModel):
         """
         return {dim.name: dim for dim in self.dim_list} | {dim.letter: dim for dim in self.dim_list}
 
-    def __getitem__(self, key) -> Dimension:
+    @overload
+    def __getitem__(self, key: tuple[DimLetterT, ...]) -> DimensionSet[DimLetterT]: ...
+    @overload
+    def __getitem__(self, key: DimLetterT | int) -> Dimension: ...
+    def __getitem__(
+        self, key: tuple[DimLetterT, ...] | DimLetterT | int
+    ) -> DimensionSet[DimLetterT] | Dimension:
         """Get a dimension by its name, letter or index with the [] operator.
 
         Args:
@@ -214,7 +223,7 @@ class DimensionSet(PydanticBaseModel):
             key = key.letter
         return key in self._full_mapping
 
-    def size(self, key: str):
+    def size(self, key: DimLetterT) -> int:
         """get the number of items in a dimension
 
         Args:
@@ -223,7 +232,7 @@ class DimensionSet(PydanticBaseModel):
         return self._full_mapping[key].len
 
     @property
-    def shape(self) -> tuple[int]:
+    def shape(self) -> tuple[int, ...]:
         """shape of the array that would be created with the dimensions in the set"""
         return tuple(self.size(dim) for dim in self.letters)
 
@@ -232,11 +241,15 @@ class DimensionSet(PydanticBaseModel):
         """size (total number of elements) of the array that would be created with the dimensions in the set"""
         return int(np.prod(self.shape))
 
-    def copy(self) -> "DimensionSet":
+    def copy(self) -> DimensionSet[DimLetterT]:
         """Return a copy of the DimensionSet."""
         return self.model_copy(update={"dim_list": copy(self.dim_list)})
 
-    def get_subset(self, dims: Optional[tuple] = None) -> "DimensionSet":
+    # TODO: Specify that DimLetterT can actually be a subtype of DimLetterT and return a DimensionSet with the more specific type.
+    # Needs https://github.com/python/typing/issues/1226
+    def get_subset(
+        self, dims: Optional[tuple[DimLetterT, ...]] = None
+    ) -> DimensionSet[DimLetterT]:
         """Selects :py:class:`Dimension` objects from the object attribute dim_list,
         according to the dims passed, which can be either letters or names.
         Returns a copy if dims are not given.
@@ -337,7 +350,7 @@ class DimensionSet(PydanticBaseModel):
             dim_list.insert(index, new_dim)
             return DimensionSet(dim_list=dim_list)
 
-    def drop(self, key: str, inplace: bool = False) -> Optional["DimensionSet"]:
+    def drop(self, key: DimLetterT, inplace: bool = False) -> Optional[DimensionSet[DimLetterT]]:
         """Remove a dimension from the set.
 
         Args:
@@ -358,7 +371,7 @@ class DimensionSet(PydanticBaseModel):
 
     remove = drop
 
-    def replace(self, key: str, new_dim: Dimension, inplace: bool = False):
+    def replace(self, key: DimLetterT, new_dim: Dimension, inplace: bool = False):
         """Replace a dimension in the set with a new one.
 
         Args:
@@ -391,7 +404,7 @@ class DimensionSet(PydanticBaseModel):
         else:
             raise TypeError("Operation of DimensionSet must be with DimensionSet or Dimension")
 
-    def intersect_with(self, other: "DimensionSet" | Dimension) -> "DimensionSet":
+    def intersect_with(self, other: "DimensionSet" | Dimension) -> DimensionSet[DimLetterT]:
         """Get the intersection of two DimensionSets.
 
         Args:
@@ -401,14 +414,16 @@ class DimensionSet(PydanticBaseModel):
             DimensionSet: The intersection of the two DimensionSets
         """
         other = self.prepare_other(other)
-        intersection_letters = [dim.letter for dim in self.dim_list if dim.letter in other.letters]
+        intersection_letters = tuple(letter for letter in self.letters if letter in other.letters)
         return self.get_subset(intersection_letters)
 
-    def __and__(self, other: "DimensionSet" | Dimension) -> "DimensionSet":
+    def __and__(self, other: "DimensionSet" | Dimension) -> DimensionSet[DimLetterT]:
         """Intersection operator for two DimensionSets."""
         return self.intersect_with(other)
 
-    def union_with(self, other: "DimensionSet" | Dimension) -> "DimensionSet":
+    def union_with(
+        self, other: DimensionSet[OtherDimLetterT] | Dimension
+    ) -> DimensionSet[DimLetterT | OtherDimLetterT]:
         """Get the union of two DimensionSets.
 
         Args:
@@ -421,7 +436,9 @@ class DimensionSet(PydanticBaseModel):
         added_dims = [dim for dim in other.dim_list if dim.letter not in self.letters]
         return self.expand_by(added_dims)
 
-    def __or__(self, other: "DimensionSet" | Dimension) -> "DimensionSet":
+    def __or__(
+        self, other: DimensionSet[OtherDimLetterT] | Dimension
+    ) -> DimensionSet[DimLetterT | OtherDimLetterT]:
         """Union operator for two DimensionSets."""
         return self.union_with(other)
 
@@ -431,7 +448,7 @@ class DimensionSet(PydanticBaseModel):
             raise ValueError("Dimensions of DimensionSets overlap. Use union '|' operator instead.")
         return self.union_with(other)
 
-    def difference_with(self, other: "DimensionSet" | Dimension) -> "DimensionSet":
+    def difference_with(self, other: "DimensionSet" | Dimension) -> DimensionSet[DimLetterT]:
         """Get the set difference of two DimensionSets.
 
         Args:
@@ -441,12 +458,10 @@ class DimensionSet(PydanticBaseModel):
             DimensionSet: The difference of the two DimensionSets
         """
         other = self.prepare_other(other)
-        difference_letters = [
-            dim.letter for dim in self.dim_list if dim.letter not in other.letters
-        ]
+        difference_letters = tuple(letter for letter in self.letters if letter not in other.letters)
         return self.get_subset(difference_letters)
 
-    def __sub__(self, other: "DimensionSet" | Dimension) -> "DimensionSet":
+    def __sub__(self, other: "DimensionSet" | Dimension) -> DimensionSet[DimLetterT]:
         """Difference operator for two DimensionSets."""
         return self.difference_with(other)
 
@@ -473,7 +488,7 @@ class DimensionSet(PydanticBaseModel):
         return tuple([dim.name for dim in self.dim_list])
 
     @property
-    def letters(self):
+    def letters(self) -> tuple[DimLetterT, ...]:
         """A tuple of the letters of the dimensions in the set."""
         return tuple([dim.letter for dim in self.dim_list])
 
@@ -482,7 +497,7 @@ class DimensionSet(PydanticBaseModel):
         """The letters of the dimensions in the set concatenated to a single string."""
         return "".join(self.letters)
 
-    def index(self, key):
+    def index(self, key: DimLetterT) -> int:
         """Return the index of a dimension in the set.
 
         Args:

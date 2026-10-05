@@ -44,6 +44,7 @@
 # %%
 import os
 from copy import deepcopy
+from typing import Literal
 
 import numpy as np
 
@@ -155,7 +156,7 @@ mfa_definition = MFADefinition(
 
 
 # %%
-class SimpleMFA(MFASystem):
+class SimpleMFA(MFASystem[Literal["t", "e"]]):
     def compute(self):
         self.flows["sysenv => shredder"][...] = (
             self.parameters["eol machines"] * self.parameters["composition eol machines"]
@@ -295,13 +296,13 @@ fig.show(renderer="notebook")
 mfa_example_a = deepcopy(mfa_example)
 mfa_example_a.parameters["shredder yield"].set_values(np.array([0.92, 0.075, 0.92]))
 mfa_example_a.compute()
-shares_shredder = mfa_example_a.flows["remelting => sysenv"].get_shares_over(("e"))
+shares_shredder = mfa_example_a.flows["remelting => sysenv"].get_shares_over(("e",))
 
 # %%
 mfa_example_b = deepcopy(mfa_example)
 mfa_example_b.parameters["eol buildings"][...] *= 1.25
 mfa_example_b.compute()
-shares_demolition = mfa_example_b.flows["remelting => sysenv"].get_shares_over(("e"))
+shares_demolition = mfa_example_b.flows["remelting => sysenv"].get_shares_over(("e",))
 
 # %%
 plotter = PlotlyArrayPlotter(

@@ -36,6 +36,8 @@
 # ## 1. Load flodym and other useful packages
 
 # %%
+from typing import Literal
+
 import numpy as np
 import plotly.express as px
 from plotly.subplots import make_subplots
@@ -124,7 +126,7 @@ flows = make_empty_flows(processes=processes, flow_definitions=flow_definitions,
 
 
 # %%
-class SimpleMFA(MFASystem):
+class SimpleMFA(MFASystem[Literal["t", "e"]]):
     def compute(self):
         # the elipsis slice [...] ensures the dimensionality of the flow is not changed
         self.flows["sysenv => process 1"][...] = self.parameters["D"]

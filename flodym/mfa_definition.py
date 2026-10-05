@@ -4,20 +4,25 @@ These are used when defining the MFA system, and can be used to check the input 
 and put it into ojects with the desired properties.
 """
 
+from typing import Dict, Generic, List, Optional
+
 import numpy as np
 import pandas as pd
 from pydantic import (
-    BaseModel as PydanticBaseModel,
     AliasChoices,
+    ConfigDict,
     Field,
     field_validator,
     model_validator,
-    ConfigDict,
 )
-from typing import List, Optional, Dict
+from pydantic import (
+    BaseModel as PydanticBaseModel,
+)
+
+from ._typing import DimLetterT
 
 
-class DimensionDefinition(PydanticBaseModel):
+class DimensionDefinition(PydanticBaseModel, Generic[DimLetterT]):
     """Define the model dimensions.
 
     **Examples**
@@ -30,19 +35,19 @@ class DimensionDefinition(PydanticBaseModel):
     model_config = ConfigDict(protected_namespaces=())
 
     name: str = Field(..., min_length=2)
-    letter: str = Field(
+    letter: DimLetterT = Field(
         ..., min_length=1, max_length=1, validation_alias=AliasChoices("letter", "dim_letter")
     )
     dtype: type
 
 
-class DefinitionWithDimLetters(PydanticBaseModel):
+class DefinitionWithDimLetters(PydanticBaseModel, Generic[DimLetterT]):
     """Base class for any definition that contains dimesnsion letters."""
 
     model_config = ConfigDict(protected_namespaces=())
 
-    dim_letters: tuple
-    """letters of the dimensions that the object is defined on"""
+    dim_letters: tuple[DimLetterT, ...]
+    """Letters of the dimensions that the object is defined on."""
 
     @field_validator("dim_letters", mode="before")
     def check_dimensions(cls, v):
@@ -52,7 +57,7 @@ class DefinitionWithDimLetters(PydanticBaseModel):
         return v
 
 
-class FlowDefinition(DefinitionWithDimLetters):
+class FlowDefinition(DefinitionWithDimLetters[DimLetterT], Generic[DimLetterT]):
     """Define the model flows.
 
     **Examples**
@@ -74,7 +79,7 @@ class FlowDefinition(DefinitionWithDimLetters):
     """Optional name for the flow. Will be generated from the connecting process names if not provided."""
 
 
-class StockDefinition(DefinitionWithDimLetters):
+class StockDefinition(DefinitionWithDimLetters[DimLetterT], Generic[DimLetterT]):
     """Define the model stocks."""
 
     name: str = "undefined stock"
@@ -119,14 +124,14 @@ class StockDefinition(DefinitionWithDimLetters):
         return self
 
 
-class ParameterDefinition(DefinitionWithDimLetters):
+class ParameterDefinition(DefinitionWithDimLetters[DimLetterT], Generic[DimLetterT]):
     """Define the model parameters."""
 
     name: str
     """Name of the parameter."""
 
 
-class MFADefinition(PydanticBaseModel):
+class MFADefinition(PydanticBaseModel, Generic[DimLetterT]):
     """All the information needed to define an MFA system, compiled of lists of definition objects."""
 
     model_config = ConfigDict(protected_namespaces=())
@@ -135,11 +140,11 @@ class MFADefinition(PydanticBaseModel):
     """List of definitions of dimensions used in the model."""
     processes: List[str]
     """List of process names used in the model."""
-    flows: List[FlowDefinition]
+    flows: List[FlowDefinition[DimLetterT]]
     """List of definitions of flows used in the model."""
-    stocks: List[StockDefinition] = []
+    stocks: List[StockDefinition[DimLetterT]] = []
     """List of definitions of stocks used in the model."""
-    parameters: List[ParameterDefinition] = []
+    parameters: List[ParameterDefinition[DimLetterT]] = []
     """List of definitions of parameters used in the model."""
 
     @model_validator(mode="after")

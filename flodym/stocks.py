@@ -2,22 +2,25 @@
 including flow-driven stocks and dynamic (lifetime-based) stocks.
 """
 
-from abc import ABC, abstractmethod
-import numpy as np
-from scipy.linalg import solve_triangular
-from pydantic import BaseModel as PydanticBaseModel, ConfigDict, model_validator
-from typing import Optional, Union, TypeVar, Type
 import logging
+from abc import ABC, abstractmethod
+from typing import Generic, Optional, Type, TypeVar, Union
 
-from .processes import Process
-from .flodym_arrays import StockArray
+import numpy as np
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import ConfigDict, model_validator
+from scipy.linalg import solve_triangular
+
+from ._typing import DimLetterT, keep_unparametrized_instances
 from .dimensions import DimensionSet
+from .flodym_arrays import StockArray
 from .lifetime_models import LifetimeModel, UnevenTimeDim
+from .processes import Process
 
 StockSubtype = TypeVar("StockSubtype", bound="Stock")
 
 
-class Stock(PydanticBaseModel):
+class Stock(PydanticBaseModel, Generic[DimLetterT]):
     """Stock objects are components of an MFASystem, where materials can accumulate over time.
     They consist of three :py:class:`flodym.FlodymArray` objects:
     stock (the accumulation), inflow, outflow.
@@ -29,13 +32,13 @@ class Stock(PydanticBaseModel):
 
     model_config = ConfigDict(protected_namespaces=(), arbitrary_types_allowed=True)
 
-    dims: DimensionSet
+    dims: DimensionSet[DimLetterT]
     """Dimensions of the stock, inflow, and outflow arrays. Time must be the first dimension."""
-    stock: Optional[StockArray] = None
+    stock: Optional[StockArray[DimLetterT]] = None
     """Accumulation of the stock"""
-    inflow: Optional[StockArray] = None
+    inflow: Optional[StockArray[DimLetterT]] = None
     """Inflow into the stock"""
-    outflow: Optional[StockArray] = None
+    outflow: Optional[StockArray[DimLetterT]] = None
     """Outflow from the stock"""
     name: Optional[str] = "unnamed"
     """Name of the stock"""
@@ -44,6 +47,8 @@ class Stock(PydanticBaseModel):
     time_letter: str = "t"
     """Letter of the time dimension in the dimensions set, to make sure it's the first one."""
     _t: UnevenTimeDim = None
+
+    _keep_unparametrized_instances = model_validator(mode="wrap")(keep_unparametrized_instances)
 
     @model_validator(mode="after")
     def validate_stock_arrays(self):
@@ -153,7 +158,7 @@ class Stock(PydanticBaseModel):
         return base + dims
 
 
-class SimpleFlowDrivenStock(Stock):
+class SimpleFlowDrivenStock(Stock[DimLetterT], Generic[DimLetterT]):
     """Given inflows and outflows, the stock can be calculated without a lifetime model or cohorts."""
 
     def _check_needed_arrays(self):
@@ -170,7 +175,7 @@ class SimpleFlowDrivenStock(Stock):
         self.stock.values[...] = np.cumsum(net_inflow_whole_period, axis=0)
 
 
-class DynamicStockModel(Stock, ABC):
+class DynamicStockModel(Stock[DimLetterT], ABC, Generic[DimLetterT]):
     """Abstract base class for dynamic stock models, which are based on stocks having a specified
     lifetime (distribution).
 
@@ -250,7 +255,7 @@ class DynamicStockModel(Stock, ABC):
         return base + "\n  Lifetime model: " + lifetime_model
 
 
-class InflowDrivenDSM(DynamicStockModel):
+class InflowDrivenDSM(DynamicStockModel[DimLetterT], Generic[DimLetterT]):
     """Inflow driven model.
     Given inflow and lifetime distribution calculate stocks and outflows.
     """
@@ -275,7 +280,7 @@ class InflowDrivenDSM(DynamicStockModel):
         self.stock.values[...] = self._stock_by_cohort.sum(axis=1)
 
 
-class StockDrivenDSM(DynamicStockModel):
+class StockDrivenDSM(DynamicStockModel[DimLetterT], Generic[DimLetterT]):
     """Stock driven model.
     Given total stock and lifetime distribution, calculate inflows and outflows.
     This involves solving the lower triangular equation system A*x=b,

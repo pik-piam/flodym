@@ -5,13 +5,14 @@ Specific MFA models can be built that inherit from this class.
 
 import logging
 from os import PathLike
-from typing import Dict, Optional, SupportsFloat
+from typing import Dict, Generic, Optional, SupportsFloat
 
 import numpy as np
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import ConfigDict
 from typing_extensions import Self
 
+from ._typing import DimLetterT
 from .data_reader import (
     CompoundDataReader,
     CSVDimensionReader,
@@ -29,7 +30,7 @@ from .stock_helper import make_empty_stocks
 from .stocks import Stock
 
 
-class MFASystem(PydanticBaseModel):
+class MFASystem(PydanticBaseModel, Generic[DimLetterT]):
     """An MFASystem class handles the calculation of a Material Flow Analysis system, which
     consists of a set of processes, flows, stocks defined over a set of dimensions.
     For the concrete definition of the system, a subclass of MFASystem must be implemented.
@@ -48,9 +49,9 @@ class MFASystem(PydanticBaseModel):
 
     model_config = ConfigDict(protected_namespaces=(), extra="allow")
 
-    dims: DimensionSet
+    dims: DimensionSet[DimLetterT]
     """All dimensions that appear in the MFA system."""
-    parameters: Dict[str, Parameter]
+    parameters: Dict[str, Parameter[DimLetterT]]
     """The parameters of the MFA system,
     as a dictionary mapping the names of the MFA system parameters to the parameters themselves.
     """
@@ -58,11 +59,11 @@ class MFASystem(PydanticBaseModel):
     """The processes of the MFA system, i.e. the nodes of the MFA system graph,
     as a dictionary mapping the names of the MFA system processes to the processes themselves.
     """
-    flows: Dict[str, Flow]
+    flows: Dict[str, Flow[DimLetterT]]
     """The flows of the MFA system, i.e. the edges of the MFA system graph,
     as a dictionary mapping the names of the MFA system flows to the flows themselves.
     """
-    stocks: Dict[str, Stock] = {}
+    stocks: Dict[str, Stock[DimLetterT]] = {}
     """The stocks of the MFA system,
     as a dictionary mapping the names of the MFA system stocks to the stocks themselves.
     """
@@ -174,7 +175,9 @@ class MFASystem(PydanticBaseModel):
             "The compute method must be implemented in a subclass of MFASystem if it is to be used."
         )
 
-    def get_new_array(self, dim_letters: Optional[tuple[str, ...]] = None, **kwargs) -> FlodymArray:
+    def get_new_array(
+        self, dim_letters: Optional[tuple[DimLetterT, ...]] = None, **kwargs
+    ) -> FlodymArray[DimLetterT]:
         """Get a new FlodymArray object.
 
         :param dim_letters: tuple of dimension letters to include in the new FlodymArray. If None, all dimensions are included.
