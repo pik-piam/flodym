@@ -78,13 +78,26 @@ class TypedMFA(MFASystem[Letters]):
 def sum_over_any_letter(flow: Flow) -> FlodymArray:
     return flow.sum_over(("x",))
 
+
 # Check: creating a MFASystem with explicitly typed dimensions
-dimensions = DimensionSet[Letters](dim_list = (Dimension(name="time", letter="t", items=("2024",)), Dimension(name="region", letter="r", items=("Europe",))))
+dimensions = DimensionSet[Letters](
+    dim_list=(
+        Dimension(name="time", letter="t", items=("2024",)),
+        Dimension(name="region", letter="r", items=("Europe",)),
+    )
+)
 mfasytem = MFASystem[Letters](dims=dimensions, flows={}, parameters={}, processes={})
 
 # Check: catching typos in dimensions declaration
 # TODO: This is not yet caught by the type checker
-dimensions_with_error = DimensionSet[Letters](dim_list = (Dimension(name="time", letter="w", items=("2024",)), Dimension(name="region", letter="b", items=("Europe",))))
-mfasytem_with_error = MFASystem[Letters](dims=dimensions_with_error, flows={}, parameters={}, processes={})
+dimensions_with_error = DimensionSet[Letters](
+    dim_list=(
+        Dimension(name="time", letter="w", items=("2024",)),
+        Dimension(name="region", letter="b", items=("Europe",)),
+    )
+)
+mfasytem_with_error = MFASystem[Letters](
+    dims=dimensions_with_error, flows={}, parameters={}, processes={}
+)
 # But this is caught by the type checker
 dimension_with_error = Dimension[Letters](name="time", letter="w", items=("2024",))  # type: ignore[ty:invalid-argument-type]

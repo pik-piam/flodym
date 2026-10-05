@@ -19,10 +19,6 @@ from typing import (
     overload,
 )
 
-from collections.abc import Iterable
-from copy import copy, deepcopy
-from numbers import Number
-from typing import Callable, Literal, Optional, SupportsFloat, TypeVar, Union, overload
 
 import numpy as np
 import pandas as pd
@@ -39,8 +35,6 @@ from typing_extensions import Self
 
 from ._df_to_flodym_array import DataFrameToFlodymDataConverter
 from ._typing import DimLetterT, OtherDimLetterT, keep_unparametrized_instances
-from .dimensions import Dimension, DimensionSet
-from .processes import Process
 from .dimensions import Dimension, DimensionSet
 from .processes import Process
 
@@ -305,9 +299,7 @@ class FlodymArray(PydanticBaseModel, Generic[DimLetterT]):
         """Return the sum of all values in the FlodymArray."""
         return np.sum(self.values)
 
-    def sum_values_over(
-        self, sum_over_dims: tuple[DimLetterT | Dimension, ...] = ()
-    ) -> np.ndarray:
+    def sum_values_over(self, sum_over_dims: tuple[DimLetterT | Dimension, ...] = ()) -> np.ndarray:
         """Return the sum of the FlodymArray over a given tuple of dimensions.
 
         Args:
@@ -449,7 +441,6 @@ class FlodymArray(PydanticBaseModel, Generic[DimLetterT]):
             return self.dims[dim].letter
         else:
             raise KeyError(f"Dimension {dim} not found in FlodymArray dims.")
-
 
     def _prepare_other(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
         """If a math operation between a FlodymArray and a scalar is performed, the scalar is converted to a FlodymArray object.

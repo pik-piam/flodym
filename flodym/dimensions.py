@@ -247,9 +247,7 @@ class DimensionSet(PydanticBaseModel, Generic[DimLetterT]):
 
     # TODO: Specify that DimLetterT can actually be a subtype of DimLetterT and return a DimensionSet with the more specific type.
     # Needs https://github.com/python/typing/issues/1226
-    def get_subset(
-        self, dims: Optional[tuple[DimLetterT, ...]] = None
-    ) -> DimensionSet[DimLetterT]:
+    def get_subset(self, dims: Optional[tuple[DimLetterT, ...]] = None) -> DimensionSet[DimLetterT]:
         """Selects :py:class:`Dimension` objects from the object attribute dim_list,
         according to the dims passed, which can be either letters or names.
         Returns a copy if dims are not given.
