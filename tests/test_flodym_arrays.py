@@ -97,6 +97,18 @@ def test_cast_to():
     assert casted_flodym_array.values.shape == (2, 3, 4)
 
 
+def test_cast_to_same_dims():
+    # casting to the own dimensions leaves the values unchanged
+    casted_flodym_array = numbers.cast_to(target_dims=dims)
+    assert casted_flodym_array.dims == dims
+    assert_array_equal(casted_flodym_array.values, values)
+
+    # casting to reordered dimensions transposes the values
+    reordered_dims = DimensionSet(dim_list=base_dim_list[::-1])
+    casted_flodym_array = numbers.cast_to(target_dims=reordered_dims)
+    assert_array_equal(casted_flodym_array.values, values.T)
+
+
 @pytest.mark.parametrize("dtype", [float, object])
 def test_cast_scalar(dtype):
     scalar = FlodymArray(dims=DimensionSet(dim_list=[]), values=np.array(0.5, dtype=dtype))

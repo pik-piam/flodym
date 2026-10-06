@@ -309,13 +309,8 @@ class FlodymArray(PydanticBaseModel):
             f"'{target_dims.string}'. Maybe use sum_values_to() before casting"
         )
         # safety procedure: order dimensions
-        # np.asarray: einsum returns a Python scalar instead of a 0-d array for object dtype
-        values = np.asarray(
-            np.einsum(
-                f"{self.dims.string}->{''.join([d for d in target_dims.letters if d in self.dims.letters])}",
-                self.values,
-            )
-        )
+        axes = [self.dims.letters.index(d) for d in target_dims.letters if d in self.dims.letters]
+        values = np.transpose(self.values, axes)
         index = tuple(
             [slice(None) if d in self.dims.letters else np.newaxis for d in target_dims.letters]
         )
