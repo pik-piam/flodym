@@ -39,3 +39,7 @@ array_times_pi: FlodymArray = array * 3.14
 array_times_2: FlodymArray = array * 2
 array_times_np: FlodymArray = array * np.float64(3.14)
 array_times_str: FlodymArray = array * "3.14"  # type: ignore[ty:unsupported-operator]
+
+# Check: shares can be taken over a single dimension or a tuple of dimensions
+array_shares: FlodymArray = array.get_shares_over("a")
+array_shares_tuple: FlodymArray = array.get_shares_over(("a",))

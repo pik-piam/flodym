@@ -7,7 +7,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from copy import copy, deepcopy
 from numbers import Number
-from typing import Callable, Literal, Optional, SupportsFloat, TypeVar, Union, overload
+from typing import Any, Callable, Literal, Optional, SupportsFloat, TypeVar, Union, overload
 
 import numpy as np
 import pandas as pd
@@ -281,11 +281,11 @@ class FlodymArray(PydanticBaseModel):
         """Return the sum of all values in the FlodymArray."""
         return np.sum(self.values)
 
-    def sum_values_over(self, sum_over_dims: tuple = ()) -> np.ndarray:
+    def sum_values_over(self, sum_over_dims: tuple[str | Dimension, ...] = ()) -> np.ndarray:
         """Return the sum of the FlodymArray over a given tuple of dimensions.
 
         Args:
-            sum_over_dims (tuple, optional): Tuple of dimension letters to sum over. If not given, no summation is performed and the values array is returned.
+            sum_over_dims (optional): Tuple of the dimensions to sum over. If not given, no summation is performed and the values array is returned.
 
         Returns:
             np.ndarray: The partially summed values of the FlodymArray.
@@ -350,36 +350,36 @@ class FlodymArray(PydanticBaseModel):
                 name=self.name,
             )
 
-    def sum_values_to(self, result_dims: tuple[str, ...] = ()) -> np.ndarray:
+    def sum_values_to(self, result_dims: tuple[str | Dimension, ...] = ()) -> np.ndarray:
         """Return the values of the FlodymArray partially summed, such that only the dimensions given in the result_dims tuple are left.
 
         Args:
-            result_dims (tuple, optional): Tuple of dimension letters to sum over. If not given, the sum over all dimensions is returned.
+            result_dims (optional): Tuple of the dimensions to sum to. If not given, the sum over all dimensions is returned.
         """
-        result_dims = self._tuple_to_letters(result_dims)
-        return np.einsum(f"{self.dims.string}->{''.join(result_dims)}", self.values)
+        result_letters = self._tuple_to_letters(result_dims)
+        return np.einsum(f"{self.dims.string}->{''.join(result_letters)}", self.values)
 
-    def sum_to(self, result_dims: tuple[str, ...] = ()) -> "FlodymArray":
+    def sum_to(self, result_dims: tuple[str | Dimension, ...] = ()) -> "FlodymArray":
         """Return the FlodymArray summed, such that only the dimensions given in the result_dims tuple are left.
 
         Args:
-            result_dims (tuple, optional): Tuple of the dimensions to sum to. If not given, the sum over all dimensions is returned.
+            result_dims (optional): Tuple of the dimensions to sum to. If not given, the sum over all dimensions is returned.
 
         Returns:
             FlodymArray: FlodymArray object with the summed values and the reduced dimensions.
         """
-        result_dims = self._tuple_to_letters(result_dims)
+        result_letters = self._tuple_to_letters(result_dims)
         return FlodymArray(
-            dims=self.dims.get_subset(result_dims),
-            values=self.sum_values_to(result_dims),
+            dims=self.dims.get_subset(result_letters),
+            values=self.sum_values_to(result_letters),
             name=self.name,
         )
 
-    def sum_over(self, sum_over_dims: tuple = ()) -> "FlodymArray":
+    def sum_over(self, sum_over_dims: tuple[str | Dimension, ...] = ()) -> "FlodymArray":
         """Return the FlodymArray summed over a given tuple of dimensions.
 
         Args:
-            sum_over_dims (tuple, optional): Tuple of dimension letters to sum over. If not given, no summation is performed and the FlodymArray object is returned.
+            sum_over_dims (optional): Tuple of the dimensions to sum over. If not given, no summation is performed and the FlodymArray object is returned.
 
         Returns:
             FlodymArray: FlodymArray object with the summed values and the reduced dimensions.
@@ -605,16 +605,16 @@ class FlodymArray(PydanticBaseModel):
     def __abs__(self) -> "FlodymArray":
         return FlodymArray(dims=self.dims, values=abs(self.values))
 
-    def __radd__(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
+    def __radd__(self, other: SupportsFloat) -> "FlodymArray":
         return self + other
 
-    def __rsub__(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
+    def __rsub__(self, other: SupportsFloat) -> "FlodymArray":
         return -self + other
 
-    def __rmul__(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
+    def __rmul__(self, other: SupportsFloat) -> "FlodymArray":
         return self * other
 
-    def __rtruediv__(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
+    def __rtruediv__(self, other: SupportsFloat) -> "FlodymArray":
         inv_self = FlodymArray(dims=self.dims, values=1 / self.values)
         return inv_self * other
 
@@ -724,15 +724,25 @@ class FlodymArray(PydanticBaseModel):
         )
         self.set_values(converter.target_values)
 
-    def split(self, dim_letter: str) -> dict:
+    def split(self, dim_letter: str) -> "dict[Any, FlodymArray]":
         """Reverse the flodym_array_stack, returns a dictionary of FlodymArray objects
         associated with the item in the dimension that has been split.
         Method can be applied to classes FlodymArray, StockArray, Parameter and Flow.
         """
         return {item: self[{dim_letter: item}] for item in self.dims[dim_letter].items}
 
-    def get_shares_over(self, dim_letters: tuple) -> "FlodymArray":
-        """Get shares of the FlodymArray along a tuple of dimensions, indicated by letter."""
+    def get_shares_over(self, dim_letters: str | tuple[str, ...]) -> "FlodymArray":
+        """Get shares of the FlodymArray along one or more dimensions, indicated by letter.
+
+        Args:
+            dim_letters: The letter of a single dimension, or a tuple of
+                dimension letters, to get the shares over.
+
+        Returns:
+            The FlodymArray divided by its sum over the given dimensions.
+        """
+        if isinstance(dim_letters, str):
+            dim_letters = (dim_letters,)
         assert all([d in self.dims.letters for d in dim_letters]), (
             "Dimensions to get share of must be in the object"
         )

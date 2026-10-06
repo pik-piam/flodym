@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from copy import copy
-from typing import Dict, Iterator, Optional
+from typing import Dict, Iterator, Optional, overload
 
 import numpy as np
 import pandas as pd
@@ -185,7 +185,11 @@ class DimensionSet(PydanticBaseModel):
         """
         return {dim.name: dim for dim in self.dim_list} | {dim.letter: dim for dim in self.dim_list}
 
-    def __getitem__(self, key) -> Dimension:
+    @overload
+    def __getitem__(self, key: tuple[str, ...]) -> DimensionSet: ...
+    @overload
+    def __getitem__(self, key: str | int) -> Dimension: ...
+    def __getitem__(self, key: tuple[str, ...] | str | int) -> DimensionSet | Dimension:
         """Get a dimension by its name, letter or index with the [] operator.
 
         Args:
@@ -214,7 +218,7 @@ class DimensionSet(PydanticBaseModel):
             key = key.letter
         return key in self._full_mapping
 
-    def size(self, key: str):
+    def size(self, key: str) -> int:
         """get the number of items in a dimension
 
         Args:
@@ -223,7 +227,7 @@ class DimensionSet(PydanticBaseModel):
         return self._full_mapping[key].len
 
     @property
-    def shape(self) -> tuple[int]:
+    def shape(self) -> tuple[int, ...]:
         """shape of the array that would be created with the dimensions in the set"""
         return tuple(self.size(dim) for dim in self.letters)
 
@@ -401,7 +405,7 @@ class DimensionSet(PydanticBaseModel):
             DimensionSet: The intersection of the two DimensionSets
         """
         other = self.prepare_other(other)
-        intersection_letters = [dim.letter for dim in self.dim_list if dim.letter in other.letters]
+        intersection_letters = tuple(letter for letter in self.letters if letter in other.letters)
         return self.get_subset(intersection_letters)
 
     def __and__(self, other: "DimensionSet" | Dimension) -> "DimensionSet":
@@ -441,9 +445,7 @@ class DimensionSet(PydanticBaseModel):
             DimensionSet: The difference of the two DimensionSets
         """
         other = self.prepare_other(other)
-        difference_letters = [
-            dim.letter for dim in self.dim_list if dim.letter not in other.letters
-        ]
+        difference_letters = tuple(letter for letter in self.letters if letter not in other.letters)
         return self.get_subset(difference_letters)
 
     def __sub__(self, other: "DimensionSet" | Dimension) -> "DimensionSet":
@@ -473,7 +475,7 @@ class DimensionSet(PydanticBaseModel):
         return tuple([dim.name for dim in self.dim_list])
 
     @property
-    def letters(self):
+    def letters(self) -> tuple[str, ...]:
         """A tuple of the letters of the dimensions in the set."""
         return tuple([dim.letter for dim in self.dim_list])
 
@@ -482,7 +484,7 @@ class DimensionSet(PydanticBaseModel):
         """The letters of the dimensions in the set concatenated to a single string."""
         return "".join(self.letters)
 
-    def index(self, key):
+    def index(self, key: str) -> int:
         """Return the index of a dimension in the set.
 
         Args:
