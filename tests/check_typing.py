@@ -71,7 +71,7 @@ class TypedMFA(MFASystem[Letters]):
         self.get_new_array(("t", "e"))
         self.get_new_array(("t", "x"))  # type: ignore[ty:invalid-argument-type]
         # TODO: The type of the new array should be FlodymArray[Literal["t"]]
-        new_array: FlodymArray[Literal["t", "e"]] = self.get_new_array(("t",))
+        _new_array: FlodymArray[Literal["t", "e"]] = self.get_new_array(("t",))
 
 
 # Check: without a type argument, any letter is accepted
