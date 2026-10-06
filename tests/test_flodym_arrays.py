@@ -97,6 +97,14 @@ def test_cast_to():
     assert casted_flodym_array.values.shape == (2, 3, 4)
 
 
+@pytest.mark.parametrize("dtype", [float, object])
+def test_cast_scalar(dtype):
+    scalar = FlodymArray(dims=DimensionSet(dim_list=[]), values=np.array(0.5, dtype=dtype))
+    casted_values = scalar.cast_values_to(target_dims=dims)
+    assert casted_values.shape == (4, 3)
+    assert np.all(casted_values == 0.5)
+
+
 def test_sum_to():
     # sum over one dimension
     summed_flodym_array = space_animals.sum_to(result_dims=("p", "t"))
