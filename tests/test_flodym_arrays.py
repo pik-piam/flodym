@@ -83,38 +83,41 @@ class TestFlodymArrayInit:
             FlodymArray()
 
 
-def test_cast_to():
-    # example of duplicating values along new axis (e.g. same number of cats and mice)
-    casted_flodym_array = numbers.cast_to(target_dims=dims_incl_animals)
-    assert casted_flodym_array.dims == dims_incl_animals
-    assert casted_flodym_array.values.shape == (4, 3, 2)
-    assert_almost_equal(np.sum(casted_flodym_array.values), 2 * np.sum(values))
-    assert casted_flodym_array.name == numbers.name
+class TestFlodymArrayCastTo:
+    """Tests for FlodymArray.cast_to() and cast_values_to()."""
 
-    # example with differently ordered dimensions
-    target_dims = DimensionSet(dim_list=[animals] + base_dim_list[::-1])
-    casted_flodym_array = numbers.cast_to(target_dims=target_dims)
-    assert casted_flodym_array.values.shape == (2, 3, 4)
+    def test_new_dim_duplicates_values(self):
+        # e.g. same number of cats and mice
+        casted = numbers.cast_to(target_dims=dims_incl_animals)
+        assert casted.dims == dims_incl_animals
+        assert casted.values.shape == (4, 3, 2)
+        assert_almost_equal(np.sum(casted.values), 2 * np.sum(values))
 
+    def test_name_preserved(self):
+        casted = numbers.cast_to(target_dims=dims_incl_animals)
+        assert casted.name == numbers.name
 
-def test_cast_to_same_dims():
-    # casting to the own dimensions leaves the values unchanged
-    casted_flodym_array = numbers.cast_to(target_dims=dims)
-    assert casted_flodym_array.dims == dims
-    assert_array_equal(casted_flodym_array.values, values)
+    def test_reordered_new_dims_shape(self):
+        target_dims = DimensionSet(dim_list=[animals] + base_dim_list[::-1])
+        casted = numbers.cast_to(target_dims=target_dims)
+        assert casted.values.shape == (2, 3, 4)
 
-    # casting to reordered dimensions transposes the values
-    reordered_dims = DimensionSet(dim_list=base_dim_list[::-1])
-    casted_flodym_array = numbers.cast_to(target_dims=reordered_dims)
-    assert_array_equal(casted_flodym_array.values, values.T)
+    def test_same_dims_unchanged(self):
+        casted = numbers.cast_to(target_dims=dims)
+        assert casted.dims == dims
+        assert_array_equal(casted.values, values)
 
+    def test_reordered_dims_transposes(self):
+        reordered_dims = DimensionSet(dim_list=base_dim_list[::-1])
+        casted = numbers.cast_to(target_dims=reordered_dims)
+        assert_array_equal(casted.values, values.T)
 
-@pytest.mark.parametrize("dtype", [float, object])
-def test_cast_scalar(dtype):
-    scalar = FlodymArray(dims=DimensionSet(dim_list=[]), values=np.array(0.5, dtype=dtype))
-    casted_values = scalar.cast_values_to(target_dims=dims)
-    assert casted_values.shape == (4, 3)
-    assert np.all(casted_values == 0.5)
+    @pytest.mark.parametrize("dtype", [float, object])
+    def test_scalar(self, dtype):
+        scalar = FlodymArray(dims=DimensionSet(dim_list=[]), values=np.array(0.5, dtype=dtype))
+        casted_values = scalar.cast_values_to(target_dims=dims)
+        assert casted_values.shape == (4, 3)
+        assert np.all(casted_values == 0.5)
 
 
 def test_sum_to():
