@@ -155,7 +155,7 @@ class DimensionSet(PydanticBaseModel, Generic[DimLetterT]):
 
     """
 
-    dim_list: list[Dimension]
+    dim_list: list[Dimension[DimLetterT]]
     """A list of Dimension objects defining the set"""
 
     _keep_unparametrized_instances = model_validator(mode="wrap")(keep_unparametrized_instances)
@@ -181,7 +181,7 @@ class DimensionSet(PydanticBaseModel, Generic[DimLetterT]):
         return cls(dim_list=[])
 
     @property
-    def _full_mapping(self) -> Dict[str, Dimension]:
+    def _full_mapping(self) -> Dict[str, Dimension[DimLetterT]]:
         """Contains mappings.
 
         letter --> dim object and name --> dim object
@@ -191,7 +191,7 @@ class DimensionSet(PydanticBaseModel, Generic[DimLetterT]):
     @overload
     def __getitem__(self, key: tuple[DimLetterT, ...]) -> DimensionSet[DimLetterT]: ...
     @overload
-    def __getitem__(self, key: DimLetterT | int) -> Dimension: ...
+    def __getitem__(self, key: DimLetterT | int) -> Dimension[DimLetterT]: ...
     def __getitem__(
         self, key: tuple[DimLetterT, ...] | DimLetterT | int
     ) -> DimensionSet[DimLetterT] | Dimension:
