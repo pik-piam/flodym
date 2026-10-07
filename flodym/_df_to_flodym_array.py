@@ -85,8 +85,13 @@ class DataFrameToFlodymDataConverter:
         if not pd.api.types.is_numeric_dtype(self.df.index.dtype):
             self.df.index = self.df.index.map(strip_if_string)
         for position, dtype in enumerate(self.df.dtypes):
-            if not pd.api.types.is_numeric_dtype(dtype):
-                column = self.df.iloc[:, position]
+            if pd.api.types.is_numeric_dtype(dtype):
+                continue
+            column = self.df.iloc[:, position]
+            if isinstance(dtype, pd.StringDtype):
+                # Perform vectorized strip for string columns for efficiency
+                self.df.isetitem(position, column.str.strip())
+            else:
                 self.df.isetitem(position, column.map(strip_if_string))
 
     def _determine_format(self):
