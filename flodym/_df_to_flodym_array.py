@@ -82,8 +82,17 @@ class DataFrameToFlodymDataConverter:
             return x
 
         self.df.columns = self.df.columns.map(strip_if_string)
-        self.df.index = self.df.index.map(strip_if_string)
-        self.df = self.df.map(strip_if_string)
+        if not pd.api.types.is_numeric_dtype(self.df.index.dtype):
+            self.df.index = self.df.index.map(strip_if_string)
+        for position, dtype in enumerate(self.df.dtypes):
+            if pd.api.types.is_numeric_dtype(dtype):
+                continue
+            column = self.df.iloc[:, position]
+            if isinstance(dtype, pd.StringDtype):
+                # Perform vectorized strip for string columns for efficiency
+                self.df.isetitem(position, column.str.strip())
+            else:
+                self.df.isetitem(position, column.map(strip_if_string))
 
     def _determine_format(self):
         self._get_dim_columns_by_name_or_letter()
@@ -298,12 +307,19 @@ class DataFrameToFlodymDataConverter:
 
     @staticmethod
     def same_items(arr: Iterable, dim: Dimension) -> bool:
-        if dim.dtype is not None:
-            try:
-                arr = [dim.dtype(a) for a in arr]
-            except ValueError:
+        dim_items = set(dim.items)
+        found_items = set()
+        for item in arr:
+            if dim.dtype is not None:
+                try:
+                    item = dim.dtype(item)
+                except ValueError:
+                    return False
+            # Exit at the first non-matching item without scanning and converting all entries
+            if item not in dim_items:
                 return False
-        return len(set(arr).symmetric_difference(set(dim.items))) == 0
+            found_items.add(item)
+        return len(found_items) == len(dim_items)
 
     @property
     def error_context(self) -> str:
