@@ -60,17 +60,17 @@ import pandas as pd
 import plotly.express as px
 
 from flodym import (
-    DimensionDefinition,
-    Dimension,
-    DimensionSet,
-    ParameterDefinition,
-    Parameter,
-    FlowDefinition,
-    StockDefinition,
-    MFASystem,
-    MFADefinition,
     DataReader,
+    Dimension,
+    DimensionDefinition,
+    DimensionSet,
+    FlowDefinition,
     InflowDrivenDSM,
+    MFADefinition,
+    MFASystem,
+    Parameter,
+    ParameterDefinition,
+    StockDefinition,
 )
 from flodym.lifetime_models import NormalLifetime
 
@@ -146,7 +146,7 @@ class VehicleMFA(MFASystem):
             std=self.parameters["vehicle lifetime"] * 0.3,
         )
         self.stocks["in use"].compute()
-        stock_diff = self.get_new_array(dim_letters=("r"))
+        stock_diff = self.get_new_array(dim_letters=("r",))
         stock_diff[...] = (
             1000 * self.parameters["vehicle stock"] - self.stocks["in use"].stock[{"t": 2015}]
         )
@@ -299,7 +299,7 @@ stock_by_material_type = (
     * vehicle_mfa_2.parameters["vehicle material content"]
     * 1e-9
 )
-global_stock_by_material_type = stock_by_material_type.sum_over(sum_over_dims=("r"))
+global_stock_by_material_type = stock_by_material_type.sum_over(sum_over_dims=("r",))
 global_stock_by_material_type_in_2017 = global_stock_by_material_type[{"t": 2017}]
 
 stock_df = global_stock_by_material_type_in_2017.to_df(index=False)
@@ -308,7 +308,7 @@ fig.show(renderer="notebook")
 
 # %%
 np.nan_to_num(vehicle_mfa_2.flows["scrap => sysenv"].values, copy=False)
-scrap_outflow = vehicle_mfa_2.flows["scrap => sysenv"].sum_over(sum_over_dims=("m"))
+scrap_outflow = vehicle_mfa_2.flows["scrap => sysenv"].sum_over(sum_over_dims=("m",))
 outflow_df = scrap_outflow.to_df(dim_to_columns="waste")
 outflow_df = outflow_df[outflow_df.index > 2017]
 fig = px.line(outflow_df, title="Scrap outflow")

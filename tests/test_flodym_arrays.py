@@ -124,9 +124,13 @@ def test_sum_to():
 
 def test_get_shares_over():
     # example of getting shares over one dimension
-    shares = space_animals.get_shares_over(dim_letters=("p"))
+    shares = space_animals.get_shares_over(dim_letters="p")
     assert shares.dims == space_animals.dims
     wanted_values = np.einsum("pta,ta->pta", animal_values, 1 / np.sum(animal_values, axis=0))
+    assert_array_almost_equal(shares.values, wanted_values)
+
+    # a single dimension can also be given as a tuple
+    shares = space_animals.get_shares_over(dim_letters=("p",))
     assert_array_almost_equal(shares.values, wanted_values)
 
     # example of getting shares over two dimensions
