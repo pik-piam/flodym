@@ -368,18 +368,21 @@ class PlotlyArrayPlotter(ArrayPlotter):
             showlegend=i_subplot == 0 and not self.suppress_legend,
         )
         if self.chart_type == "line":
-            trace = go.Scatter(
+            trace = dict(
+                type="scatter",
                 **common_dict,
                 line=dict(color=color, dash=self.line_type),
             )
         elif self.chart_type == "scatter":
-            trace = go.Scatter(
+            trace = dict(
+                type="scatter",
                 **common_dict,
                 mode="markers",
                 marker=dict(color=color),
             )
         elif self.chart_type == "area":
-            trace = go.Scatter(
+            trace = dict(
+                type="scatter",
                 **common_dict,
                 fill="tozeroy" if prev_y is None else "tonexty",
                 fillcolor=color,

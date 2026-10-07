@@ -11,6 +11,7 @@ from numpy.testing import (
 from pydantic_core import ValidationError
 
 from flodym import Dimension, DimensionSet, FlodymArray, Parameter, Process, StockArray, Flow
+from flodym._df_to_flodym_array import DataFrameToFlodymDataConverter
 
 places = Dimension(name="place", letter="p", items=["Earth", "Sun", "Moon", "Venus"])
 time = Dimension(name="time", letter="t", items=[1990, 2000, 2010])
@@ -345,6 +346,94 @@ def test_from_df_does_not_strip_whitespace_when_disabled():
 
     with pytest.raises(ValueError, match="More than one value columns"):
         FlodymArray.from_df(dims=dims_subset, df=df, strip_whitespace=False)
+
+
+def test_from_df_strips_whitespace_in_categorical_column():
+    selected_places = Dimension(name="place", letter="p", items=["Earth", "Sun"])
+    df = pd.DataFrame(
+        {
+            "place": pd.Categorical([" Earth ", " Earth ", "Sun", "Sun"]),
+            "historic time": [1990, 2000, 1990, 2000],
+            "value": [1.0, 2.0, 3.0, 4.0],
+        }
+    )
+    dims_subset = DimensionSet(dim_list=[selected_places, historic_time])
+
+    result = FlodymArray.from_df(dims=dims_subset, df=df)
+
+    assert_array_equal(result.values, np.array([[1.0, 2.0], [3.0, 4.0]]))
+
+
+@pytest.mark.parametrize("column_dtype", [object, "string"])
+def test_from_df_strips_whitespace_of_many_distinct_items(column_dtype):
+    regions = Dimension(name="region", letter="r", items=[f"Region{index}" for index in range(50)])
+    paddings = ["{}", " {}", "{} ", "  {}\t"]
+    padded_regions = [
+        paddings[position % len(paddings)].format(item)
+        for position, item in enumerate(regions.items)
+    ]
+    expected = np.random.rand(len(regions.items), len(historic_time.items))
+    df = pd.DataFrame(
+        {
+            "region": pd.Series(
+                np.repeat(padded_regions, len(historic_time.items)), dtype=column_dtype
+            ),
+            "historic time": np.tile(historic_time.items, len(regions.items)),
+            "value": expected.flatten(),
+        }
+    )
+    dims_subset = DimensionSet(dim_list=[regions, historic_time])
+
+    result = FlodymArray.from_df(dims=dims_subset, df=df)
+
+    assert_array_equal(result.values, expected)
+
+
+def test_from_df_identifies_unnamed_dim_columns_by_items():
+    typed_places = Dimension(name="place", letter="p", items=["Earth", "Sun"], dtype=str)
+    typed_time = Dimension(name="time", letter="t", items=list(range(1900, 2000)), dtype=int)
+    dims_typed = DimensionSet(dim_list=[typed_places, typed_time])
+    expected = np.random.rand(2, 100)
+    df = pd.DataFrame(
+        {
+            "region": np.repeat(["Earth", "Sun"], 100),
+            "year": np.tile(np.arange(1900, 2000), 2),
+            "amount": expected.flatten(),
+        }
+    )
+
+    result = FlodymArray.from_df(dims=dims_typed, df=df)
+
+    assert_array_equal(result.values, expected)
+
+
+@pytest.mark.parametrize(
+    "arr, expected",
+    [
+        (["Earth", "Sun", "Moon", "Venus"], True),
+        (["Venus", "Moon", "Sun", "Earth", "Earth"], True),
+        (["Earth", "Sun", "Moon"], False),
+        (["Earth", "Sun", "Moon", "Venus", "Mars"], False),
+        ([], False),
+    ],
+)
+def test_same_items(arr, expected):
+    assert DataFrameToFlodymDataConverter.same_items(arr, places) == expected
+
+
+@pytest.mark.parametrize(
+    "arr, expected",
+    [
+        (["1990", "2000", "2010"], True),
+        ([2010.0, 2000.0, 1990.0], True),
+        (["1990", "2000"], False),
+        (["1990", "2000", "2010", "2020"], False),
+        (["1990", "2000", "not a year"], False),
+    ],
+)
+def test_same_items_converts_to_dim_dtype(arr, expected):
+    typed_time = Dimension(name="time", letter="t", items=[1990, 2000, 2010], dtype=int)
+    assert DataFrameToFlodymDataConverter.same_items(arr, typed_time) == expected
 
 
 def test_from_df_scalar_value():
