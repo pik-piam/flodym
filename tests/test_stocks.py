@@ -12,6 +12,9 @@ from flodym import (
     StockArray,
     StockDefinition,
     WeibullLifetime,
+    NormalLifetime,
+    FoldedNormalLifetime,
+    FixedLifetime,
     LogNormalLifetime,
     make_empty_stocks,
 )
@@ -395,3 +398,71 @@ def _get_dsm_with_lifetime_ext(EXT_FAC, nurture=True):
     )
     dsm.compute()
     return dsm
+
+
+def _nurture_lifetime_model(lt_cls, **kwargs):
+    dims = DimensionSet(
+        dim_list=[
+            Dimension(name="time", letter="t", items=[0, 1, 2, 4, 5, 8, 9, 10, 13, 20], dtype=int),
+            Dimension(name="product", letter="p", items=["a", "b", "c"], dtype=str),
+        ]
+    )
+    rng = np.random.default_rng(0)
+    shape = (dims["t"].len, dims["p"].len)
+    factor = FlodymArray(dims=dims, values=rng.uniform(1.0, 2.0, shape))
+    if lt_cls is WeibullLifetime:
+        prms = {
+            "weibull_scale": rng.uniform(3, 8, shape),
+            "weibull_shape": rng.uniform(1, 3, shape),
+        }
+    elif lt_cls is FixedLifetime:
+        prms = {"mean": rng.uniform(2, 6, shape)}
+    else:
+        prms = {"mean": rng.uniform(3, 8, shape), "std": rng.uniform(1, 2, shape)}
+    return lt_cls(dims=dims, time_letter="t", lt_factor_by_year=factor, **prms, **kwargs)
+
+
+def _nurture_sf_per_cohort(lt):
+    """Reference: the nurture survival factor computed one cohort at a time."""
+    n_t = lt._n_t
+    prms_orig = {name: getattr(lt, name).copy() for name in lt._prm_names_to_scale}
+    points, weights = lt._get_quad_points_and_weights()
+    sf = np.zeros(lt._shape_cohort)
+    for i_t in range(n_t):
+        for name in lt._prm_names_to_scale:
+            lt._scaled_prms[name] = prms_orig[name] * lt.lt_factor_by_year[i_t]
+        curr = np.zeros((min(2, i_t + 1), n_t) + lt._shape_no_t)
+        for point, weight in zip(points, weights):
+            for i_c in range(i_t + 1):
+                ages = lt._tile(
+                    lt._t.bounds[max(i_t, 1) : i_t + 2] - lt._quad_point_time(i_c, point)
+                )
+                curr[:, i_c, ...] += weight * lt._survival_by_cohort(ages, i_c)
+        sf[i_t, i_t] = curr[-1, i_t]
+        if i_t > 0:
+            prev, now = curr[0, :i_t], curr[1, :i_t]
+            ratio = np.divide(now, prev, out=np.zeros_like(now), where=prev > 0)
+            sf[i_t, :i_t] = sf[i_t - 1, :i_t] * ratio
+    return sf
+
+
+@pytest.mark.parametrize(
+    "lt_cls",
+    [NormalLifetime, FoldedNormalLifetime, LogNormalLifetime, WeibullLifetime, FixedLifetime],
+)
+@pytest.mark.parametrize("n_pts", [1, 3])
+def test_nurture_matches_per_cohort_loop(lt_cls, n_pts):
+    lt = _nurture_lifetime_model(lt_cls, n_pts_per_interval=n_pts)
+    sf = lt.sf.copy()
+    np.testing.assert_allclose(sf, _nurture_sf_per_cohort(lt), rtol=1e-12, atol=1e-15)
+
+
+def test_nurture_keeps_lifetime_parameters():
+    lt = _nurture_lifetime_model(WeibullLifetime)
+    scale = lt.weibull_scale.copy()
+    first = lt.sf.copy()
+    np.testing.assert_array_equal(lt.weibull_scale, scale)
+
+    # recomputing, e.g. for a second scenario, starts from the same parameters
+    lt.reset_cached_arrays()
+    np.testing.assert_array_equal(lt.sf, first)

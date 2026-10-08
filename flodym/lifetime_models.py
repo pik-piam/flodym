@@ -1,7 +1,6 @@
 """Home to various lifetime models, for use in dynamic stock modelling."""
 
 from abc import abstractmethod
-import copy
 from types import MappingProxyType
 import numpy as np
 import scipy.stats
@@ -327,14 +326,14 @@ class LifetimeModel(PydanticBaseModel):
         """
         factor = self.lt_factor_by_year
 
-        scaled_prms_orig = copy.deepcopy(self._scaled_prms)
+        # The arrays in _scaled_prms can be the parameter arrays themselves, so assign new arrays
+        # instead of writing into them.
+        scaled_prms_orig = dict(self._scaled_prms)
         for i_t in range(self._n_t):
             # scale such that mean and stddev are increased by lifetime extension factor
             for name in self._prm_names_to_scale:
                 # apply factor per time step - broadcast to all age cohorts
-                self._scaled_prms[name][...] = (
-                    scaled_prms_orig[name][...] * factor[i_t, ...][np.newaxis, ...]
-                )
+                self._scaled_prms[name] = scaled_prms_orig[name] * factor[i_t]
             # curr_survival calculates sf_e(t-1) ans sf_e(t) in one array
             # for i_t = 0, the previous time step sf_e(t-1) is omitted
             curr_survival = np.zeros((min(2, i_t + 1), self._n_t) + self._shape_no_t)
