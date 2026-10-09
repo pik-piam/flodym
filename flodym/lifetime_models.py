@@ -244,8 +244,8 @@ class LifetimeModel(PydanticBaseModel):
         """
         for i_c in range(0, self._n_t):  # cohort index
             for quad_point, quad_weight in zip(self._quad_points, self._quad_weights):
-                t = self._remaining_ages(i_c, quad_point)
-                self._sf[i_c::, i_c, ...] += quad_weight * self._survival_by_cohort(t, i_c)
+                ages = self._remaining_ages(i_c, quad_point)
+                self._sf[i_c::, i_c, ...] += quad_weight * self._survival_by_cohort(ages, i_c)
 
     def _get_quad_points_and_weights(self):
         """Returns the quadrature points and weights for the inflow time periods."""
@@ -264,12 +264,15 @@ class LifetimeModel(PydanticBaseModel):
                 return [1], [1]
 
     @abstractmethod
-    def _survival_by_cohort(self, m, **kwargs):
-        """Survival function at ages m.
+    def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
+        """Survival function
 
-        The second argument, i_c, is a cohort index or a slice of cohorts. With a slice, m has a
-        cohort axis that lines up with the parameters indexed by i_c, so implementations must
-        broadcast against it rather than assume a single cohort.
+        Args:
+            ages: array of ages, i.e. difference of a time vector to the inflow time of cohort i_c.
+                  If i_c is a slice, ages must have a cohort axis that
+                  lines up with the parameters indexed by i_c, so implementations must broadcast
+                  against it rather than assume a single cohort.
+            i_c: cohort index or a slice of cohorts.
         """
         pass
 
@@ -332,23 +335,21 @@ class LifetimeModel(PydanticBaseModel):
         """
         factor = self.lt_factor_by_year
 
-        # The arrays in _scaled_prms can be the parameter arrays themselves, so assign new arrays
-        # instead of writing into them.
         scaled_prms_orig = dict(self._scaled_prms)
         for i_t in range(self._n_t):
             # scale such that mean and stddev are increased by lifetime extension factor
             for name in self._prm_names_to_scale:
                 # apply factor per time step - broadcast to all age cohorts
+                # (The arrays in _scaled_prms can be the parameter arrays themselves, so
+                # assign new arrays instead of writing into them)
                 self._scaled_prms[name] = scaled_prms_orig[name] * factor[i_t]
             # curr_survival calculates sf_e(t-1) ans sf_e(t) in one array
-            # for i_t = 0, the previous time step sf_e(t-1) is omitted
-            # all cohorts up to i_t at once: axes are (time step, cohort, other dims)
             # max(i_t, 1) omits prev time step for i_t = 0
             curr_time = self._t.bounds[max(i_t, 1) : i_t + 2]
-            cohorts = np.arange(i_t + 1)
+            cohort_ids = np.arange(i_t + 1)
             curr_survival = np.zeros((len(curr_time), i_t + 1) + self._shape_no_t)
             for quad_point, quad_weight in zip(self._quad_points, self._quad_weights):
-                cohort_time = self._quad_point_time(cohorts, quad_point)
+                cohort_time = self._quad_point_time(cohort_ids, quad_point)
                 curr_ages = self._tile(curr_time[:, np.newaxis] - cohort_time[np.newaxis, :])
                 curr_survival += quad_weight * self._survival_by_cohort(
                     curr_ages, slice(0, i_t + 1)
@@ -375,11 +376,11 @@ class FixedLifetime(LifetimeModel):
     _prm_names: ClassVar[list[str]] = ["mean"]
     _prm_names_to_scale: ClassVar[list[str]] = ["mean"]
 
-    def _survival_by_cohort(self, t, i_c):
+    def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
         mean = self._scaled_prms["mean"]
         # Example: if lt is 3.5 years fixed, product will still be there after 0, 1, 2, and 3 years,
         # gone after 4 years.
-        return (t < mean[i_c, ...]).astype(int)
+        return (ages < mean[i_c, ...]).astype(int)
 
 
 class StandardDeviationLifetimeModel(LifetimeModel):
@@ -403,13 +404,13 @@ class NormalLifetime(StandardDeviationLifetimeModel):
     As alternative, use lognormal or folded normal distribution options.
     """
 
-    def _survival_by_cohort(self, t, i_c):
+    def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
         mean, std = self._scaled_prms["mean"], self._scaled_prms["std"]
         if np.min(mean) < 0:
             raise ValueError("mean must be greater than zero.")
 
         return scipy.stats.norm.sf(
-            t,
+            ages,
             loc=mean[i_c, ...],
             scale=std[i_c, ...],
         )
@@ -421,13 +422,13 @@ class FoldedNormalLifetime(StandardDeviationLifetimeModel):
     BEFORE folding, curve after folding will have different mu and sigma.
     """
 
-    def _survival_by_cohort(self, t, i_c):
+    def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
         mean, std = self._scaled_prms["mean"], self._scaled_prms["std"]
         if np.min(mean) < 0:
             raise ValueError("mean must be greater than zero.")
 
         return scipy.stats.foldnorm.sf(
-            t,
+            ages,
             mean[i_c, ...] / std[i_c, ...],
             0,
             scale=std[i_c, ...],
@@ -443,14 +444,14 @@ class LogNormalLifetime(StandardDeviationLifetimeModel):
     Same result as EXCEL function "=LOGNORM.VERT(x;LT_LN;SG_LN;TRUE)"
     """
 
-    def _survival_by_cohort(self, t, i_c):
+    def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
         mean, std = self._scaled_prms["mean"], self._scaled_prms["std"]
         mean_square = mean[i_c, ...] * mean[i_c, ...]
         std_square = std[i_c, ...] * std[i_c, ...]
         new_mean = np.log(mean_square / np.sqrt(mean_square + std_square))
         new_std = np.sqrt(np.log(1 + std_square / mean_square))
         # compute survival function
-        sf_m = scipy.stats.lognorm.sf(t, s=new_std, loc=0, scale=np.exp(new_mean))
+        sf_m = scipy.stats.lognorm.sf(ages, s=new_std, loc=0, scale=np.exp(new_mean))
         return sf_m
 
 
@@ -467,13 +468,13 @@ class WeibullLifetime(LifetimeModel):
     _prm_names: ClassVar[list[str]] = ["weibull_scale", "weibull_shape"]
     _prm_names_to_scale: ClassVar[list[str]] = ["weibull_scale"]
 
-    def _survival_by_cohort(self, t, i_c):
+    def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
         scale, shape = self._scaled_prms["weibull_scale"], self._scaled_prms["weibull_shape"]
         if np.min(shape) < 0:
             raise ValueError("Lifetime weibull_shape must be positive for Weibull distribution.")
 
         return scipy.stats.weibull_min.sf(
-            t,
+            ages,
             c=shape[i_c, ...],
             loc=0,
             scale=scale[i_c, ...],
