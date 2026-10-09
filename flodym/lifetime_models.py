@@ -1,7 +1,6 @@
 """Home to various lifetime models, for use in dynamic stock modelling."""
 
 from abc import abstractmethod
-import copy
 from types import MappingProxyType
 import numpy as np
 import scipy.stats
@@ -266,6 +265,12 @@ class LifetimeModel(PydanticBaseModel):
 
     @abstractmethod
     def _survival_by_cohort(self, m, **kwargs):
+        """Survival function at ages m.
+
+        The second argument, i_c, is a cohort index or a slice of cohorts. With a slice, m has a
+        cohort axis that lines up with the parameters indexed by i_c, so implementations must
+        broadcast against it rather than assume a single cohort.
+        """
         pass
 
     def set_prms(self, *args, **kwargs):
@@ -327,26 +332,27 @@ class LifetimeModel(PydanticBaseModel):
         """
         factor = self.lt_factor_by_year
 
-        scaled_prms_orig = copy.deepcopy(self._scaled_prms)
+        # The arrays in _scaled_prms can be the parameter arrays themselves, so assign new arrays
+        # instead of writing into them.
+        scaled_prms_orig = dict(self._scaled_prms)
         for i_t in range(self._n_t):
             # scale such that mean and stddev are increased by lifetime extension factor
             for name in self._prm_names_to_scale:
                 # apply factor per time step - broadcast to all age cohorts
-                self._scaled_prms[name][...] = (
-                    scaled_prms_orig[name][...] * factor[i_t, ...][np.newaxis, ...]
-                )
+                self._scaled_prms[name] = scaled_prms_orig[name] * factor[i_t]
             # curr_survival calculates sf_e(t-1) ans sf_e(t) in one array
             # for i_t = 0, the previous time step sf_e(t-1) is omitted
-            curr_survival = np.zeros((min(2, i_t + 1), self._n_t) + self._shape_no_t)
+            # all cohorts up to i_t at once: axes are (time step, cohort, other dims)
+            # max(i_t, 1) omits prev time step for i_t = 0
+            curr_time = self._t.bounds[max(i_t, 1) : i_t + 2]
+            cohorts = np.arange(i_t + 1)
+            curr_survival = np.zeros((len(curr_time), i_t + 1) + self._shape_no_t)
             for quad_point, quad_weight in zip(self._quad_points, self._quad_weights):
-                for i_c in range(0, i_t + 1):  # cohort index
-                    # max(i_t, 1) omits prev time step for i_t = 0
-                    curr_time = self._t.bounds[max(i_t, 1) : i_t + 2]
-                    cohort_time = self._quad_point_time(i_c, quad_point)
-                    curr_ages = self._tile(curr_time - cohort_time)
-                    curr_survival[:, i_c, ...] += quad_weight * self._survival_by_cohort(
-                        curr_ages, i_c
-                    )
+                cohort_time = self._quad_point_time(cohorts, quad_point)
+                curr_ages = self._tile(curr_time[:, np.newaxis] - cohort_time[np.newaxis, :])
+                curr_survival += quad_weight * self._survival_by_cohort(
+                    curr_ages, slice(0, i_t + 1)
+                )
             # main diagonal: sf(t) = sf_e(t)
             self._sf[i_t, i_t, ...] = curr_survival[-1, i_t, ...]
             if i_t > 0:
@@ -354,7 +360,8 @@ class LifetimeModel(PydanticBaseModel):
                 sf_e = curr_survival[1, :i_t, ...]
                 sf_prev = self._sf[i_t - 1, :i_t, ...]
                 # for small lifetimes, sf_e_prev can be zero, which means that nothing has survived
-                self._sf[i_t, :i_t, ...] = np.where(sf_e_prev > 0, sf_prev * sf_e / sf_e_prev, 0)
+                ratio = np.divide(sf_e, sf_e_prev, out=np.zeros_like(sf_e), where=sf_e_prev > 0)
+                self._sf[i_t, :i_t, ...] = sf_prev * ratio
 
 
 class FixedLifetime(LifetimeModel):
