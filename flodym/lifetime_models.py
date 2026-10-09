@@ -268,10 +268,11 @@ class LifetimeModel(PydanticBaseModel):
         """Survival function
 
         Args:
-            ages: array of ages, i.e. difference of a time vector to the inflow time of cohort i_c
-            i_c: cohort index or a slice of cohorts. With a slice, ages must have a cohort axis that
-                 lines up with the parameters indexed by i_c, so implementations must broadcast
-                 against it rather than assume a single cohort.
+            ages: array of ages, i.e. difference of a time vector to the inflow time of cohort i_c.
+                  If i_c is a slice, ages must have a cohort axis that
+                  lines up with the parameters indexed by i_c, so implementations must broadcast
+                  against it rather than assume a single cohort.
+            i_c: cohort index or a slice of cohorts.
         """
         pass
 
