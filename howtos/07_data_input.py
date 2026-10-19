@@ -16,6 +16,7 @@
 
 # %%
 import pandas as pd
+
 from flodym import Dimension, DimensionSet, FlodymArray
 
 dims = DimensionSet(
@@ -62,7 +63,7 @@ print("Values:", my_array.values.flatten())
 # When working with reader, the information needed in addition to the data (for dimensions, everything apart from the items) is given in a definition object:
 
 # %%
-from flodym import ExcelDimensionReader, DimensionDefinition
+from flodym import DimensionDefinition, ExcelDimensionReader
 
 dimension_definitions = [
     DimensionDefinition(name="Time", letter="t", dtype=int),

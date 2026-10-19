@@ -10,7 +10,7 @@ from numpy.testing import (
 )
 from pydantic_core import ValidationError
 
-from flodym import Dimension, DimensionSet, FlodymArray, Parameter, Process, StockArray, Flow
+from flodym import Dimension, DimensionSet, FlodymArray, Flow, Parameter, Process, StockArray
 from flodym._df_to_flodym_array import DataFrameToFlodymDataConverter
 
 places = Dimension(name="place", letter="p", items=["Earth", "Sun", "Moon", "Venus"])

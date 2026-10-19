@@ -54,7 +54,7 @@ class MyMFASystem(MFASystem):
 # Let's prepare the attributes we need. We start with the dimensions:
 
 # %%
-from flodym import DimensionSet, Dimension, Flow, Parameter, Process
+from flodym import Dimension, DimensionSet, Flow, Parameter, Process
 
 dims = DimensionSet(
     dim_list=[
@@ -226,10 +226,10 @@ print("Flow names:\n ", "\n  ".join(flows))
 from flodym.flow_naming import (
     # shown below
     process_ids,
-    # the default
-    process_names_with_arrow,
     # not shown here. Good to generate valid file and variable names.
     process_names_no_spaces,
+    # the default
+    process_names_with_arrow,
 )
 
 # other naming function
