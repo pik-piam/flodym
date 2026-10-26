@@ -2,7 +2,6 @@
 
 from abc import ABC, abstractmethod
 from os import PathLike
-from typing import Dict, List
 
 import pandas as pd
 
@@ -16,7 +15,7 @@ class DataReader:
     use in the MFASystem model.
     """
 
-    def read_dimensions(self, dimension_definitions: List[DimensionDefinition]) -> DimensionSet:
+    def read_dimensions(self, dimension_definitions: list[DimensionDefinition]) -> DimensionSet:
         """Method to read data for multiple dimensions, by looping over `read_dimension`."""
         dimensions = [self.read_dimension(definition) for definition in dimension_definitions]
         return DimensionSet(dim_list=dimensions)
@@ -25,16 +24,14 @@ class DataReader:
     def read_dimension(self, definition: DimensionDefinition) -> Dimension:
         """Required method to read data for a single dimension,
         corresponding to the dimension definition."""
-        pass
 
     @abstractmethod
     def read_parameter_values(self, parameter_name: str, dims: DimensionSet) -> Parameter:
         """Required method to read data for a particular parameter."""
-        pass
 
     def read_parameters(
-        self, parameter_definitions: List[ParameterDefinition], dims: DimensionSet
-    ) -> Dict[str, Parameter]:
+        self, parameter_definitions: list[ParameterDefinition], dims: DimensionSet
+    ) -> dict[str, Parameter]:
         """Method to read data for a list of parameters, by looping over `read_parameter_values`."""
         parameters = {}
         for parameter_definition in parameter_definitions:
