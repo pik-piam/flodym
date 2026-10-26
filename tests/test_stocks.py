@@ -1,21 +1,21 @@
 import numpy as np
-from numpy.testing import assert_almost_equal
 import pytest
+from numpy.testing import assert_almost_equal
 
 from flodym import (
     Dimension,
     DimensionSet,
+    FixedLifetime,
     FlodymArray,
+    FoldedNormalLifetime,
     InflowDrivenDSM,
-    StockDrivenDSM,
+    LogNormalLifetime,
+    NormalLifetime,
     SimpleFlowDrivenStock,
     StockArray,
     StockDefinition,
+    StockDrivenDSM,
     WeibullLifetime,
-    NormalLifetime,
-    FoldedNormalLifetime,
-    FixedLifetime,
-    LogNormalLifetime,
     make_empty_stocks,
 )
 
