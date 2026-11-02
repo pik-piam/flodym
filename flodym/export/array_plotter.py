@@ -47,7 +47,6 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
     """Type of line to plot. Can be 'solid', 'dashed', 'dotted', or 'dashdot'."""
     suppress_legend: bool = False
     """If True, the legend is not shown."""
-    __pydantic_extra__: dict[str, Any]
 
     @model_validator(mode="after")
     def check_chart_type(self):
@@ -312,8 +311,8 @@ class PlotlyArrayPlotter(ArrayPlotter):
     """A previously created plotly figure object, for adding lines to an existing figure.
     If None, a new figure is created.
     """
-    color_map: list[str] = plc.qualitative.Dark24
-    """List of colors to use for the lines. If None, a default color map is used."""
+    color_map: Optional[list[str]] = plc.qualitative.Dark24
+    """List of colors to use for the lines. If None, the plotly default colors are used."""
 
     def save(self, save_path: str = None, **kwargs):
         self.fig.write_image(save_path, **kwargs)
@@ -360,7 +359,7 @@ class PlotlyArrayPlotter(ArrayPlotter):
 
     def add_line(self, i_subplot, x, y, prev_y, label, i_line):
         i_color = i_line + self.n_previous_lines
-        color = self.color_map[i_color]
+        color = self.color_map[i_color] if self.color_map is not None else None
         common_dict = dict(
             x=x,
             y=y,
@@ -368,18 +367,21 @@ class PlotlyArrayPlotter(ArrayPlotter):
             showlegend=i_subplot == 0 and not self.suppress_legend,
         )
         if self.chart_type == "line":
-            trace = go.Scatter(
+            trace = dict(
+                type="scatter",
                 **common_dict,
                 line=dict(color=color, dash=self.line_type),
             )
         elif self.chart_type == "scatter":
-            trace = go.Scatter(
+            trace = dict(
+                type="scatter",
                 **common_dict,
                 mode="markers",
                 marker=dict(color=color),
             )
         elif self.chart_type == "area":
-            trace = go.Scatter(
+            trace = dict(
+                type="scatter",
                 **common_dict,
                 fill="tozeroy" if prev_y is None else "tonexty",
                 fillcolor=color,

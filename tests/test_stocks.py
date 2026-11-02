@@ -1,17 +1,24 @@
 import numpy as np
+from numpy.testing import assert_almost_equal
 import pytest
 
-from flodym.dimensions import Dimension, DimensionSet
-from flodym.flodym_arrays import StockArray
-from flodym.mfa_definition import StockDefinition
-from flodym.stock_helper import make_empty_stocks
-from flodym.stocks import (
+from flodym import (
+    Dimension,
+    DimensionSet,
+    FlodymArray,
     InflowDrivenDSM,
     StockDrivenDSM,
     SimpleFlowDrivenStock,
-    InflowByCohortDrivenDSM,
+    StockArray,
+    StockDefinition,
+    WeibullLifetime,
+    NormalLifetime,
+    FoldedNormalLifetime,
+    FixedLifetime,
+    LogNormalLifetime,
+    make_empty_stocks,
 )
-from flodym.lifetime_models import LogNormalLifetime
+from flodym.stocks import InflowByCohortDrivenDSM
 
 dim_list = [
     Dimension(
@@ -51,23 +58,10 @@ def test_stocks():
         stock=stock_fda,
         lifetime_model=lifetime_model,
         time_letter="t",
-        solver="manual",
     )
     stock_driven_dsm.compute()
     inflow_post = stock_driven_dsm.inflow
     assert np.allclose(inflow.values, inflow_post.values)
-
-    stock_driven_dsm = StockDrivenDSM(
-        dims=dims,
-        stock=stock_fda,
-        lifetime_model=lifetime_model,
-        time_letter="t",
-        solver="lapack",
-    )
-    stock_driven_dsm.compute()
-    inflow_post_invert = stock_driven_dsm.inflow
-    assert np.allclose(inflow.values, inflow_post_invert.values)
-    # return inflow, inflow_post, inflow_post_invert
 
 
 def test_simple_stock_copy():
@@ -581,3 +575,169 @@ def test_make_empty_stocks_accepts_explicit_nondefault_time_letter():
     stocks = make_empty_stocks([stock_definition], processes={}, dims=stock_dims)
 
     assert stocks["stock_with_nondefault_time"].time_letter == "s"
+
+
+def test_lifetime_ext(plot=False):
+    EXT_FAC = 2
+
+    # Nurture
+
+    dsm = _get_dsm_with_lifetime_ext(EXT_FAC, nurture=True)
+
+    assert_almost_equal(
+        dsm.stock[{"t": 4, "p": "Base"}].values, dsm.stock[{"t": 4, "p": "Sudden ext"}].values
+    )
+
+    assert_almost_equal(
+        dsm.stock[{"t": 4, "p": "Base"}].values, dsm.stock[{"t": 4, "p": "Smooth ext"}].values
+    )
+
+    base = dsm.stock[{"t": 15, "p": "Base"}].values
+    all_ext = dsm.stock[{"t": 15, "p": "All ext"}].values
+    sudden_ext = dsm.stock[{"t": 15, "p": "Sudden ext"}].values
+    smooth_ext = dsm.stock[{"t": 15, "p": "Smooth ext"}].values
+
+    assert all_ext > smooth_ext > sudden_ext > base
+
+    # Nature
+
+    dsm = _get_dsm_with_lifetime_ext(EXT_FAC, nurture=False)
+
+    assert_almost_equal(
+        dsm.stock[{"t": 4, "p": "Base"}].values, dsm.stock[{"t": 4, "p": "Sudden ext"}].values
+    )
+
+    assert_almost_equal(
+        dsm.stock[{"t": 4, "p": "Base"}].values, dsm.stock[{"t": 4, "p": "Smooth ext"}].values
+    )
+
+    base = dsm.stock[{"t": 20, "p": "Base"}].values
+    all_ext = dsm.stock[{"t": 20, "p": "All ext"}].values
+    sudden_ext = dsm.stock[{"t": 20, "p": "Sudden ext"}].values
+    smooth_ext = dsm.stock[{"t": 20, "p": "Smooth ext"}].values
+
+    assert all_ext > sudden_ext > base
+    assert all_ext > smooth_ext > base
+
+    assert (
+        dsm.stock[{"t": 9, "p": "Sudden ext"}].values
+        < dsm.stock[{"t": 9, "p": "Smooth ext"}].values
+    )
+
+
+def _get_dsm_with_lifetime_ext(EXT_FAC, nurture=True):
+    dim_list = [
+        Dimension(
+            name="time",
+            letter="t",
+            items=list(range(31)),
+            dtype=int,
+        ),
+        Dimension(
+            name="product",
+            letter="p",
+            items=["Base", "All ext", "Sudden ext", "Smooth ext"],
+            dtype=str,
+        ),
+    ]
+
+    dims = DimensionSet(dim_list=dim_list)
+
+    inflow = StockArray(dims=dims)
+
+    if nurture:
+        # effect of extension through repair etc is clearest for only one cohort
+        inflow[{"t": 0}] = 1
+    else:
+        # extension through product design needs several inflow years
+        inflow[...] = 1
+
+    factor = FlodymArray(dims=dims)
+    factor[...] = 1.0
+    factor["All ext"] = EXT_FAC
+    factor[{"p": "Sudden ext", "t": range(10, 31)}] = EXT_FAC
+    # blend from 5 to 14 years for product D
+    x_clip = np.clip((np.arange(31) - 5) / 10, 0, 1)
+    factor["Smooth ext"] = 1 + (EXT_FAC - 1) * x_clip
+
+    ext_prm_name = "lt_factor_by_year" if nurture else "lt_factor_by_cohort"
+    lifetime_model = WeibullLifetime(
+        dims=dims, time_letter="t", weibull_scale=10, weibull_shape=2, **{ext_prm_name: factor}
+    )
+
+    dsm = InflowDrivenDSM(
+        dims=dims,
+        inflow=inflow,
+        lifetime_model=lifetime_model,
+        time_letter="t",
+    )
+    dsm.compute()
+    return dsm
+
+
+def _nurture_lifetime_model(lt_cls, **kwargs):
+    dims = DimensionSet(
+        dim_list=[
+            Dimension(name="time", letter="t", items=[0, 1, 2, 4, 5, 8, 9, 10, 13, 20], dtype=int),
+            Dimension(name="product", letter="p", items=["a", "b", "c"], dtype=str),
+        ]
+    )
+    rng = np.random.default_rng(0)
+    shape = (dims["t"].len, dims["p"].len)
+    factor = FlodymArray(dims=dims, values=rng.uniform(1.0, 2.0, shape))
+    if lt_cls is WeibullLifetime:
+        prms = {
+            "weibull_scale": rng.uniform(3, 8, shape),
+            "weibull_shape": rng.uniform(1, 3, shape),
+        }
+    elif lt_cls is FixedLifetime:
+        prms = {"mean": rng.uniform(2, 6, shape)}
+    else:
+        prms = {"mean": rng.uniform(3, 8, shape), "std": rng.uniform(1, 2, shape)}
+    return lt_cls(dims=dims, time_letter="t", lt_factor_by_year=factor, **prms, **kwargs)
+
+
+def _nurture_sf_per_cohort(lt):
+    """Reference: the nurture survival factor computed one cohort at a time."""
+    n_t = lt._n_t
+    prms_orig = {name: getattr(lt, name).copy() for name in lt._prm_names_to_scale}
+    points, weights = lt._get_quad_points_and_weights()
+    sf = np.zeros(lt._shape_cohort)
+    for i_t in range(n_t):
+        for name in lt._prm_names_to_scale:
+            lt._scaled_prms[name] = prms_orig[name] * lt.lt_factor_by_year[i_t]
+        curr = np.zeros((min(2, i_t + 1), n_t) + lt._shape_no_t)
+        for point, weight in zip(points, weights):
+            for i_c in range(i_t + 1):
+                ages = lt._tile(
+                    lt._t.bounds[max(i_t, 1) : i_t + 2] - lt._quad_point_time(i_c, point)
+                )
+                curr[:, i_c, ...] += weight * lt._survival_by_cohort(ages, i_c)
+        sf[i_t, i_t] = curr[-1, i_t]
+        if i_t > 0:
+            prev, now = curr[0, :i_t], curr[1, :i_t]
+            ratio = np.divide(now, prev, out=np.zeros_like(now), where=prev > 0)
+            sf[i_t, :i_t] = sf[i_t - 1, :i_t] * ratio
+    return sf
+
+
+@pytest.mark.parametrize(
+    "lt_cls",
+    [NormalLifetime, FoldedNormalLifetime, LogNormalLifetime, WeibullLifetime, FixedLifetime],
+)
+@pytest.mark.parametrize("n_pts", [1, 3])
+def test_nurture_matches_per_cohort_loop(lt_cls, n_pts):
+    lt = _nurture_lifetime_model(lt_cls, n_pts_per_interval=n_pts)
+    sf = lt.sf.copy()
+    np.testing.assert_allclose(sf, _nurture_sf_per_cohort(lt), rtol=1e-12, atol=1e-15)
+
+
+def test_nurture_keeps_lifetime_parameters():
+    lt = _nurture_lifetime_model(WeibullLifetime)
+    scale = lt.weibull_scale.copy()
+    first = lt.sf.copy()
+    np.testing.assert_array_equal(lt.weibull_scale, scale)
+
+    # recomputing, e.g. for a second scenario, starts from the same parameters
+    lt.reset_cached_arrays()
+    np.testing.assert_array_equal(lt.sf, first)

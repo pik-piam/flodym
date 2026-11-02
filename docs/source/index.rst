@@ -50,3 +50,4 @@
    api.stocks
    api.processes
    api.export_and_plotting
+   api.config

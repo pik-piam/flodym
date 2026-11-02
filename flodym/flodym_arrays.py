@@ -3,9 +3,12 @@ This includes the base `FlodymArray` class and its helper the `SubArrayHandler`,
 as well as applications of the `FlodymArray` for specific model components.
 """
 
-from collections.abc import Iterable
-from copy import deepcopy
 from collections import defaultdict
+from collections.abc import Iterable
+from copy import copy, deepcopy
+from numbers import Number
+from typing import Any, Callable, Literal, Optional, SupportsFloat, TypeVar, Union, overload
+
 import numpy as np
 import pandas as pd
 from pydantic import (
@@ -16,13 +19,12 @@ from pydantic import (
     model_validator,
     ModelWrapValidatorHandler,
 )
-from typing import Optional, Union, Callable, TypeVar, overload, Literal, Any, Self
-from copy import copy
-from numbers import Number
+from typing_extensions import Self
 
-from .processes import Process
-from .dimensions import DimensionSet, Dimension
 from ._df_to_flodym_array import DataFrameToFlodymDataConverter
+from .config import config, handle_error
+from .dimensions import Dimension, DimensionSet
+from .processes import Process
 
 
 def _is_iterable(arg):
@@ -74,7 +76,7 @@ class FlodymArray(PydanticBaseModel):
     name: Optional[str] = "unnamed"
     """Name of the FlodymArray."""
     _is_set: bool = False
-    """Flag indicating whether the flow has been set or not."""
+    """Flag indicating whether the array has been set or not."""
 
     @field_validator("values", mode="before")
     @classmethod
@@ -118,13 +120,13 @@ class FlodymArray(PydanticBaseModel):
     def mark_set_or_unset(cls, data: Any, handler: ModelWrapValidatorHandler[Self]) -> Self:
         obj = handler(data)
         if isinstance(data, dict):
-            obj._is_set = "values" in data
+            obj._is_set = data.get("values") is not None
         return obj
 
     @classmethod
     def from_dims_superset(
         cls, dims_superset: DimensionSet, dim_letters: Optional[tuple] = None, **kwargs
-    ) -> "FlodymArray":
+    ) -> Self:
         """Create a FlodymArray object from a superset of dimensions, by specifying which
         dimensions to take.
 
@@ -143,14 +145,14 @@ class FlodymArray(PydanticBaseModel):
     def full(
         cls,
         dims: DimensionSet,
-        fill_value: Union[Number, np.ndarray],
+        fill_value: Union[SupportsFloat, np.ndarray],
         **kwargs,
-    ) -> "FlodymArray":
+    ) -> Self:
         """Create a FlodymArray filled with a constant value for the provided dimensions.
 
         Parameters:
             dims (DimensionSet): DimensionSet defining the dimensions of the FlodymArray.
-            fill_value (Union[Number, np.ndarray]): Value to fill the array with.
+            fill_value: Value to fill the array with.
                 Can be a scalar or an array that is broadcastable to the shape of dims.
             **kwargs: Additional keyword arguments passed to the FlodymArray constructor
                 (e.g., name).
@@ -164,15 +166,15 @@ class FlodymArray(PydanticBaseModel):
     def full_like(
         cls,
         other: "FlodymArray",
-        fill_value: Union[Number, np.ndarray],
+        fill_value: Union[SupportsFloat, np.ndarray],
         dtype: Optional[Union[type, np.dtype]] = None,
         **kwargs,
-    ) -> "FlodymArray":
+    ) -> Self:
         """Create a FlodymArray filled with a constant value, matching another array's dimensions.
 
         Parameters:
             other (FlodymArray): FlodymArray whose dimensions will be used for the new array.
-            fill_value (Union[Number, np.ndarray]): Value to fill the array with.
+            fill_value: Value to fill the array with.
                 Can be a scalar or an array that is broadcastable to the shape of other.
             dtype (Optional[Union[type, np.dtype]], optional): Data type of the new array.
                 If None, the data type of fill_value is used. Defaults to None.
@@ -194,13 +196,13 @@ class FlodymArray(PydanticBaseModel):
     @classmethod
     def scalar(
         cls,
-        value: Number,
+        value: SupportsFloat,
         **kwargs,
-    ) -> "FlodymArray":
+    ) -> Self:
         """Create a scalar (zero-dimensional) FlodymArray.
 
         Parameters:
-            value (Number): The scalar value to store in the FlodymArray.
+            value: The scalar value to store in the FlodymArray.
             **kwargs: Additional keyword arguments passed to the FlodymArray constructor
                 (e.g., name).
 
@@ -218,7 +220,7 @@ class FlodymArray(PydanticBaseModel):
         allow_extra_values: bool = False,
         strip_whitespace: bool = True,
         **kwargs,
-    ) -> "FlodymArray":
+    ) -> Self:
         """Create a FlodymArray object from a DataFrame.
         In case of errors, turning on debug logging might help to understand the process.
 
@@ -290,11 +292,11 @@ class FlodymArray(PydanticBaseModel):
         """Return the sum of all values in the FlodymArray."""
         return np.sum(self.values)
 
-    def sum_values_over(self, sum_over_dims: tuple = ()) -> np.ndarray:
+    def sum_values_over(self, sum_over_dims: tuple[str | Dimension, ...] = ()) -> np.ndarray:
         """Return the sum of the FlodymArray over a given tuple of dimensions.
 
         Args:
-            sum_over_dims (tuple, optional): Tuple of dimension letters to sum over. If not given, no summation is performed and the values array is returned.
+            sum_over_dims (optional): Tuple of the dimensions to sum over. If not given, no summation is performed and the values array is returned.
 
         Returns:
             np.ndarray: The partially summed values of the FlodymArray.
@@ -318,10 +320,8 @@ class FlodymArray(PydanticBaseModel):
             f"'{target_dims.string}'. Maybe use sum_values_to() before casting"
         )
         # safety procedure: order dimensions
-        values = np.einsum(
-            f"{self.dims.string}->{''.join([d for d in target_dims.letters if d in self.dims.letters])}",
-            self.values,
-        )
+        axes = [self.dims.letters.index(d) for d in target_dims.letters if d in self.dims.letters]
+        values = np.transpose(self.values, axes)
         index = tuple(
             [slice(None) if d in self.dims.letters else np.newaxis for d in target_dims.letters]
         )
@@ -346,6 +346,7 @@ class FlodymArray(PydanticBaseModel):
         Returns:
             FlodymArray: The FlodymArray cast to the new dimensions.
         """
+        self._check_is_set("cast_to()")
         # dimension consistency checks are performed in cast_values_to
         values = self.cast_values_to(target_dims)
         if inplace:
@@ -353,46 +354,46 @@ class FlodymArray(PydanticBaseModel):
             self.values = values
             return self
         else:
-            return FlodymArray(
-                dims=target_dims,
-                values=self.cast_values_to(target_dims),
-                name=self.name,
-            )
+            result = FlodymArray(dims=target_dims, values=values, name=self.name)
+            result._is_set = self._is_set
+            return result
 
-    def sum_values_to(self, result_dims: tuple[str, ...] = ()) -> np.ndarray:
+    def sum_values_to(self, result_dims: tuple[str | Dimension, ...] = ()) -> np.ndarray:
         """Return the values of the FlodymArray partially summed, such that only the dimensions given in the result_dims tuple are left.
 
         Args:
-            result_dims (tuple, optional): Tuple of dimension letters to sum over. If not given, the sum over all dimensions is returned.
+            result_dims (optional): Tuple of the dimensions to sum to. If not given, the sum over all dimensions is returned.
         """
-        result_dims = self._tuple_to_letters(result_dims)
-        return np.einsum(f"{self.dims.string}->{''.join(result_dims)}", self.values)
+        result_letters = self._tuple_to_letters(result_dims)
+        return np.einsum(f"{self.dims.string}->{''.join(result_letters)}", self.values)
 
-    def sum_to(self, result_dims: tuple[str, ...] = ()) -> "FlodymArray":
+    def sum_to(self, result_dims: tuple[str | Dimension, ...] = ()) -> "FlodymArray":
         """Return the FlodymArray summed, such that only the dimensions given in the result_dims tuple are left.
 
         Args:
-            result_dims (tuple, optional): Tuple of the dimensions to sum to. If not given, the sum over all dimensions is returned.
+            result_dims (optional): Tuple of the dimensions to sum to. If not given, the sum over all dimensions is returned.
 
         Returns:
             FlodymArray: FlodymArray object with the summed values and the reduced dimensions.
         """
-        result_dims = self._tuple_to_letters(result_dims)
+        self._check_is_set("sum_to()")
+        result_letters = self._tuple_to_letters(result_dims)
         return FlodymArray(
-            dims=self.dims.get_subset(result_dims),
-            values=self.sum_values_to(result_dims),
+            dims=self.dims.get_subset(result_letters),
+            values=self.sum_values_to(result_letters),
             name=self.name,
         )
 
-    def sum_over(self, sum_over_dims: tuple = ()) -> "FlodymArray":
+    def sum_over(self, sum_over_dims: tuple[str | Dimension, ...] = ()) -> "FlodymArray":
         """Return the FlodymArray summed over a given tuple of dimensions.
 
         Args:
-            sum_over_dims (tuple, optional): Tuple of dimension letters to sum over. If not given, no summation is performed and the FlodymArray object is returned.
+            sum_over_dims (optional): Tuple of the dimensions to sum over. If not given, no summation is performed and the FlodymArray object is returned.
 
         Returns:
             FlodymArray: FlodymArray object with the summed values and the reduced dimensions.
         """
+        self._check_is_set("sum_over()")
         sum_over_dims = self._tuple_to_letters(sum_over_dims)
         result_dims = tuple([d for d in self.dims.letters if d not in sum_over_dims])
         return FlodymArray(
@@ -429,12 +430,12 @@ class FlodymArray(PydanticBaseModel):
         else:
             raise KeyError(f"Dimension {dim} not found in FlodymArray dims.")
 
-    def _prepare_other(self, other: Union["FlodymArray", Number]) -> "FlodymArray":
-        """If a math operation between a FlodymArray and a Number is performed, the Number is converted to a FlodymArray object.
+    def _prepare_other(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
+        """If a math operation between a FlodymArray and a scalar is performed, the scalar is converted to a FlodymArray object.
         The following operations are then performed between the two FlodymArray objects.
 
         Args:
-            other (Union[FlodymArray, Number]): The other object to perform the operation with.
+            other: The other object to perform the operation with.
 
         Returns:
             FlodymArray: The other object converted to a FlodymArray object.
@@ -444,9 +445,11 @@ class FlodymArray(PydanticBaseModel):
         )
         if isinstance(other, Number):
             other = FlodymArray(dims=self.dims, values=np.full(self.shape, other))
+        self._check_is_set("a math operation")
+        other._check_is_set("a math operation")
         return other
 
-    def __add__(self, other: Union["FlodymArray", Number]) -> "FlodymArray":
+    def __add__(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
         other = self._prepare_other(other)
         dims_out = self.dims.intersect_with(other.dims)
         return FlodymArray(
@@ -454,7 +457,7 @@ class FlodymArray(PydanticBaseModel):
             values=self.sum_values_to(dims_out.letters) + other.sum_values_to(dims_out.letters),
         )
 
-    def __sub__(self, other: Union["FlodymArray", Number]) -> "FlodymArray":
+    def __sub__(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
         other = self._prepare_other(other)
         dims_out = self.dims.intersect_with(other.dims)
         return FlodymArray(
@@ -462,7 +465,7 @@ class FlodymArray(PydanticBaseModel):
             values=self.sum_values_to(dims_out.letters) - other.sum_values_to(dims_out.letters),
         )
 
-    def __mul__(self, other: Union["FlodymArray", Number]) -> "FlodymArray":
+    def __mul__(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
         other = self._prepare_other(other)
         dims_out = self.dims.union_with(other.dims)
         values_out = np.einsum(
@@ -470,7 +473,7 @@ class FlodymArray(PydanticBaseModel):
         )
         return FlodymArray(dims=dims_out, values=values_out)
 
-    def __truediv__(self, other: Union["FlodymArray", Number]) -> "FlodymArray":
+    def __truediv__(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
         other = self._prepare_other(other)
         dims_out = self.dims.union_with(other.dims)
         values_out = np.einsum(
@@ -480,7 +483,7 @@ class FlodymArray(PydanticBaseModel):
         )
         return FlodymArray(dims=dims_out, values=values_out)
 
-    def __pow__(self, power: Union["FlodymArray", Number]) -> "FlodymArray":
+    def __pow__(self, power: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
         power = self._prepare_other(power)
         if any(l not in self.dims.letters for l in power.dims.letters):
             raise ValueError("Power must only contain dimensions also present in the base array.")
@@ -488,7 +491,7 @@ class FlodymArray(PydanticBaseModel):
         values_out = self.values**power.values
         return FlodymArray(dims=self.dims, values=values_out)
 
-    def minimum(self, other: Union["FlodymArray", Number]) -> "FlodymArray":
+    def minimum(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
         other = self._prepare_other(other)
         dims_out = self.dims.intersect_with(other.dims)
         values_out = np.minimum(
@@ -496,7 +499,7 @@ class FlodymArray(PydanticBaseModel):
         )
         return FlodymArray(dims=dims_out, values=values_out)
 
-    def maximum(self, other: Union["FlodymArray", Number]) -> "FlodymArray":
+    def maximum(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
         other = self._prepare_other(other)
         dims_out = self.dims.intersect_with(other.dims)
         values_out = np.maximum(
@@ -517,6 +520,7 @@ class FlodymArray(PydanticBaseModel):
         Returns:
             FlodymArray: FlodymArray object with the values transformed by the function.
         """
+        self._check_is_set("apply()")
         if inplace:
             self.values = func(self.values, **kwargs)
             return None
@@ -552,12 +556,14 @@ class FlodymArray(PydanticBaseModel):
         """
         if not (isinstance(array_class, type) and issubclass(array_class, FlodymArray)):
             raise TypeError(f"array_class must be a FlodymArray subclass, got {array_class!r}.")
-        return array_class(
+        result = array_class(
             dims=self.dims.copy(),
             values=self.values.copy(),
             name=self.name if name is None else name,
             **kwargs,
         )
+        result._is_set = self._is_set
+        return result
 
     @classmethod
     def from_array(cls: type[T], array: "FlodymArray", name: Optional[str] = None, **kwargs) -> T:
@@ -609,21 +615,24 @@ class FlodymArray(PydanticBaseModel):
         return self.apply(np.cumsum, kwargs={"axis": i_axis}, inplace=inplace)
 
     def __neg__(self) -> "FlodymArray":
+        self._check_is_set("a math operation")
         return FlodymArray(dims=self.dims, values=-self.values)
 
     def __abs__(self) -> "FlodymArray":
+        self._check_is_set("a math operation")
         return FlodymArray(dims=self.dims, values=abs(self.values))
 
-    def __radd__(self, other: Union["FlodymArray", Number]) -> "FlodymArray":
+    def __radd__(self, other: SupportsFloat) -> "FlodymArray":
         return self + other
 
-    def __rsub__(self, other: Union["FlodymArray", Number]) -> "FlodymArray":
+    def __rsub__(self, other: SupportsFloat) -> "FlodymArray":
         return -self + other
 
-    def __rmul__(self, other: Union["FlodymArray", Number]) -> "FlodymArray":
+    def __rmul__(self, other: SupportsFloat) -> "FlodymArray":
         return self * other
 
-    def __rtruediv__(self, other: Union["FlodymArray", Number]) -> "FlodymArray":
+    def __rtruediv__(self, other: SupportsFloat) -> "FlodymArray":
+        self._check_is_set("a math operation")
         inv_self = FlodymArray(dims=self.dims, values=1 / self.values)
         return inv_self * other
 
@@ -631,6 +640,7 @@ class FlodymArray(PydanticBaseModel):
         """Defines what is returned when the object with square brackets stands on the right-hand side of an assignment,
         e.g. foo = foo = bar[{'e': 'C'}] Here, it is solely used for slicing, the the input tot the square brackets must
         be a dictionary defining the slice."""
+        self._check_is_set("slicing")
         return self._sub_array_handler(keys).to_flodym_array()
 
     def __setitem__(self, keys, item) -> None:
@@ -643,12 +653,13 @@ class FlodymArray(PydanticBaseModel):
         """
         slice_obj = self._sub_array_handler(keys)
         if isinstance(item, FlodymArray):
+            item._check_is_set("an assignment to another array")
             self.values[slice_obj.ids] = item.sum_values_to(slice_obj.dim_letters)
         elif isinstance(keys, type(Ellipsis)):
             self.set_values(copy(item))
         else:
             self.values[slice_obj.ids] = copy(item)
-        self.mark_set()
+        self._is_set = True
 
     def to_df(
         self, index: bool = True, dim_to_columns: Optional[str] = None, sparse: bool = False
@@ -734,15 +745,25 @@ class FlodymArray(PydanticBaseModel):
         )
         self.set_values(converter.target_values)
 
-    def split(self, dim_letter: str) -> dict:
+    def split(self, dim_letter: str) -> "dict[Any, FlodymArray]":
         """Reverse the flodym_array_stack, returns a dictionary of FlodymArray objects
         associated with the item in the dimension that has been split.
         Method can be applied to classes FlodymArray, StockArray, Parameter and Flow.
         """
         return {item: self[{dim_letter: item}] for item in self.dims[dim_letter].items}
 
-    def get_shares_over(self, dim_letters: tuple) -> "FlodymArray":
-        """Get shares of the FlodymArray along a tuple of dimensions, indicated by letter."""
+    def get_shares_over(self, dim_letters: str | tuple[str, ...]) -> "FlodymArray":
+        """Get shares of the FlodymArray along one or more dimensions, indicated by letter.
+
+        Args:
+            dim_letters: The letter of a single dimension, or a tuple of
+                dimension letters, to get the shares over.
+
+        Returns:
+            The FlodymArray divided by its sum over the given dimensions.
+        """
+        if isinstance(dim_letters, str):
+            dim_letters = (dim_letters,)
         assert all([d in self.dims.letters for d in dim_letters]), (
             "Dimensions to get share of must be in the object"
         )
@@ -771,16 +792,39 @@ class FlodymArray(PydanticBaseModel):
 
     @property
     def is_set(self) -> bool:
-        """A boolean to indicate whether the flow's values are known or not."""
+        """Whether the values of the array are known.
+
+        Arrays are set if values are given at initialization, or if values are assigned through
+        one of the methods of the class (e.g. ``set_values()``, ``foo[...] = bar``).
+        Writing to the ``values`` attribute directly (e.g. ``foo.values[0, ...] = bar``) does not
+        mark the array as set; call :py:meth:`mark_set` afterwards in that case.
+
+        What happens if an unset array is used in an operation is controlled by
+        ``flodym.config.error_behaviors.unset_array_used``.
+        """
         return self._is_set
 
-    def mark_set(self):
-        """Mark the flow as having values."""
+    def mark_set(self) -> Self:
+        """Mark the array as having known values. Returns the array itself, to allow
+        e.g. ``FlodymArray(dims=dims).mark_set()`` for an array of intended zeros."""
         self._is_set = True
+        return self
 
-    def mark_unset(self):
-        """Mark the flow as not having values"""
+    def mark_unset(self) -> Self:
+        """Mark the array as not having known values. The values themselves are kept.
+        Returns the array itself."""
         self._is_set = False
+        return self
+
+    def _check_is_set(self, operation: str) -> None:
+        if not self._is_set:
+            handle_error(
+                config.error_behaviors.unset_array_used,
+                message=(
+                    f"{self.__class__.__name__} '{self.name}' is used in {operation}, but is not set "
+                    "(is_set=False). If its values are intended, call mark_set() on it."
+                ),
+            )
 
     def __str__(self) -> str:
         base = f"{self.__class__.__name__} '{self.name}'"

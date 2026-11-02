@@ -4,17 +4,20 @@ These are used when defining the MFA system, and can be used to check the input 
 and put it into ojects with the desired properties.
 """
 
+from typing import Dict, List, Optional
+
 import numpy as np
 import pandas as pd
 from pydantic import (
-    BaseModel as PydanticBaseModel,
     AliasChoices,
+    ConfigDict,
     Field,
     field_validator,
     model_validator,
-    ConfigDict,
 )
-from typing import List, Optional, Dict
+from pydantic import (
+    BaseModel as PydanticBaseModel,
+)
 
 
 class DimensionDefinition(PydanticBaseModel):
@@ -41,8 +44,8 @@ class DefinitionWithDimLetters(PydanticBaseModel):
 
     model_config = ConfigDict(protected_namespaces=())
 
-    dim_letters: tuple
-    """letters of the dimensions that the object is defined on"""
+    dim_letters: tuple[str, ...]
+    """Letters of the dimensions that the object is defined on."""
 
     @field_validator("dim_letters", mode="before")
     def check_dimensions(cls, v):

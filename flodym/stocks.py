@@ -3,29 +3,39 @@ including flow-driven stocks and dynamic (lifetime-based) stocks.
 """
 
 from abc import ABC, abstractmethod
+import functools
 import numpy as np
 from pydantic import BaseModel as PydanticBaseModel, ConfigDict, model_validator
-from typing import Optional, Union, TypeVar, Type
+from typing import Callable, Optional, Union, TypeVar, Type
 import logging
 
 from .processes import Process
 from .flodym_arrays import StockArray, FlodymArray
 from .dimensions import Dimension, DimensionSet
 from .lifetime_models import LifetimeModel, UnevenTimeDim
+from .config import config, handle_error
 
 StockSubtype = TypeVar("StockSubtype", bound="Stock")
 
 
-def stock_compute_decorator(func):
-    """Adds checks before and after every stock compute routine"""
+def _wrap_compute(compute: Callable) -> Callable:
+    """Adds checks before and marks the stock arrays as set after a stock compute routine.
+    Nested calls (e.g. via ``super().compute()``) only run the outermost checks."""
 
+    @functools.wraps(compute)
     def wrapper(self: "Stock", *args, **kwargs):
+        if self._in_compute:
+            return compute(self, *args, **kwargs)
         self._check_needed_arrays()
-        func(self, *args, **kwargs)
-        self.mark_computed()
+        self._in_compute = True
+        try:
+            result = compute(self, *args, **kwargs)
+        finally:
+            self._in_compute = False
+        self.mark_all_set()
+        return result
 
-    wrapper.is_decorated = True
-
+    wrapper._is_wrapped_compute = True
     return wrapper
 
 
@@ -56,6 +66,15 @@ class Stock(PydanticBaseModel):
     time_letter: str = "t"
     """Letter of the time dimension in the dimensions set, to make sure it's the first one."""
     _t: UnevenTimeDim = None
+    _in_compute: bool = False
+
+    def __init_subclass__(cls, **kwargs):
+        """Wrap the compute method of every subclass with checks before and
+        marking the stock arrays as set afterwards."""
+        super().__init_subclass__(**kwargs)
+        compute = cls.__dict__.get("compute")
+        if compute is not None and not getattr(compute, "_is_wrapped_compute", False):
+            cls.compute = _wrap_compute(compute)
 
     @model_validator(mode="after")
     def validate_stock_arrays(self):
@@ -88,32 +107,48 @@ class Stock(PydanticBaseModel):
         return self
 
     @model_validator(mode="after")
-    def check_compute_decorator(self):
-        if not getattr(self.compute, "is_decorated", False):
-            raise RuntimeError(
-                "Stock.compute method must have the stock_compute_decorator applied to it."
-            )
-        return self
-
-    @model_validator(mode="after")
     def init_t(self):
         self._t = UnevenTimeDim(dim=self.dims[self.time_letter])
         return self
 
     @abstractmethod
-    @stock_compute_decorator
     def compute(self):
-        # Add stock_compute_decorator to all subclasses!
+        """Compute the missing stock arrays from the known ones.
+
+        In all subclasses, ``_check_needed_arrays()`` is automatically called before, and the
+        stock arrays are marked as set after the computation.
+        """
         pass
 
     @abstractmethod
     def _check_needed_arrays(self):
         pass
 
-    def mark_computed(self):
+    def _check_array_known(self, array: StockArray, label: str, consequence: str) -> None:
+        """Warn if a stock array needed for the computation is zero, and handle the case that it
+        is not set according to ``config.error_behaviors.unset_array_used``."""
+        if np.allclose(array.values, 0.0):
+            logging.warning(f"{label} is zero. {consequence}")
+        if not array.is_set:
+            handle_error(
+                config.error_behaviors.unset_array_used,
+                message=(
+                    f"{label} of stock '{self.name}' is not set (is_set=False). "
+                    "If its values are intended, call mark_set() on it."
+                ),
+            )
+
+    def mark_all_set(self):
+        """Mark all StockArrays (inflow, outflow, stock) as set."""
         self.inflow.mark_set()
         self.outflow.mark_set()
         self.stock.mark_set()
+
+    def mark_all_unset(self):
+        """Mark all StockArrays (inflow, outflow, stock) as unset."""
+        self.inflow.mark_unset()
+        self.outflow.mark_unset()
+        self.stock.mark_unset()
 
     @property
     def shape(self) -> tuple:
@@ -190,12 +225,20 @@ class SimpleFlowDrivenStock(Stock):
     """Given inflows and outflows, the stock can be calculated without a lifetime model or cohorts."""
 
     def _check_needed_arrays(self):
+        if (
+            np.max(np.abs(self.inflow.values)) < 1e-10
+            and np.max(np.abs(self.outflow.values)) < 1e-10
+        ):
+            logging.warning("Inflow and Outflow are zero. This will lead to a zero stock.")
         if not self.inflow.is_set and not self.outflow.is_set:
-            logging.warning(
-                "Neither inflow and outflow are set (is_set=False). If this is intended, perform mark_set() on one of them."
+            handle_error(
+                config.error_behaviors.unset_array_used,
+                message=(
+                    f"Neither inflow nor outflow of stock '{self.name}' is set (is_set=False). "
+                    "If their values are intended, call mark_set() on one of them."
+                ),
             )
 
-    @stock_compute_decorator
     def compute(self):
         annual_net_inflow = self.inflow.values - self.outflow.values
         net_inflow_whole_period = self._to_whole_period(annual_net_inflow)
@@ -385,13 +428,11 @@ class InflowDrivenDSM(DynamicStockModel):
     """
 
     def _check_needed_arrays(self):
-        DynamicStockModel._check_needed_arrays(self)
-        if not self.inflow.is_set:
-            logging.warning(
-                "Inflow is not set (is_set=False). If this is intended, perform mark_set() on it."
-            )
+        super()._check_needed_arrays()
+        self._check_array_known(
+            self.inflow, "Inflow", "This will lead to a zero stock and outflow."
+        )
 
-    @stock_compute_decorator
     def compute(self):
         """Determine stocks and outflows and store values in the class instance."""
         if self._initial_stock_dsm is not None:
@@ -441,13 +482,9 @@ class StockDrivenDSM(DynamicStockModel):
     """
 
     def _check_needed_arrays(self):
-        DynamicStockModel._check_needed_arrays(self)
-        if not self.stock.is_set:
-            logging.warning(
-                "Stock is not set (is_set=False). If this is intended, perform mark_set() on it."
-            )
+        super()._check_needed_arrays()
+        self._check_array_known(self.stock, "Stock", "This will lead to a zero inflow and outflow.")
 
-    @stock_compute_decorator
     def compute(self):
         """Determine inflows and outflows and store values in the class instance."""
         if self._initial_stock_dsm is not None:
@@ -515,7 +552,6 @@ class StockDrivenDSM(DynamicStockModel):
 
 class InflowByCohortDrivenDSM(InflowDrivenDSM):
     inflow_by_cohort: StockArray = None
-    cohort_dim: Dimension  # require for this subclass
 
     @model_validator(mode="after")
     def init_cohort_arrays(self):
@@ -532,13 +568,12 @@ class InflowByCohortDrivenDSM(InflowDrivenDSM):
 
     def _check_needed_arrays(self):
         DynamicStockModel._check_needed_arrays(self)
-        if not self.inflow_by_cohort.is_set:
-            logging.warning(
-                "Inflow_by_cohort is not set (is_set=False). If this is intended, perform mark_set() on it."
-            )
+        self._check_array_known(
+            self.inflow_by_cohort, "Inflow by cohort", "This will lead to a zero stock and outflow."
+        )
         if self.inflow.is_set:
             logging.warning(
-                "Inflow is not set (is_set=True). It will be overwritten. Use either inflow or inflow_by_cohort."
+                "Inflow is already set (is_set=True). It will be overwritten. Use either inflow or inflow_by_cohort."
             )
 
     def _compute_inflow(self):
@@ -567,7 +602,6 @@ class InflowByCohortDrivenDSM(InflowDrivenDSM):
         )
         self.outflow.values[...] = self._outflow_by_cohort.sum(axis=1)
 
-    @stock_compute_decorator
     def compute(self):
         """Determine stocks and outflows and store values in the class instance."""
         self._check_inflow_by_cohort_consistency()
@@ -594,9 +628,6 @@ class FlexibleDSM(DynamicStockModel):
             self.compute_inflow_driven()
         else:
             raise ValueError("Either stock or inflow must be set for FlexibleDSM.compute().")
-
-    # replaces decorator, since inner functions are already decorated
-    compute.is_decorated = True
 
     # TODO initial stocks:
     # - np allclose in all checks
