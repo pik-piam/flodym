@@ -1,16 +1,18 @@
 repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.22
+    hooks:
+      - id: ruff-check
+        types_or: [ python, pyi, pyproject ]
+        args: [ --fix ]
+      - id: ruff-format
+        types_or: [ python, pyi ]
   - repo: https://github.com/mwouts/jupytext
-    rev: v1.19.0.dev0
+    rev: v1.19.4
     hooks:
-    - id: jupytext
-      args: [--sync, --pipe, black]
-      additional_dependencies:
-        - black==24.10.0 # should match hook
-  - repo: https://github.com/psf/black-pre-commit-mirror
-    rev: 25.11.0
-    hooks:
-      - id: black
-        language_version: python3.12
+      - id: jupytext
+        files: ^(examples|howtos)/.*\.py$
+        args: [--to, ipynb, --update]
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
@@ -18,3 +20,5 @@ repos:
       - id: check-case-conflict
       - id: end-of-file-fixer
       - id: trailing-whitespace
+ci:
+  autoupdate_commit_msg: 'chore: update pre-commit'
