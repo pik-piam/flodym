@@ -295,3 +295,40 @@ show_array(flow_b)
 #
 # A flodym extension is planned to account for this. In the meantime, we advise to use the `FlodymArray.cast_to()` method on the arrays before performing the operation.
 #
+# ## Set and unset arrays
+#
+# Each array records whether its values are known, in the `is_set` property.
+# An array is set if values are given at initialization, or if values are assigned through one of its methods,
+# e.g. `set_values()` or `foo[...] = bar`.
+# An array initialized without values contains zeros, but is not set.
+#
+# Writing to the `values` attribute directly, e.g. `foo.values[0, ...] = 1`, does not mark the array as set.
+# In this case, or if the zeros are intended, call `mark_set()`. `mark_unset()` reverts this, but keeps the values.
+
+# %%
+flow_c = FlodymArray(dims=dims["r", "t"])
+print("Initialized without values:", flow_c.is_set)
+flow_c.values[0, ...] = 1.0
+print("After direct assignment to values:", flow_c.is_set)
+flow_c[...] = flow_b
+print("After assignment via flow_c[...]:", flow_c.is_set)
+
+# %% [markdown]
+# By default, using an unset array in an operation has no consequences.
+# Optionally, flodym can log a warning or raise an error instead, e.g. to detect arrays that were forgotten to be computed.
+# Accessing the `values` attribute directly, methods returning numpy arrays (such as `sum_values_to()`) and export
+# functions are not checked.
+
+# %%
+import flodym
+
+with flodym.config.override(error_behaviors={"unset_array_used": "error"}):
+    try:
+        2 * FlodymArray(dims=dims["r", "t"], name="unset_flow")
+    except ValueError as error:
+        print(error)
+
+# %% [markdown]
+# The setting can also be changed permanently, with `flodym.config.error_behaviors.unset_array_used = "warn"`.
+# Possible values are `"ignore"` (default), `"info"`, `"warn"`, and `"error"`.
+#
