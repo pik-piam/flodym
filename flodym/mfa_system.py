@@ -69,29 +69,52 @@ class MFASystem(PydanticBaseModel):
 
     @model_validator(mode="after")
     def link_processes(self):
+        """Link the processes to the flows and stocks at setup, see :py:meth:`relink`."""
+        self.relink()
+        return self
+
+    def relink(self) -> None:
         """Link each process to its inflows, outflows and stock, as given by the flows and stocks
-        of the MFA system (see :py:attr:`flodym.Process.inflows`). Existing links of the processes
-        are replaced.
+        of the MFA system (see :py:attr:`flodym.Process.inflows`).
+
+        This is done automatically when the MFA system is set up. Call it again after adding,
+        replacing or removing entries of :py:attr:`flows` or :py:attr:`stocks`.
+        Existing links of the processes are replaced.
+
+        Raises:
+            ValueError: If a flow or stock refers to a process object which is not in
+                :py:attr:`processes`, or if several stocks refer to the same process.
+                In this case, the existing links are left unchanged.
         """
-        for process in self.processes.values():
-            process.clear_links()
+        linked_stocks = {}
         for flow in self.flows.values():
             for process in (flow.from_process, flow.to_process):
-                if self.processes.get(process.name) is not process:
-                    raise ValueError(
-                        f"Process '{process.name}' of flow '{flow.name}' is not a process of the MFA system."
-                    )
-            flow.from_process.add_outflow(flow)
-            flow.to_process.add_inflow(flow)
+                self._check_is_own_process(process, f"flow '{flow.name}'")
         for stock in self.stocks.values():
             if stock.process is None:
                 continue
-            if self.processes.get(stock.process.name) is not stock.process:
+            self._check_is_own_process(stock.process, f"stock '{stock.name}'")
+            if stock.process.name in linked_stocks:
                 raise ValueError(
-                    f"Process '{stock.process.name}' of stock '{stock.name}' is not a process of the MFA system."
+                    f"Process '{stock.process.name}' cannot have both stocks "
+                    f"'{linked_stocks[stock.process.name]}' and '{stock.name}'."
                 )
-            stock.process.set_stock(stock)
-        return self
+            linked_stocks[stock.process.name] = stock.name
+
+        for process in self.processes.values():
+            process.clear_links()
+        for flow in self.flows.values():
+            flow.from_process.add_outflow(flow)
+            flow.to_process.add_inflow(flow)
+        for stock in self.stocks.values():
+            if stock.process is not None:
+                stock.process.set_stock(stock)
+
+    def _check_is_own_process(self, process: Process, used_by: str) -> None:
+        if self.processes.get(process.name) is not process:
+            raise ValueError(
+                f"Process '{process.name}' of {used_by} is not a process of the MFA system."
+            )
 
     @classmethod
     def from_data_reader(cls, definition: MFADefinition, data_reader: DataReader) -> Self:

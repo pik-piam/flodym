@@ -89,7 +89,7 @@ def test_parallel_flows_are_linked_separately():
 
 
 def test_second_stock_of_process_raises():
-    with pytest.raises(ValueError, match="already has the stock"):
+    with pytest.raises(ValueError, match="cannot have both stocks"):
         _two_flow_mfa(second_stock=True)
 
 
@@ -122,3 +122,26 @@ def test_process_repr_and_dump():
     assert "inflows=['f1', 'f2']" in str(a)
     assert a.model_dump() == {"name": "a", "id": 1}
     repr(mfa.stocks["s0"])
+
+
+def test_relink():
+    mfa = _two_flow_mfa()
+    a = mfa.processes["a"]
+    del mfa.flows["f1"]
+    mfa.flows["f3"] = Flow(
+        from_process=mfa.processes["sysenv"], to_process=a, dims=mfa.dims, name="f3"
+    )
+    assert list(a.inflows) == ["f1", "f2"]
+    mfa.relink()
+    assert list(a.inflows) == ["f2", "f3"]
+    assert list(mfa.processes["sysenv"].outflows) == ["f2", "f3"]
+
+
+def test_failed_relink_keeps_links():
+    mfa = _two_flow_mfa()
+    mfa.flows["f3"] = Flow(
+        from_process=mfa.processes["sysenv"], to_process=Process(name="a", id=1), dims=mfa.dims
+    )
+    with pytest.raises(ValueError, match="not a process of the MFA system"):
+        mfa.relink()
+    assert list(mfa.processes["a"].inflows) == ["f1", "f2"]
