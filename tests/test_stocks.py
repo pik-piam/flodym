@@ -15,10 +15,13 @@ from flodym import (
     StockArray,
     StockDefinition,
     WeibullLifetime,
+    WeibullMeanStdLifetime,
     NormalLifetime,
     FoldedNormalLifetime,
     FixedLifetime,
     LogNormalLifetime,
+    ExponentialLifetime,
+    Leaching,
     make_empty_stocks,
 )
 
@@ -968,8 +971,12 @@ def _nurture_lifetime_model(lt_cls, **kwargs):
             "weibull_scale": rng.uniform(3, 8, shape),
             "weibull_shape": rng.uniform(1, 3, shape),
         }
-    elif lt_cls is FixedLifetime:
+    elif lt_cls in (FixedLifetime, ExponentialLifetime):
         prms = {"mean": rng.uniform(2, 6, shape)}
+    elif lt_cls is Leaching:
+        prms = {"loss_rate": rng.uniform(0.05, 0.3, shape)}
+    elif kwargs.get("relative_std", False):
+        prms = {"mean": rng.uniform(3, 8, shape), "std": rng.uniform(0.2, 0.5, shape)}
     else:
         prms = {"mean": rng.uniform(3, 8, shape), "std": rng.uniform(1, 2, shape)}
     return lt_cls(dims=dims, time_letter="t", lt_factor_by_year=factor, **prms, **kwargs)
@@ -978,12 +985,13 @@ def _nurture_lifetime_model(lt_cls, **kwargs):
 def _nurture_sf_per_cohort(lt):
     """Reference: the nurture survival factor computed one cohort at a time."""
     n_t = lt._n_t
-    prms_orig = {name: getattr(lt, name).copy() for name in lt._prm_names_to_scale}
+    names_to_scale = lt._get_prm_names_to_scale()
+    prms_orig = {name: getattr(lt, name).copy() for name in names_to_scale}
     points, weights = lt._get_quad_points_and_weights()
     sf = np.zeros(lt._shape_cohort)
     for i_t in range(n_t):
-        for name in lt._prm_names_to_scale:
-            lt._scaled_prms[name] = prms_orig[name] * lt.lt_factor_by_year[i_t]
+        for name in names_to_scale:
+            lt._scaled_prms[name] = lt._scale_prm(name, prms_orig[name], lt.lt_factor_by_year[i_t])
         curr = np.zeros((min(2, i_t + 1), n_t) + lt._shape_no_t)
         for point, weight in zip(points, weights):
             for i_c in range(i_t + 1):
@@ -1000,12 +1008,23 @@ def _nurture_sf_per_cohort(lt):
 
 
 @pytest.mark.parametrize(
-    "lt_cls",
-    [NormalLifetime, FoldedNormalLifetime, LogNormalLifetime, WeibullLifetime, FixedLifetime],
+    "lt_cls, kwargs",
+    [
+        (NormalLifetime, {}),
+        (FoldedNormalLifetime, {}),
+        (LogNormalLifetime, {}),
+        (LogNormalLifetime, {"relative_std": True}),
+        (WeibullLifetime, {}),
+        (WeibullMeanStdLifetime, {}),
+        (WeibullMeanStdLifetime, {"relative_std": True}),
+        (FixedLifetime, {}),
+        (ExponentialLifetime, {}),
+        (Leaching, {}),
+    ],
 )
 @pytest.mark.parametrize("n_pts", [1, 3])
-def test_nurture_matches_per_cohort_loop(lt_cls, n_pts):
-    lt = _nurture_lifetime_model(lt_cls, n_pts_per_interval=n_pts)
+def test_nurture_matches_per_cohort_loop(lt_cls, kwargs, n_pts):
+    lt = _nurture_lifetime_model(lt_cls, n_pts_per_interval=n_pts, **kwargs)
     sf = lt.sf.copy()
     np.testing.assert_allclose(sf, _nurture_sf_per_cohort(lt), rtol=1e-12, atol=1e-15)
 

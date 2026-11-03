@@ -29,6 +29,9 @@ from flodym.lifetime_models import (
     FoldedNormalLifetime as FoldedNormalLifetime,
     LogNormalLifetime as LogNormalLifetime,
     WeibullLifetime as WeibullLifetime,
+    WeibullMeanStdLifetime as WeibullMeanStdLifetime,
+    ExponentialLifetime as ExponentialLifetime,
+    Leaching as Leaching,
 )
 from flodym.flow_helper import make_empty_flows as make_empty_flows
 from flodym.stock_helper import make_empty_stocks as make_empty_stocks

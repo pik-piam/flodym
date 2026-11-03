@@ -170,6 +170,51 @@ print("Stock values for Vehicles:", my_dsm.stock["Vehicles"].values)
 # To recompute, use the explicit methods above.
 
 # %% [markdown]
+# ## Lifetime models
+#
+# The following lifetime models are available:
+# - `FixedLifetime`: all items of a cohort leave the stock at the age `mean`.
+# - `NormalLifetime`, `FoldedNormalLifetime`, `LogNormalLifetime`: distributions with `mean` and
+#   standard deviation `std`.
+# - `WeibullLifetime`: Weibull distribution with `weibull_scale` and `weibull_shape`.
+# - `WeibullMeanStdLifetime`: Weibull distribution with `mean` and `std`, from which shape and
+#   scale are computed internally.
+# - `ExponentialLifetime`: constant hazard rate, i.e. the same share of the remaining items leaves
+#   per time unit, independent of their age. Parameter `mean`.
+# - `Leaching`: the same, but parametrized by `loss_rate`, the share of the stock leaving per
+#   time unit (e.g. per year).
+#
+# For the models with `mean` and `std`, setting `relative_std=True` makes `std` relative to the
+# mean, i.e. the coefficient of variation std / mean:
+
+# %%
+from flodym import LogNormalLifetime
+
+lifetime_model = LogNormalLifetime(dims=dims, mean=lifetime_mean, std=0.3, relative_std=True)
+
+# %% [markdown]
+# Several independent causes of leaving the stock can be combined with `competing_risk`,
+# which takes another lifetime model with the same dimensions.
+# The survival rates of both models are multiplied.
+# For example, items can reach the end of their product lifetime, while some material is
+# additionally lost from the stock every year, independent of the product age:
+
+# %%
+from flodym import Leaching
+
+lifetime_model = LogNormalLifetime(
+    dims=dims,
+    mean=lifetime_mean,
+    std=0.3,
+    relative_std=True,
+    competing_risk=Leaching(dims=dims, loss_rate=0.05),
+)
+my_dsm = InflowDrivenDSM(dims=dims, lifetime_model=lifetime_model, inflow=inflow)
+my_dsm.compute()
+
+print("Stock values for Vehicles, with leaching:", my_dsm.stock["Vehicles"].values)
+
+# %% [markdown]
 # ## Lifetime extension
 #
 # Lifetime extension can by modeled. To this end, a time-dependent extension factor can be specified.

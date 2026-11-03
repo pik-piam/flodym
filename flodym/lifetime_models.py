@@ -3,14 +3,12 @@
 from abc import abstractmethod
 from types import MappingProxyType
 import numpy as np
+import scipy.special
 import scipy.stats
 from pydantic import BaseModel as PydanticBaseModel, ConfigDict, PrivateAttr, model_validator
-from typing import ClassVar, TypeAlias, Literal, SupportsFloat
+from typing import ClassVar, Optional, TypeAlias, Literal, SupportsFloat
 from numbers import Number
 import warnings
-
-# from scipy.special import gammaln, logsumexp
-# from scipy.optimize import root_scalar
 
 from .dimensions import DimensionSet, Dimension
 from .flodym_arrays import FlodymArray
@@ -85,7 +83,21 @@ class LifetimeModel(PydanticBaseModel):
     representing e.g. product design or material choice.
     Dimensions must be a subset of the lifetime model dimensions.
     """
+    competing_risk: Optional["LifetimeModel"] = None
+    """A second lifetime model describing an additional, independent cause of leaving the stock,
+    e.g. a constant loss rate (see :py:class:`Leaching`) on top of a product lifetime.
+    The one-step survival rates of both models are multiplied, which is equivalent to
+    multiplying their survival factors. The sf, pdf and survival_rate of this model then refer
+    to the combined model.
+    Must have the same dimensions as this lifetime model. Its lifetime factors are applied
+    independently of the ones of this model. It can itself have a competing risk.
+    """
     _sf: np.ndarray | None = PrivateAttr(default=None)
+    """Survival factor of this model alone, without competing risk."""
+    _combined_sf: np.ndarray | None = PrivateAttr(default=None)
+    """Survival factor including the competing risk."""
+    _competing_risk_sf: np.ndarray | None = PrivateAttr(default=None)
+    """Survival factor of the competing risk used in _combined_sf, used to detect changes."""
     _pdf: np.ndarray | None = PrivateAttr(default=None)
     _survival_rate: np.ndarray | None = PrivateAttr(default=None)
     _t: UnevenTimeDim | None = PrivateAttr(default=None)
@@ -107,6 +119,22 @@ class LifetimeModel(PydanticBaseModel):
                 f"If the time dimension uses a different letter, set time_letter explicitly."
             )
         self._t = UnevenTimeDim(dim=self.dims[self.time_letter])
+        return self
+
+    @model_validator(mode="after")
+    def _check_competing_risk(self):
+        other = self.competing_risk
+        if other is None:
+            return self
+        if other is self:
+            raise ValueError("A lifetime model cannot be its own competing risk.")
+        if other.dims.letters != self.dims.letters or other.dims.shape != self.dims.shape:
+            raise ValueError(
+                f"Dimensions of competing risk ({other.dims.letters}, shape {other.dims.shape}) "
+                f"must match lifetime model dimensions ({self.dims.letters}, shape {self.dims.shape})."
+            )
+        if not np.array_equal(other._t.bounds, self._t.bounds):
+            raise ValueError("Time dimension of competing risk must match lifetime model.")
         return self
 
     @model_validator(mode="after")
@@ -148,6 +176,8 @@ class LifetimeModel(PydanticBaseModel):
         unset_prms = [prm_name for prm_name in self._prm_names if getattr(self, prm_name) is None]
         if unset_prms:
             raise ValueError(f"Lifetime parameters {unset_prms} must be set before use.")
+        if self.competing_risk is not None:
+            self.competing_risk._check_prms_set()
 
     @property
     def shape(self):
@@ -174,15 +204,34 @@ class LifetimeModel(PydanticBaseModel):
         """
         return MappingProxyType({prm_name: getattr(self, prm_name) for prm_name in self._prm_names})
 
+    def _get_prm_names_to_scale(self) -> list[str]:
+        """Names of the parameters which are changed by the lifetime factors."""
+        return self._prm_names_to_scale
+
+    def _scale_prm(self, prm_name: str, value: np.ndarray, factor: np.ndarray) -> np.ndarray:
+        """Returns the parameter value for a lifetime extended by factor.
+        Must return a new array. Override for parameters which are not proportional to the
+        lifetime, such as rates.
+        """
+        return value * factor
+
     def _scale_prms(self):
-        if self.lt_factor_by_cohort is None:
-            self._scaled_prms = dict(self.prms)
-            return
+        names_to_scale = self._get_prm_names_to_scale()
         for prm_name in self._prm_names:
-            if prm_name in self._prm_names_to_scale:
-                self._scaled_prms[prm_name] = getattr(self, prm_name) * self.lt_factor_by_cohort
-            else:
-                self._scaled_prms[prm_name] = getattr(self, prm_name)
+            value = getattr(self, prm_name)
+            if self.lt_factor_by_cohort is not None and prm_name in names_to_scale:
+                value = self._scale_prm(prm_name, value, self.lt_factor_by_cohort)
+            self._scaled_prms[prm_name] = value
+
+    def _update_competing_risk(self):
+        """Resets the combined arrays if the survival factor of the competing risk has changed
+        since they were computed, e.g. because its parameters were changed."""
+        if self.competing_risk is None or self._combined_sf is None:
+            return
+        if self._competing_risk_sf is not self.competing_risk.sf:
+            self._combined_sf = None
+            self._pdf = None
+            self._survival_rate = None
 
     @property
     def sf(self):
@@ -195,10 +244,17 @@ class LifetimeModel(PydanticBaseModel):
                 self._compute_survival_factor_with_nurture()
             else:
                 self._compute_survival_factor()
-        return self._sf
+        if self.competing_risk is None:
+            return self._sf
+        self._update_competing_risk()
+        if self._combined_sf is None:
+            self._competing_risk_sf = self.competing_risk.sf
+            self._combined_sf = self._sf * self._competing_risk_sf
+        return self._combined_sf
 
     @property
     def pdf(self):
+        self._update_competing_risk()
         if self._pdf is None:
             self._pdf = np.zeros(self._shape_cohort)
             self._compute_outflow_pdf()
@@ -211,6 +267,7 @@ class LifetimeModel(PydanticBaseModel):
         still present at the end of year t.
         It equals sf(t,c) / sf(t-1,c) for c < t, sf(t,t) for c = t, and zero for c > t.
         """
+        self._update_competing_risk()
         if self._survival_rate is None:
             self._survival_rate = np.zeros(self._shape_cohort)
             self._compute_survival_rate()
@@ -324,6 +381,8 @@ class LifetimeModel(PydanticBaseModel):
 
     def reset_cached_arrays(self):
         self._sf = None
+        self._combined_sf = None
+        self._competing_risk_sf = None
         self._pdf = None
         self._survival_rate = None
 
@@ -331,19 +390,21 @@ class LifetimeModel(PydanticBaseModel):
         """Returns an array year-by-cohort of the probability that an item
         added to stock in year m (aka cohort m) leaves in in year n. This value equals pdf(n,m).
         """
+        sf = self.sf
         t_diag_indices = np.diag_indices(self._n_t) + (slice(None),) * len(self._shape_no_t)
-        self._pdf[t_diag_indices] = 1.0 - np.moveaxis(self.sf.diagonal(0, 0, 1), -1, 0)
+        self._pdf[t_diag_indices] = 1.0 - np.moveaxis(sf.diagonal(0, 0, 1), -1, 0)
         for i_c in range(0, self._n_t):
-            self._pdf[i_c + 1 :, i_c, ...] = -1 * np.diff(self.sf[i_c:, i_c, ...], axis=0)
+            self._pdf[i_c + 1 :, i_c, ...] = -1 * np.diff(sf[i_c:, i_c, ...], axis=0)
 
     def _compute_survival_rate(self):
         # The share of cohort c present at the end of year t-1 which survives year t is
         # sf(t,c) / sf(t-1,c). If sf(t-1,c) is zero, nothing is left to survive.
-        sf_prev = self.sf[:-1, ...]
-        np.divide(self.sf[1:, ...], sf_prev, out=self._survival_rate[1:, ...], where=sf_prev > 0)
+        sf = self.sf
+        sf_prev = sf[:-1, ...]
+        np.divide(sf[1:, ...], sf_prev, out=self._survival_rate[1:, ...], where=sf_prev > 0)
         # The newest cohort enters during year t, so its survival rate is sf(t,t)
         t_diag_indices = np.diag_indices(self._n_t) + (slice(None),) * len(self._shape_no_t)
-        self._survival_rate[t_diag_indices] = self.sf[t_diag_indices]
+        self._survival_rate[t_diag_indices] = sf[t_diag_indices]
 
     def _compute_survival_factor_with_nurture(self):
         """
@@ -359,13 +420,14 @@ class LifetimeModel(PydanticBaseModel):
         factor = self.lt_factor_by_year
 
         scaled_prms_orig = dict(self._scaled_prms)
+        names_to_scale = self._get_prm_names_to_scale()
         for i_t in range(self._n_t):
             # scale such that mean and stddev are increased by lifetime extension factor
-            for name in self._prm_names_to_scale:
+            for name in names_to_scale:
                 # apply factor per time step - broadcast to all age cohorts
                 # (The arrays in _scaled_prms can be the parameter arrays themselves, so
                 # assign new arrays instead of writing into them)
-                self._scaled_prms[name] = scaled_prms_orig[name] * factor[i_t]
+                self._scaled_prms[name] = self._scale_prm(name, scaled_prms_orig[name], factor[i_t])
             # curr_survival calculates sf_e(t-1) ans sf_e(t) in one array
             # max(i_t, 1) omits prev time step for i_t = 0
             curr_time = self._t.bounds[max(i_t, 1) : i_t + 2]
@@ -406,15 +468,80 @@ class FixedLifetime(LifetimeModel):
         return (ages < mean[i_c, ...]).astype(int)
 
 
+class ExponentialLifetime(LifetimeModel):
+    """Exponentially distributed lifetime, i.e. a constant hazard rate 1 / mean:
+    The share of the remaining stock leaving per time is the same for all ages.
+    sf(age) = exp(-age / mean).
+    """
+
+    mean: LifetimeArrayType | None = None
+    """Mean lifetime, equal to the inverse of the hazard rate.
+    """
+
+    _prm_names: ClassVar[list[str]] = ["mean"]
+    _prm_names_to_scale: ClassVar[list[str]] = ["mean"]
+
+    def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
+        mean = self._scaled_prms["mean"]
+        if np.min(mean) <= 0:
+            raise ValueError("mean must be greater than zero.")
+        return np.exp(-ages / mean[i_c, ...])
+
+
+class Leaching(LifetimeModel):
+    """Loss of a fixed share of the remaining stock per unit of time (e.g. per year), independent
+    of age, for example by leaching, corrosion or dissipation.
+    sf(age) = (1 - loss_rate) ** age.
+    This is an exponential lifetime with mean -1 / ln(1 - loss_rate).
+    Often used as competing_risk of another lifetime model.
+    Lifetime factors f change the rate such that the mean lifetime is multiplied by f, i.e.
+    1 - loss_rate is raised to the power 1 / f.
+    """
+
+    loss_rate: LifetimeArrayType | None = None
+    """Share of the stock leaving per unit of time, between 0 and 1.
+    """
+
+    _prm_names: ClassVar[list[str]] = ["loss_rate"]
+    _prm_names_to_scale: ClassVar[list[str]] = ["loss_rate"]
+
+    def _scale_prm(self, prm_name: str, value: np.ndarray, factor: np.ndarray) -> np.ndarray:
+        return 1.0 - (1.0 - value) ** (1.0 / factor)
+
+    def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
+        rate = self._scaled_prms["loss_rate"]
+        if np.min(rate) < 0 or np.max(rate) > 1:
+            raise ValueError("loss_rate must be between 0 and 1.")
+        return (1.0 - rate[i_c, ...]) ** ages
+
+
 class StandardDeviationLifetimeModel(LifetimeModel):
     mean: LifetimeArrayType | None = None
     """Mean lifetime.
     """
     std: LifetimeArrayType | None = None
-    """Standard deviation of lifetime.
+    """Standard deviation of lifetime. If relative_std is True, it is given relative to the
+    mean, i.e. as coefficient of variation std / mean.
+    """
+    relative_std: bool = False
+    """If True, std is interpreted relative to the mean. Lifetime factors then only multiply the
+    mean, and the absolute standard deviation changes with it.
     """
     _prm_names: ClassVar[list[str]] = ["mean", "std"]
     _prm_names_to_scale: ClassVar[list[str]] = ["mean", "std"]
+
+    def _get_prm_names_to_scale(self) -> list[str]:
+        if self.relative_std:
+            return ["mean"]
+        return self._prm_names_to_scale
+
+    def _mean_std(self, i_c: int | slice) -> tuple[np.ndarray, np.ndarray]:
+        """Returns the scaled mean and absolute standard deviation for cohort(s) i_c."""
+        mean = self._scaled_prms["mean"][i_c, ...]
+        std = self._scaled_prms["std"][i_c, ...]
+        if self.relative_std:
+            std = std * mean
+        return mean, std
 
 
 class NormalLifetime(StandardDeviationLifetimeModel):
@@ -428,15 +555,11 @@ class NormalLifetime(StandardDeviationLifetimeModel):
     """
 
     def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
-        mean, std = self._scaled_prms["mean"], self._scaled_prms["std"]
-        if np.min(mean) < 0:
+        if np.min(self._scaled_prms["mean"]) < 0:
             raise ValueError("mean must be greater than zero.")
+        mean, std = self._mean_std(i_c)
 
-        return scipy.stats.norm.sf(
-            ages,
-            loc=mean[i_c, ...],
-            scale=std[i_c, ...],
-        )
+        return scipy.stats.norm.sf(ages, loc=mean, scale=std)
 
 
 class FoldedNormalLifetime(StandardDeviationLifetimeModel):
@@ -446,16 +569,11 @@ class FoldedNormalLifetime(StandardDeviationLifetimeModel):
     """
 
     def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
-        mean, std = self._scaled_prms["mean"], self._scaled_prms["std"]
-        if np.min(mean) < 0:
+        if np.min(self._scaled_prms["mean"]) < 0:
             raise ValueError("mean must be greater than zero.")
+        mean, std = self._mean_std(i_c)
 
-        return scipy.stats.foldnorm.sf(
-            ages,
-            mean[i_c, ...] / std[i_c, ...],
-            0,
-            scale=std[i_c, ...],
-        )
+        return scipy.stats.foldnorm.sf(ages, mean / std, 0, scale=std)
 
 
 class LogNormalLifetime(StandardDeviationLifetimeModel):
@@ -468,9 +586,9 @@ class LogNormalLifetime(StandardDeviationLifetimeModel):
     """
 
     def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
-        mean, std = self._scaled_prms["mean"], self._scaled_prms["std"]
-        mean_square = mean[i_c, ...] * mean[i_c, ...]
-        std_square = std[i_c, ...] * std[i_c, ...]
+        mean, std = self._mean_std(i_c)
+        mean_square = mean * mean
+        std_square = std * std
         new_mean = np.log(mean_square / np.sqrt(mean_square + std_square))
         new_std = np.sqrt(np.log(1 + std_square / mean_square))
         # compute survival function
@@ -479,7 +597,10 @@ class LogNormalLifetime(StandardDeviationLifetimeModel):
 
 
 class WeibullLifetime(LifetimeModel):
-    """Weibull distribution with standard definition of scale and shape parameters."""
+    """Weibull distribution with standard definition of scale and shape parameters.
+    For a parametrization with mean and standard deviation, see
+    :py:class:`WeibullMeanStdLifetime`.
+    """
 
     weibull_scale: LifetimeArrayType | None = None
     """Scale parameter of the Weibull distribution.
@@ -503,29 +624,56 @@ class WeibullLifetime(LifetimeModel):
             scale=scale[i_c, ...],
         )
 
-    # @staticmethod
-    # def weibull_c_scale_from_mean_std(mean, std):
-    #     """Compute Weibull parameters c and scale from mean and standard deviation.
-    #     Works on scalars.
-    #     Taken from https://github.com/scipy/scipy/issues/12134#issuecomment-1214031574.
-    #     """
-    #     def r(c, mean, std):
-    #         log_mean, log_std = np.log(mean), np.log(std)
-    #         # np.pi*1j is the log of -1
-    #         logratio = (logsumexp([gammaln(1 + 2/c) - 2*gammaln(1+1/c), np.pi*1j])
-    #                     - 2*log_std + 2*log_mean)
-    #         return np.real(logratio)
 
-    #     # Maybe a bit simpler; doesn't seem to be substantially different numerically
-    #     # def r(c, mean, std):
-    #     #     logratio = (gammaln(1 + 2/c) - 2*gammaln(1+1/c) -
-    #     #                 logsumexp([2*log_std - 2*log_mean, 0]))
-    #     #     return logratio
+class WeibullMeanStdLifetime(StandardDeviationLifetimeModel):
+    """Weibull distribution, parametrized by its mean and standard deviation.
+    The Weibull shape parameter k is determined by the coefficient of variation std / mean via
+    Gamma(1 + 2/k) / Gamma(1 + 1/k)^2 = 1 + (std / mean)^2,
+    and the scale parameter by scale = mean / Gamma(1 + 1/k).
+    Lifetime factors multiply mean and std alike, so they only change the scale parameter.
+    """
 
-    #     # other methods are more efficient, but I've seen TOMS748 return garbage
-    #     res = root_scalar(r, args=(mean, std), method='bisect',
-    #                     bracket=[1e-300, 1e300], maxiter=2000, xtol=1e-16)
-    #     assert res.converged
-    #     c = res.root
-    #     scale = np.exp(np.log(mean) - gammaln(1 + 1/c))
-    #     return c, scale
+    _weibull_shape: np.ndarray | None = PrivateAttr(default=None)
+
+    _shape_bounds: ClassVar[tuple[float, float]] = (0.05, 1.0e4)
+    """Range of Weibull shape parameters considered in the computation from mean and std."""
+
+    def _scale_prms(self):
+        super()._scale_prms()
+        cv = self.std if self.relative_std else self.std / self.mean
+        self._weibull_shape = self._weibull_shape_from_cv(cv)
+
+    @classmethod
+    def _weibull_shape_from_cv(cls, cv: np.ndarray) -> np.ndarray:
+        """Solves Gamma(1 + 2/k) / Gamma(1 + 1/k)^2 = 1 + cv^2 for the Weibull shape k by
+        bisection in log(k). The left-hand side decreases monotonically with k.
+        """
+
+        def log_ratio(log_k):
+            k_inv = np.exp(-log_k)
+            return scipy.special.gammaln(1 + 2 * k_inv) - 2 * scipy.special.gammaln(1 + k_inv)
+
+        target = np.log1p(cv**2)
+        lower = np.full(cv.shape, np.log(cls._shape_bounds[0]))
+        upper = np.full(cv.shape, np.log(cls._shape_bounds[1]))
+        in_range = (target <= log_ratio(lower)) & (target >= log_ratio(upper))
+        if not np.all(in_range):
+            shape_max, shape_min = cls._shape_bounds[1], cls._shape_bounds[0]
+            cv_min = np.sqrt(np.expm1(log_ratio(np.log(shape_max))))
+            cv_max = np.sqrt(np.expm1(log_ratio(np.log(shape_min))))
+            raise ValueError(
+                f"Coefficient of variation std / mean must be between {cv_min:.2g} and "
+                f"{cv_max:.2g} for WeibullMeanStdLifetime."
+            )
+        for _ in range(60):
+            middle = (lower + upper) / 2
+            shape_too_small = log_ratio(middle) > target
+            lower = np.where(shape_too_small, middle, lower)
+            upper = np.where(shape_too_small, upper, middle)
+        return np.exp((lower + upper) / 2)
+
+    def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
+        mean = self._scaled_prms["mean"][i_c, ...]
+        shape = self._weibull_shape[i_c, ...]
+        scale = mean / scipy.special.gamma(1 + 1 / shape)
+        return scipy.stats.weibull_min.sf(ages, c=shape, loc=0, scale=scale)
