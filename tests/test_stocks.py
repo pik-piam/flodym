@@ -500,7 +500,9 @@ def test_inflow_driven_dsm_initial_stock_survival():
     sf = dsm.lifetime_model.sf
     stock_by_cohort = dsm.get_stock_by_cohort().values
     expected = np.einsum(
-        "c...,tc...->tc...", initial_stock.values[: iiy + 1], sf[iiy:, : iiy + 1] / sf[iiy, : iiy + 1]
+        "c...,tc...->tc...",
+        initial_stock.values[: iiy + 1],
+        sf[iiy:, : iiy + 1] / sf[iiy, : iiy + 1],
     )
     np.testing.assert_allclose(stock_by_cohort[iiy:, : iiy + 1], expected)
     assert np.all(stock_by_cohort[:iiy] == 0.0)
@@ -560,7 +562,9 @@ def test_compute_chooses_mode_like_explicit_method(driven_by):
         getattr(dsm, method)()
         results.append(dsm)
     for attr in ("stock", "inflow", "outflow"):
-        np.testing.assert_allclose(getattr(results[0], attr).values, getattr(results[1], attr).values)
+        np.testing.assert_allclose(
+            getattr(results[0], attr).values, getattr(results[1], attr).values
+        )
 
 
 @pytest.mark.parametrize("driven_by", [["stock", "inflow"], ["inflow", "inflow_by_cohort"]])
@@ -578,7 +582,9 @@ def test_compute_falls_back_to_non_zero_array(caplog):
     with caplog.at_level(logging.WARNING):
         dsm.compute()
     assert "Computing from inflow" in caplog.text
-    reference = _dsm_for_cohort_tests(DynamicStockModel, inflow=_driving_array_for_cohort_tests("inflow"))
+    reference = _dsm_for_cohort_tests(
+        DynamicStockModel, inflow=_driving_array_for_cohort_tests("inflow")
+    )
     reference.compute_inflow_driven()
     np.testing.assert_allclose(dsm.stock.values, reference.stock.values)
 
@@ -590,9 +596,7 @@ def test_compute_raises_if_nothing_given():
 
 
 def test_recompute():
-    dsm = _dsm_for_cohort_tests(
-        DynamicStockModel, inflow=_driving_array_for_cohort_tests("inflow")
-    )
+    dsm = _dsm_for_cohort_tests(DynamicStockModel, inflow=_driving_array_for_cohort_tests("inflow"))
     dsm.compute()
     with pytest.raises(ValueError, match="compute_inflow_driven"):
         dsm.compute()

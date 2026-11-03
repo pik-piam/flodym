@@ -539,7 +539,9 @@ class DynamicStockModel(Stock):
 
         The inflow need not be marked as set (see ``config.error_behaviors.unset_array_used``).
         """
-        self._check_array_known(self.inflow, "Inflow", "This will lead to a zero stock and outflow.")
+        self._check_array_known(
+            self.inflow, "Inflow", "This will lead to a zero stock and outflow."
+        )
         if self._initial_stock_by_cohort is None:
             self._compute_inflow_driven_vectorized()
             return
@@ -636,9 +638,9 @@ class DynamicStockModel(Stock):
         # where the sum is the surviving stock of the older cohorts.
         survival_rate = self.lifetime_model.survival_rate[i_t, : i_t + 1, ...]
         surviving_stock = (present_by_cohort * survival_rate).sum(axis=0)
-        newest_cohort_inflow = (
-            self.stock.values[i_t, ...] - surviving_stock
-        ) / survival_rate[i_t, ...]
+        newest_cohort_inflow = (self.stock.values[i_t, ...] - surviving_stock) / survival_rate[
+            i_t, ...
+        ]
         if self._is_initial_year(i_t):
             # use the maximum of prescribed and initial stock
             newest_cohort_inflow = np.maximum(newest_cohort_inflow, 0.0)
@@ -649,9 +651,8 @@ class DynamicStockModel(Stock):
             raise ValueError(
                 f"Prescribed inflow before the initial stock year {self._initial_stock_year} is non-zero."
             )
-        if (
-            not self._initial_stock_included_in_inflow
-            and np.any(self.inflow.values[self._initial_year_index, ...] > 0)
+        if not self._initial_stock_included_in_inflow and np.any(
+            self.inflow.values[self._initial_year_index, ...] > 0
         ):
             logging.warning(
                 f"Prescribed inflow in the initial stock year {self._initial_stock_year} is non-zero. "
