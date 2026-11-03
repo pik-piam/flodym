@@ -21,7 +21,6 @@ from flodym.stocks import (
     DynamicStockModel as DynamicStockModel,
     InflowDrivenDSM as InflowDrivenDSM,
     StockDrivenDSM as StockDrivenDSM,
-    FlexibleDSM as FlexibleDSM,
 )
 from flodym.lifetime_models import (
     LifetimeModel as LifetimeModel,

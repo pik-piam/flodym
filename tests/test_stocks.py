@@ -1,3 +1,5 @@
+import logging
+
 import numpy as np
 from numpy.testing import assert_almost_equal
 import pytest
@@ -5,7 +7,7 @@ import pytest
 from flodym import (
     Dimension,
     DimensionSet,
-    FlexibleDSM,
+    DynamicStockModel,
     FlodymArray,
     InflowDrivenDSM,
     StockDrivenDSM,
@@ -19,7 +21,6 @@ from flodym import (
     LogNormalLifetime,
     make_empty_stocks,
 )
-from flodym.stocks import InflowByCohortDrivenDSM
 
 dim_list = [
     Dimension(
@@ -260,7 +261,7 @@ def test_unequal_time_steps():
 
 
 def test_inflow_by_cohort_driven_dsm():
-    """Test InflowByCohortDrivenDSM basic functionality."""
+    """Test basic functionality of the inflow by cohort driven computation."""
     # Create simple dimensions for testing
     time_items = list(range(2000, 2011))
     dims_test = DimensionSet(
@@ -276,8 +277,7 @@ def test_inflow_by_cohort_driven_dsm():
     # Create lifetime model
     lifetime_model = LogNormalLifetime(dims=dims_test, time_letter="t", mean=5, std=2)
 
-    # Create InflowByCohortDrivenDSM
-    dsm = InflowByCohortDrivenDSM(
+    dsm = DynamicStockModel(
         dims=dims_test,
         cohort_dim=cohort_dim,
         lifetime_model=lifetime_model,
@@ -291,7 +291,7 @@ def test_inflow_by_cohort_driven_dsm():
         dsm.inflow_by_cohort.values[i, i, :] = 1.0  # 1 unit per product per year
 
     # Compute the DSM
-    dsm.compute()
+    dsm.compute_inflow_by_cohort_driven()
 
     # Check that inflow was computed correctly (diagonal extraction)
     assert dsm.inflow.is_set
@@ -525,39 +525,160 @@ def test_stock_driven_dsm_initial_stock_reproduces_stock():
     dsm.check_stock_balance()
 
 
-@pytest.mark.parametrize("driven_by", ["inflow", "stock"])
-def test_flexible_dsm_matches_concrete_dsm(driven_by):
+dims_with_cohort_tests = DimensionSet(
+    dim_list=[dims_cohort_tests["t"], cohort_dim_tests, dims_cohort_tests["p"]]
+)
+
+
+def _driving_array_for_cohort_tests(driven_by: str) -> StockArray:
     rng = np.random.default_rng(1)
+    if driven_by == "inflow_by_cohort":
+        # inflow only into cohorts which already exist
+        values = rng.random(dims_with_cohort_tests.shape)
+        values *= np.tri(len(time_items_cohort_tests))[:, :, np.newaxis]
+        return StockArray(dims=dims_with_cohort_tests, values=values)
     values = rng.random(dims_cohort_tests.shape)
     if driven_by == "stock":
         values = np.cumsum(values, axis=0)
-    concrete_cls = InflowDrivenDSM if driven_by == "inflow" else StockDrivenDSM
+    return StockArray(dims=dims_cohort_tests, values=values)
+
+
+_explicit_compute_methods = {
+    "inflow": "compute_inflow_driven",
+    "stock": "compute_stock_driven",
+    "inflow_by_cohort": "compute_inflow_by_cohort_driven",
+}
+
+
+@pytest.mark.parametrize("driven_by", ["inflow", "stock", "inflow_by_cohort"])
+def test_compute_chooses_mode_like_explicit_method(driven_by):
     results = []
-    for dsm_cls in concrete_cls, FlexibleDSM:
+    for method in _explicit_compute_methods[driven_by], "compute":
         dsm = _dsm_for_cohort_tests(
-            dsm_cls, **{driven_by: StockArray(dims=dims_cohort_tests, values=values.copy())}
+            DynamicStockModel, **{driven_by: _driving_array_for_cohort_tests(driven_by)}
         )
-        dsm.compute()
+        getattr(dsm, method)()
         results.append(dsm)
     for attr in ("stock", "inflow", "outflow"):
         np.testing.assert_allclose(getattr(results[0], attr).values, getattr(results[1], attr).values)
 
 
-def test_inflow_by_cohort_driven_dsm_matches_inflow_driven_dsm():
-    rng = np.random.default_rng(2)
-    inflow = StockArray(dims=dims_cohort_tests, values=rng.random(dims_cohort_tests.shape))
-    inflow_driven_dsm = _dsm_for_cohort_tests(InflowDrivenDSM, inflow=inflow)
-    inflow_driven_dsm.compute()
+@pytest.mark.parametrize("driven_by", [["stock", "inflow"], ["inflow", "inflow_by_cohort"]])
+def test_compute_raises_if_several_arrays_set(driven_by):
+    dsm = _dsm_for_cohort_tests(
+        DynamicStockModel, **{name: _driving_array_for_cohort_tests(name) for name in driven_by}
+    )
+    with pytest.raises(ValueError, match="Exactly one of stock, inflow and inflow_by_cohort"):
+        dsm.compute()
 
-    by_cohort_dsm = _dsm_for_cohort_tests(InflowByCohortDrivenDSM)
-    t_diag_indices = np.diag_indices(len(time_items_cohort_tests)) + (slice(None),)
-    by_cohort_dsm.inflow_by_cohort.values[t_diag_indices] = inflow.values
-    by_cohort_dsm.inflow_by_cohort.mark_set()
-    by_cohort_dsm.compute()
+
+def test_compute_falls_back_to_non_zero_array(caplog):
+    dsm = _dsm_for_cohort_tests(DynamicStockModel)
+    dsm.inflow.values[...] = _driving_array_for_cohort_tests("inflow").values
+    with caplog.at_level(logging.WARNING):
+        dsm.compute()
+    assert "Computing from inflow" in caplog.text
+    reference = _dsm_for_cohort_tests(DynamicStockModel, inflow=_driving_array_for_cohort_tests("inflow"))
+    reference.compute_inflow_driven()
+    np.testing.assert_allclose(dsm.stock.values, reference.stock.values)
+
+
+def test_compute_raises_if_nothing_given():
+    dsm = _dsm_for_cohort_tests(DynamicStockModel)
+    with pytest.raises(ValueError, match="cannot be chosen"):
+        dsm.compute()
+
+
+def test_recompute():
+    dsm = _dsm_for_cohort_tests(
+        DynamicStockModel, inflow=_driving_array_for_cohort_tests("inflow")
+    )
+    dsm.compute()
+    with pytest.raises(ValueError, match="compute_inflow_driven"):
+        dsm.compute()
+
+    # explicit methods can be called repeatedly
+    stock = dsm.stock.values.copy()
+    dsm.compute_stock_driven()
+    np.testing.assert_allclose(dsm.inflow.values, _driving_array_for_cohort_tests("inflow").values)
+    np.testing.assert_allclose(dsm.stock.values, stock)
+
+    # or the choice of compute() can be reset
+    dsm.mark_all_unset()
+    dsm.stock[...] = stock
+    dsm.compute()
+    np.testing.assert_allclose(dsm.inflow.values, _driving_array_for_cohort_tests("inflow").values)
+
+
+def test_stock_driven_then_corrected_inflow_driven():
+    """Compute stock-driven, set negative inflows to zero, and recompute inflow-driven."""
+    stock_values = _driving_array_for_cohort_tests("stock").values
+    stock_values[10:] -= 3.0 * np.arange(len(time_items_cohort_tests) - 10)[:, np.newaxis]
+    dsm = _dsm_for_cohort_tests(
+        DynamicStockModel, stock=StockArray(dims=dims_cohort_tests, values=stock_values)
+    )
+    dsm.compute_stock_driven()
+    assert np.any(dsm.inflow.values < 0)
+    corrected_inflow = np.maximum(dsm.inflow.values, 0.0)
+    dsm.inflow[...] = corrected_inflow
+    dsm.compute_inflow_driven()
+
+    reference = _dsm_for_cohort_tests(
+        InflowDrivenDSM, inflow=StockArray(dims=dims_cohort_tests, values=corrected_inflow)
+    )
+    reference.compute()
+    np.testing.assert_allclose(dsm.inflow.values, corrected_inflow)
+    for attr in ("stock", "outflow"):
+        np.testing.assert_allclose(getattr(dsm, attr).values, getattr(reference, attr).values)
+
+
+def test_user_subclass_of_dynamic_stock_model_marks_set():
+    class MyDSM(DynamicStockModel):
+        def compute(self):
+            self.compute_inflow_driven()
+
+    dsm = _dsm_for_cohort_tests(MyDSM)
+    dsm.inflow.values[...] = 1.0
+    dsm.compute()
+    assert dsm.is_computed
+
+
+@pytest.mark.parametrize(
+    "time_items",
+    [time_items_cohort_tests, [2000, 2001, 2003, 2004, 2007, 2010, 2011, 2015, 2020]],
+    ids=["equal_time_steps", "unequal_time_steps"],
+)
+def test_inflow_by_cohort_driven_dsm_matches_inflow_driven_dsm(time_items):
+    """Compares the inflow-driven with the inflow by cohort driven computation."""
+    time_dim = Dimension(name="time", letter="t", items=time_items, dtype=int)
+    dims_test = DimensionSet(dim_list=[time_dim, dims_cohort_tests["p"]])
+    cohort_dim = Dimension(name="cohort", letter="c", items=time_items, dtype=int)
+    rng = np.random.default_rng(2)
+    inflow_values = rng.random(dims_test.shape)
+
+    results = []
+    for driven_by in "inflow", "inflow_by_cohort":
+        dsm = DynamicStockModel(
+            dims=dims_test,
+            cohort_dim=cohort_dim,
+            lifetime_model=LogNormalLifetime(dims=dims_test, mean=8, std=3),
+        )
+        if driven_by == "inflow":
+            dsm.inflow[...] = inflow_values
+        else:
+            t_diag_indices = np.diag_indices(len(time_items)) + (slice(None),)
+            dsm.inflow_by_cohort.values[t_diag_indices] = inflow_values
+            dsm.inflow_by_cohort.mark_set()
+        dsm.compute()
+        results.append(dsm)
 
     for attr in ("stock", "inflow", "outflow"):
         np.testing.assert_allclose(
-            getattr(by_cohort_dsm, attr).values, getattr(inflow_driven_dsm, attr).values
+            getattr(results[0], attr).values, getattr(results[1], attr).values, atol=1e-14
+        )
+    for method in "get_stock_by_cohort", "get_outflow_by_cohort":
+        np.testing.assert_allclose(
+            getattr(results[0], method)().values, getattr(results[1], method)().values, atol=1e-14
         )
 
 
