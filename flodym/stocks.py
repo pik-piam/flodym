@@ -263,7 +263,7 @@ class DynamicStockModel(Stock, ABC):
     _outflow_by_cohort: np.ndarray = None
     _stock_by_cohort: np.ndarray = None
     _dims_cohort: DimensionSet = None
-    _initial_stock_dsm: "InflowByCohortDrivenDSM" = None
+    _initial_stock_by_cohort: Optional[np.ndarray] = None
     _initial_stock_year: int = None
 
     def validate_cohort_dim(self):
@@ -341,15 +341,177 @@ class DynamicStockModel(Stock, ABC):
         else:
             return StockArray(dims=self.dims_cohort, values=values, name=f"{self.name}_{name}")
 
-    def _compute_outflow(self):
-        self._outflow_by_cohort = np.einsum(
-            "c...,tc...->tc...", self.inflow.values, self.lifetime_model.pdf
-        )
+    def _compute_cohorts(
+        self, get_newest_cohort_inflow: Callable[[int, np.ndarray], np.ndarray]
+    ):
+        """Step through time with the stock by cohort as state, and set stock, inflow and outflow.
+
+        The inflow consists of two parts:
+
+        - The older inflow by cohort is known before the time stepping. It contains the initial
+          stock and, for :py:class:`flodym.stocks.InflowByCohortDrivenDSM`, the given
+          ``inflow_by_cohort``. It can enter any cohort, also older ones.
+        - The newest cohort inflow is the inflow of cohort t in year t. It is determined during
+          the time stepping by ``get_newest_cohort_inflow``, from the prescribed inflow or from
+          the prescribed stock.
+
+        In every year t, the amount present by cohort is the stock by cohort at the end of year
+        t-1 plus both parts of the inflow by cohort during year t. Multiplied with the one-step
+        survival rate of the lifetime model, it gives the stock by cohort at the end of year t.
+        The remainder is the outflow by cohort during year t.
+
+        All amounts within this routine are over the whole period of a time step, not annual.
+
+        Args:
+            get_newest_cohort_inflow: Returns the newest cohort inflow of year index i_t, given
+                i_t and the amount present by cohort in year i_t before adding this inflow.
+        """
+        survival_rate = self.lifetime_model.survival_rate
+        # shape (t, c, ...): inflow by cohort, known before the time stepping
+        older_inflow_by_cohort = self._older_inflow_by_cohort()
+        # shape (t, ...): inflow of cohort t in year t, determined during the time stepping
+        newest_cohort_inflow = np.zeros(self.shape)
+        # shape (t, c, ...): amount of cohort c present at any point during year t, i.e. the stock
+        # at the end of year t-1 plus all inflow during year t. It is initialized with the older
+        # inflow; the stock of the previous year and the newest cohort inflow are added below.
+        present_by_cohort = older_inflow_by_cohort.copy()
+        self._stock_by_cohort = np.zeros(self._shape_cohort)
+        for i_t in range(self._n_t):
+            if i_t > 0:
+                present_by_cohort[i_t, ...] += self._stock_by_cohort[i_t - 1, ...]
+            newest_cohort_inflow[i_t, ...] = get_newest_cohort_inflow(
+                i_t, present_by_cohort[i_t, ...]
+            )
+            present_by_cohort[i_t, i_t, ...] += newest_cohort_inflow[i_t, ...]
+            self._stock_by_cohort[i_t, ...] = present_by_cohort[i_t, ...] * survival_rate[i_t, ...]
+        # what is present during year t, but not left at its end, leaves during year t
+        self._outflow_by_cohort = self._to_annual(present_by_cohort - self._stock_by_cohort)
+        inflow_whole_period = newest_cohort_inflow + older_inflow_by_cohort.sum(axis=1)
+        self.inflow.values[...] = self._to_annual(inflow_whole_period)
+        self.stock.values[...] = self._stock_by_cohort.sum(axis=1)
         self.outflow.values[...] = self._outflow_by_cohort.sum(axis=1)
 
+    def _older_inflow_by_cohort(self) -> np.ndarray:
+        """Inflow by cohort over the whole period which is known before the time stepping,
+        see :py:meth:`_compute_cohorts`. Contains the initial stock, if set.
+        """
+        older_inflow_by_cohort = np.zeros(self._shape_cohort)
+        if self._initial_stock_by_cohort is None:
+            return older_inflow_by_cohort
+        iiy = self._initial_year_index
+        self._check_consistent_with_survival(
+            self._initial_stock_by_cohort, self.lifetime_model.sf[iiy, ...], "initial_stock"
+        )
+        # The initial stock enters during the initial year, such that after the losses of that
+        # year, the stock by cohort at the end of the initial year equals the initial stock.
+        survival_rate = self.lifetime_model.survival_rate[iiy, ...]
+        np.divide(
+            self._initial_stock_by_cohort,
+            survival_rate,
+            out=older_inflow_by_cohort[iiy, ...],
+            where=survival_rate > 0,
+        )
+        return older_inflow_by_cohort
+
+    @staticmethod
+    def _check_consistent_with_survival(values: np.ndarray, sf: np.ndarray, passed_as: str):
+        if np.any((values > 0) & (sf == 0)):
+            raise ValueError(
+                f"The given {passed_as} is inconsistent with the lifetime model: survival function "
+                f"is zero for some time/cohort combinations of the {passed_as}, which means that "
+                f"no surviving {passed_as} can exist for these combinations."
+            )
+
+    def _is_initial_year(self, i_t: int) -> bool:
+        return self._initial_stock_by_cohort is not None and i_t == self._initial_year_index
+
+    def _compute_inflow_driven(self):
+        """Determine stocks and outflows from the inflow."""
+        if self._initial_stock_by_cohort is not None:
+            self._check_inflow_at_initial_year()
+        self._compute_cohorts(self._newest_cohort_inflow_from_inflow)
+
+    def _compute_stock_driven(self):
+        """Determine inflows and outflows from the stock."""
+        if self._initial_stock_by_cohort is not None:
+            self._check_stock_at_initial_year()
+        self._compute_cohorts(self._newest_cohort_inflow_from_stock)
+
+    def _newest_cohort_inflow_from_inflow(
+        self, i_t: int, present_by_cohort: np.ndarray
+    ) -> np.ndarray:
+        """Prescribed inflow of the newest cohort over the whole period."""
+        newest_cohort_inflow = self.inflow.values[i_t, ...] * self._t.interval_lengths[i_t]
+        if self._is_initial_year(i_t):
+            # So far, the newest cohort is only present through the initial stock.
+            # First take maximum of prescribed inflow and initial stock of the newest cohort,
+            # then subtract initial stock contribution:
+            # max(pi, isi) - isi = pi - min(pi, isi)
+            newest_cohort_inflow -= np.minimum(newest_cohort_inflow, present_by_cohort[i_t, ...])
+        return newest_cohort_inflow
+
+    def _newest_cohort_inflow_from_stock(
+        self, i_t: int, present_by_cohort: np.ndarray
+    ) -> np.ndarray:
+        """Inflow of the newest cohort over the whole period, such that the total stock equals the
+        prescribed stock.
+        """
+        # Maths behind implementation:
+        # Solve square linear equation system
+        #   sf * inflow = stock
+        # where sf is a lower triangular matrix (since year >= cohort)
+        # => in every row i:
+        #   sum_{j=1...i} (sf_i,j inflow_j) = stock_i
+        # solve for inflow_i:
+        #   inflow_i = ( stock_i - sum_{j=1...i-1}(sf_i,j * inflow_j) ) / sf_ii
+        # where the sum is the surviving stock of the older cohorts.
+        survival_rate = self.lifetime_model.survival_rate[i_t, ...]
+        surviving_stock = (present_by_cohort * survival_rate).sum(axis=0)
+        newest_cohort_inflow = (
+            self.stock.values[i_t, ...] - surviving_stock
+        ) / survival_rate[i_t, ...]
+        if self._is_initial_year(i_t):
+            # use the maximum of prescribed and initial stock
+            newest_cohort_inflow = np.maximum(newest_cohort_inflow, 0.0)
+        return newest_cohort_inflow
+
+    def _check_inflow_at_initial_year(self):
+        if np.any(self.inflow.values[: self._initial_year_index, ...] > 0):
+            raise ValueError(
+                f"Prescribed inflow before the initial stock year {self._initial_stock_year} is non-zero."
+            )
+        if np.any(self.inflow.values[self._initial_year_index, ...] > 0):
+            logging.warning(
+                f"Prescribed inflow in the initial stock year {self._initial_stock_year} is non-zero. "
+                f"This creates ambiguity: Initial stock and prescribed inflow both contribute to the stock of the cohort of that year. "
+                f"The maximum of both will be used. "
+                f"Moreover, the inflow in that year will be overwritten to introduce all initial stock, to ensure mass balance."
+            )
+
+    def _check_stock_at_initial_year(self):
+        if np.any(self.stock.values[: self._initial_year_index, ...] > 0):
+            raise ValueError(
+                f"Prescribed stock before the initial stock year {self._initial_stock_year} is non-zero."
+            )
+        prescribed_stock = self.stock.values[self._initial_year_index, ...]
+        if np.all(prescribed_stock == 0):
+            logging.debug(
+                f"Prescribed stock in the initial stock year {self._initial_stock_year} is zero and will be fully replaced by the initial stock."
+            )
+        elif not np.all(prescribed_stock == self._initial_stock_by_cohort.sum(axis=0)):
+            logging.warning(
+                f"Prescribed stock in the initial stock year {self._initial_stock_year} is non-zero and different from the total initial stock. "
+                f"This creates ambiguity: Initial stock and prescribed stock both contribute to the stock of that year. "
+                f"The maximum of both will be used."
+            )
+
     def set_initial_stock(self, initial_stock: FlodymArray, initial_year: int):
-        """Set an initial stock at a given year.
-        The initial stock is added to the stock by cohort internally.
+        """Set an initial stock by cohort at the end of a given year.
+
+        The initial stock enters the stock during the initial year, and is part of the inflow of
+        that year. Prescribed inflow or stock before the initial year must be zero.
+        For stock-driven models, the prescribed stock after the initial year is the total stock,
+        including the survivors of the initial stock.
 
         Args:
             initial_stock (FlodymArray): Initial stock to be set. Must have same dimensions as the stock, except for time dimension.
@@ -363,45 +525,12 @@ class DynamicStockModel(Stock, ABC):
             raise ValueError(
                 f"Initial year {initial_year} is not in time dimension items {self.dims[self.time_letter].items}."
             )
-
-        inflow_by_cohort = StockArray(dims=self.dims_cohort, name=f"{self.name}_inflow_by_cohort")
-        inflow_by_cohort[{self.time_letter: initial_year}] = self._to_annual(initial_stock.values)
+        self._initial_stock_by_cohort = initial_stock.values.copy()
         self._initial_stock_year = initial_year
-        isd = InflowByCohortDrivenDSM(
-            dims=self.dims,
-            cohort_dim=self.cohort_dim,
-            lifetime_model=self.lifetime_model,
-            inflow_by_cohort=inflow_by_cohort,
-            time_letter=self.time_letter,
-            name=f"{self.name}_ISD",
-        )
-        iiy = self._initial_year_index
-        # correction to account for the fact that some of the inflow will leave the stock in the same period
-        # for every c:
-        #   inflow_c(i,c) = inflow_c(i,c) / sf_c(t=i,i,c)
-        #                 = inflow_c(i,c) / (sf(i,c) / sf(i-1,c))
-        isd.inflow_by_cohort.values[iiy, : iiy + 1, ...] /= isd.lifetime_model.sf_conditional[
-            iiy, iiy, : iiy + 1, ...
-        ]
-        self._initial_stock_dsm = isd
 
     @property
     def _initial_year_index(self):
         return self.dims[self.time_letter].items.index(self._initial_stock_year)
-
-    def _compute_initial_stock(self):
-        self._initial_stock_dsm.compute()
-
-    def _add_initial_stock_contribution(self):
-        self.inflow.values[...] += self._initial_stock_dsm.inflow.values
-        self.stock.values[self._initial_year_index :, ...] += self._initial_stock_dsm.stock.values[
-            self._initial_year_index :, ...
-        ]
-        self.outflow.values[...] += self._initial_stock_dsm.outflow.values
-        self._stock_by_cohort[self._initial_year_index :, ...] += (
-            self._initial_stock_dsm._stock_by_cohort[self._initial_year_index :, ...]
-        )
-        self._outflow_by_cohort[...] += self._initial_stock_dsm._outflow_by_cohort
 
     def copy(self) -> "Stock":
         """Return a copy of the Stock, as :py:meth:`flodym.Stock.copy`, but additionally
@@ -410,9 +539,8 @@ class DynamicStockModel(Stock, ABC):
         """
         new_stock = super().copy()
         new_stock.lifetime_model = self.lifetime_model.model_copy(deep=True)
-        new_stock._initial_stock_dsm = (
-            self._initial_stock_dsm.copy() if self._initial_stock_dsm is not None else None
-        )
+        if self._initial_stock_by_cohort is not None:
+            new_stock._initial_stock_by_cohort = self._initial_stock_by_cohort.copy()
         new_stock._initial_stock_year = self._initial_stock_year
         return new_stock
 
@@ -435,43 +563,7 @@ class InflowDrivenDSM(DynamicStockModel):
 
     def compute(self):
         """Determine stocks and outflows and store values in the class instance."""
-        if self._initial_stock_dsm is not None:
-            self._compute_initial_stock()
-            self._subtract_initial_stock_from_inflow()
-
-        self._compute_stock()
-        self._compute_outflow()
-
-        if self._initial_stock_dsm is not None:
-            self._add_initial_stock_contribution()
-
-    def _compute_stock(self):
-        # for non-contiguous years, yearly inflow is multiplied with time interval length
-        inflow_per_period = self._to_whole_period(self.inflow.values)
-        self._stock_by_cohort = np.einsum(
-            "c...,tc...->tc...", inflow_per_period, self.lifetime_model.sf
-        )
-        self.stock.values[...] = self._stock_by_cohort.sum(axis=1)
-
-    def _subtract_initial_stock_from_inflow(self):
-        if np.any(self.inflow.values[: self._initial_year_index, ...] > 0):
-            raise ValueError(
-                f"Prescribed inflow before the initial stock year {self._initial_stock_year} is non-zero."
-            )
-        if np.any(self.inflow.values[self._initial_year_index, ...] > 0):
-            logging.warning(
-                f"Prescribed inflow in the initial stock year {self._initial_stock_year} is non-zero. "
-                f"This creates ambiguity: Initial stock and prescribed inflow both contribute to the stock of the cohort of that year. "
-                f"The maximum of both will be used. "
-                f"Moreover, the inflow in that year will be overwritten to introduce all initial stock, to ensure mass balance."
-            )
-        iiy = self._initial_year_index
-        # first take maximum of both, then subtract initial stock contribution
-        # max(pi, isi) - isi = pi - min(pi, isi)
-        self.inflow.values[iiy, ...] -= np.minimum(
-            self.inflow.values[iiy, ...],
-            self._initial_stock_dsm.inflow_by_cohort.values[iiy, iiy, ...],
-        )
+        self._compute_inflow_driven()
 
 
 class StockDrivenDSM(DynamicStockModel):
@@ -487,74 +579,14 @@ class StockDrivenDSM(DynamicStockModel):
 
     def compute(self):
         """Determine inflows and outflows and store values in the class instance."""
-        if self._initial_stock_dsm is not None:
-            self._compute_initial_stock()
-            self._subtract_initial_stock_from_stock()
-
-        self._compute_cohorts_and_inflow()
-        self._compute_outflow()
-
-        if self._initial_stock_dsm is not None:
-            self._add_initial_stock_contribution()
-
-    def _compute_cohorts_and_inflow(self):
-        """With given total stock and lifetime distribution,
-        the method builds the stock by cohort and the inflow.
-        This involves solving the lower triangular equation system A*x=b,
-        where A is the survival function matrix, x is the inflow vector, and b is the stock vector.
-        """
-        # Maths behind implementation:
-        # Solve square linear equation system
-        #   sf * inflow = stock
-        # where sf is a lower triangular matrix (since year >= cohort)
-        # => in every row i:
-        #   sum_{j=1...i} (sf_i,j inflow_j) = stock_i
-        # solve for inflow_i:
-        #   inflow_i = ( stock_i - sum_{j=1...i-1}(sf_i,j * inflow_j) ) / sf_ii
-        inflow_whole_period = np.zeros_like(self.inflow.values)
-        for i in range(self._n_t):
-            stock_i = self.stock.values[i, ...]
-            sf_ij = self.lifetime_model.sf[i, :i, ...]
-            inflow_j = inflow_whole_period[:i, ...]
-            sf_ii = self.lifetime_model.sf[i, i, ...]
-
-            inflow_whole_period[i, ...] = (stock_i - (sf_ij * inflow_j).sum(axis=0)) / sf_ii
-        self.inflow.values[...] = self._to_annual(inflow_whole_period)
-        self._stock_by_cohort = np.einsum(
-            "c...,tc...->tc...", inflow_whole_period, self.lifetime_model.sf
-        )
-
-    def _subtract_initial_stock_from_stock(self) -> np.ndarray:
-        if np.any(self.stock.values[: self._initial_year_index, ...] > 0):
-            raise ValueError(
-                f"Prescribed stock before the initial stock year {self._initial_stock_year} is non-zero."
-            )
-        if np.all(self.stock.values[self._initial_year_index, ...] == 0):
-            logging.debug(
-                f"Prescribed stock in the initial stock year {self._initial_stock_year} is zero and will be fully replaced by the initial stock."
-            )
-        elif not np.all(
-            self.stock.values[self._initial_year_index, ...]
-            == self._initial_stock_dsm.stock.values[self._initial_year_index, ...]
-        ):
-            logging.warning(
-                f"Prescribed stock in the initial stock year {self._initial_stock_year} is non-zero and different from the total initial stock. "
-                f"This creates ambiguity: Initial stock and prescribed stock both contribute to the stock of that year. "
-                f"The maximum of both will be used."
-            )
-        iiy = self._initial_year_index
-        # first take maximum of both, then subtract initial stock contribution
-        # max(ps, is) - is = ps - min(ps, is)
-        self.stock.values[iiy, ...] -= np.minimum(
-            self.stock.values[iiy,], self._initial_stock_dsm.stock.values[iiy,]
-        )
+        self._compute_stock_driven()
 
 
 class InflowByCohortDrivenDSM(InflowDrivenDSM):
     inflow_by_cohort: StockArray = None
 
     @model_validator(mode="after")
-    def init_cohort_arrays(self):
+    def init_inflow_by_cohort(self):
         if self.inflow_by_cohort is None:
             self.inflow_by_cohort = StockArray(
                 dims=self.dims_cohort, name=f"{self.name}_inflow_by_cohort"
@@ -576,38 +608,21 @@ class InflowByCohortDrivenDSM(InflowDrivenDSM):
                 "Inflow is already set (is_set=True). It will be overwritten. Use either inflow or inflow_by_cohort."
             )
 
-    def _compute_inflow(self):
-        self.inflow.values[...] = self.inflow_by_cohort.values.sum(axis=1)
-
-    def _check_inflow_by_cohort_consistency(self):
-        if np.any((self.inflow_by_cohort.values > 0) & (self.lifetime_model.sf == 0)):
-            passed_as = "inflow_by_cohort (or initial_stock)"
-            raise ValueError(
-                f"The given {passed_as} is inconsistent with the lifetime model: survival function "
-                f"is zero for some time/cohort combinations of the {passed_as}, which means that "
-                f"no surviving {passed_as} can exist for these combinations."
-            )
-
-    def _compute_stock(self):
-        # for non-contiguous years, yearly inflow is multiplied with time interval length
-        inflow_per_period = self._to_whole_period(self.inflow_by_cohort.values)
-        self._stock_by_cohort = np.einsum(
-            "ic...,tic...->tc...", inflow_per_period, self.lifetime_model.sf_conditional
+    def _older_inflow_by_cohort(self) -> np.ndarray:
+        self._check_consistent_with_survival(
+            self.inflow_by_cohort.values, self.lifetime_model.sf, "inflow_by_cohort"
         )
-        self.stock.values[...] = self._stock_by_cohort.sum(axis=1)
+        older_inflow_by_cohort = super()._older_inflow_by_cohort()
+        older_inflow_by_cohort += self._to_whole_period(self.inflow_by_cohort.values)
+        return older_inflow_by_cohort
 
-    def _compute_outflow(self):
-        self._outflow_by_cohort = np.einsum(
-            "ic...,tic...->tc...", self.inflow_by_cohort.values, self.lifetime_model.pdf_conditional
-        )
-        self.outflow.values[...] = self._outflow_by_cohort.sum(axis=1)
+    def _no_newest_cohort_inflow(self, i_t: int, present_by_cohort: np.ndarray) -> np.ndarray:
+        """All inflow is part of the older inflow by cohort, including that of the newest cohort."""
+        return np.zeros(self._shape_no_t)
 
     def compute(self):
-        """Determine stocks and outflows and store values in the class instance."""
-        self._check_inflow_by_cohort_consistency()
-        self._compute_inflow()
-        self._compute_stock()
-        self._compute_outflow()
+        """Determine inflows, stocks and outflows and store values in the class instance."""
+        self._compute_cohorts(self._no_newest_cohort_inflow)
 
 
 class FlexibleDSM(DynamicStockModel):
@@ -615,23 +630,12 @@ class FlexibleDSM(DynamicStockModel):
     stock or inflow is set.
     """
 
-    compute_stock_driven = StockDrivenDSM.compute
-    compute_inflow_driven = InflowDrivenDSM.compute
-
-    _compute_cohorts_and_inflow = StockDrivenDSM._compute_cohorts_and_inflow
-    _compute_stock = InflowDrivenDSM._compute_stock
-
     def compute(self):
         if self.stock.is_set:
-            self.compute_stock_driven()
+            self._compute_stock_driven()
         elif self.inflow.is_set:
-            self.compute_inflow_driven()
+            self._compute_inflow_driven()
         else:
             raise ValueError("Either stock or inflow must be set for FlexibleDSM.compute().")
 
-    # TODO initial stocks:
-    # - np allclose in all checks
-    # + proper treatment of prescribed inflow and stock at initial year
-    #   (for inflow: only represents/replaces the newest cohort!)
-    # - add inflow_by_cohort to FlexibleDSM
-    # - move adapt_stock / adapt_inflow to respective subclasses
+    # TODO: add inflow_by_cohort to FlexibleDSM

@@ -5,6 +5,7 @@ import pytest
 from flodym import (
     Dimension,
     DimensionSet,
+    FlexibleDSM,
     FlodymArray,
     InflowDrivenDSM,
     StockDrivenDSM,
@@ -431,6 +432,133 @@ def test_stock_driven_dsm_with_initial_stock():
 
     # Verify stock balance
     dsm.check_stock_balance()
+
+
+time_items_cohort_tests = list(range(2000, 2021))
+dims_cohort_tests = DimensionSet(
+    dim_list=[
+        Dimension(name="time", letter="t", items=time_items_cohort_tests, dtype=int),
+        Dimension(name="product", letter="p", items=["A", "B"], dtype=str),
+    ]
+)
+cohort_dim_tests = Dimension(name="cohort", letter="c", items=time_items_cohort_tests, dtype=int)
+initial_year_tests = 2005
+initial_year_index_tests = time_items_cohort_tests.index(initial_year_tests)
+
+
+def _dsm_for_cohort_tests(dsm_cls, **kwargs):
+    lifetime_model = LogNormalLifetime(dims=dims_cohort_tests, time_letter="t", mean=8, std=3)
+    return dsm_cls(
+        dims=dims_cohort_tests,
+        cohort_dim=cohort_dim_tests,
+        lifetime_model=lifetime_model,
+        time_letter="t",
+        **kwargs,
+    )
+
+
+def _initial_stock_for_cohort_tests():
+    initial_stock_dims = DimensionSet(
+        dim_list=[cohort_dim_tests] + list(dims_cohort_tests.drop("t", inplace=False).dim_list)
+    )
+    initial_stock = StockArray(dims=initial_stock_dims, name="initial_stock")
+    for i in range(initial_year_index_tests + 1):
+        initial_stock.values[i, :] = [10.0 - i, 5.0 + i]
+    return initial_stock
+
+
+def test_inflow_driven_dsm_matches_survival_function():
+    """Time stepping gives the same cohorts as the direct product with sf and pdf."""
+    rng = np.random.default_rng(0)
+    inflow = StockArray(dims=dims_cohort_tests, values=rng.random(dims_cohort_tests.shape))
+    dsm = _dsm_for_cohort_tests(InflowDrivenDSM, inflow=inflow)
+    dsm.compute()
+
+    sf, pdf = dsm.lifetime_model.sf, dsm.lifetime_model.pdf
+    np.testing.assert_allclose(
+        dsm.get_stock_by_cohort().values, np.einsum("c...,tc...->tc...", inflow.values, sf)
+    )
+    np.testing.assert_allclose(
+        dsm.get_outflow_by_cohort().values,
+        np.einsum("c...,tc...->tc...", inflow.values, pdf),
+        atol=1e-14,
+    )
+    np.testing.assert_allclose(dsm.inflow.values, inflow.values)
+
+
+def test_inflow_driven_dsm_initial_stock_survival():
+    """The initial stock by cohort is the stock at the end of the initial year, and decays
+    according to the survival function afterwards."""
+    dsm = _dsm_for_cohort_tests(InflowDrivenDSM)
+    initial_stock = _initial_stock_for_cohort_tests()
+    dsm.set_initial_stock(initial_stock, initial_year_tests)
+    dsm.inflow.values[initial_year_index_tests + 1 :, ...] = 2.0
+    dsm.inflow.mark_set()
+    dsm.compute()
+
+    iiy = initial_year_index_tests
+    sf = dsm.lifetime_model.sf
+    stock_by_cohort = dsm.get_stock_by_cohort().values
+    expected = np.einsum(
+        "c...,tc...->tc...", initial_stock.values[: iiy + 1], sf[iiy:, : iiy + 1] / sf[iiy, : iiy + 1]
+    )
+    np.testing.assert_allclose(stock_by_cohort[iiy:, : iiy + 1], expected)
+    assert np.all(stock_by_cohort[:iiy] == 0.0)
+    dsm.check_stock_balance()
+
+
+def test_stock_driven_dsm_initial_stock_reproduces_stock():
+    """With an initial stock, the prescribed stock after the initial year is the total stock."""
+    dsm = _dsm_for_cohort_tests(StockDrivenDSM)
+    initial_stock = _initial_stock_for_cohort_tests()
+    dsm.set_initial_stock(initial_stock, initial_year_tests)
+    iiy = initial_year_index_tests
+    n_after = len(time_items_cohort_tests) - iiy - 1
+    dsm.stock.values[iiy + 1 :, :] = 80.0 + 2.0 * np.arange(n_after)[:, np.newaxis]
+    prescribed_stock = dsm.stock.values.copy()
+    dsm.stock.mark_set()
+    dsm.compute()
+
+    stock_by_cohort = dsm.get_stock_by_cohort().values
+    np.testing.assert_allclose(stock_by_cohort[iiy], initial_stock.values)
+    np.testing.assert_allclose(dsm.stock.values[iiy + 1 :], prescribed_stock[iiy + 1 :])
+    dsm.check_stock_balance()
+
+
+@pytest.mark.parametrize("driven_by", ["inflow", "stock"])
+def test_flexible_dsm_matches_concrete_dsm(driven_by):
+    rng = np.random.default_rng(1)
+    values = rng.random(dims_cohort_tests.shape)
+    if driven_by == "stock":
+        values = np.cumsum(values, axis=0)
+    concrete_cls = InflowDrivenDSM if driven_by == "inflow" else StockDrivenDSM
+    results = []
+    for dsm_cls in concrete_cls, FlexibleDSM:
+        dsm = _dsm_for_cohort_tests(
+            dsm_cls, **{driven_by: StockArray(dims=dims_cohort_tests, values=values.copy())}
+        )
+        dsm.compute()
+        results.append(dsm)
+    for attr in ("stock", "inflow", "outflow"):
+        np.testing.assert_allclose(getattr(results[0], attr).values, getattr(results[1], attr).values)
+
+
+def test_inflow_by_cohort_driven_dsm_matches_inflow_driven_dsm():
+    rng = np.random.default_rng(2)
+    inflow = StockArray(dims=dims_cohort_tests, values=rng.random(dims_cohort_tests.shape))
+    inflow_driven_dsm = _dsm_for_cohort_tests(InflowDrivenDSM, inflow=inflow)
+    inflow_driven_dsm.compute()
+
+    by_cohort_dsm = _dsm_for_cohort_tests(InflowByCohortDrivenDSM)
+    t_diag_indices = np.diag_indices(len(time_items_cohort_tests)) + (slice(None),)
+    by_cohort_dsm.inflow_by_cohort.values[t_diag_indices] = inflow.values
+    by_cohort_dsm.inflow_by_cohort.mark_set()
+    by_cohort_dsm.compute()
+
+    for attr in ("stock", "inflow", "outflow"):
+        np.testing.assert_allclose(
+            getattr(by_cohort_dsm, attr).values, getattr(inflow_driven_dsm, attr).values
+        )
 
 
 def test_get_stock_by_cohort():

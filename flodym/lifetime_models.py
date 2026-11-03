@@ -86,9 +86,8 @@ class LifetimeModel(PydanticBaseModel):
     Dimensions must be a subset of the lifetime model dimensions.
     """
     _sf: np.ndarray | None = PrivateAttr(default=None)
-    _sf_conditional: np.ndarray | None = PrivateAttr(default=None)
     _pdf: np.ndarray | None = PrivateAttr(default=None)
-    _pdf_conditional: np.ndarray | None = PrivateAttr(default=None)
+    _survival_rate: np.ndarray | None = PrivateAttr(default=None)
     _t: UnevenTimeDim | None = PrivateAttr(default=None)
     _quad_points: list[float] | None = PrivateAttr(default=None)
     """Intra-time step quadrature points for numerical integration of survival factors."""
@@ -163,10 +162,6 @@ class LifetimeModel(PydanticBaseModel):
         return (self._n_t,) + self.shape
 
     @property
-    def _shape_conditional(self):
-        return (self._n_t, self._n_t) + self.shape
-
-    @property
     def _shape_no_t(self):
         return tuple(list(self.shape)[1:])
 
@@ -203,25 +198,23 @@ class LifetimeModel(PydanticBaseModel):
         return self._sf
 
     @property
-    def sf_conditional(self):
-        if self._sf_conditional is None:
-            self._sf_conditional = np.zeros(self._shape_conditional)
-            self._compute_sf_conditional()
-        return self._sf_conditional
-
-    @property
     def pdf(self):
         if self._pdf is None:
             self._pdf = np.zeros(self._shape_cohort)
-            self._compute_outflow_pdf(self._pdf, self.sf)
+            self._compute_outflow_pdf()
         return self._pdf
 
     @property
-    def pdf_conditional(self):
-        if self._pdf_conditional is None:
-            self._pdf_conditional = np.zeros(self._shape_conditional)
-            self._compute_outflow_pdf(self._pdf_conditional, self.sf_conditional)
-        return self._pdf_conditional
+    def survival_rate(self):
+        """One-step survival rate by year and age-cohort: survival_rate(t,c) is the share of
+        cohort c present at the end of year t-1, or entering the stock during year t, which is
+        still present at the end of year t.
+        It equals sf(t,c) / sf(t-1,c) for c < t, sf(t,t) for c = t, and zero for c > t.
+        """
+        if self._survival_rate is None:
+            self._survival_rate = np.zeros(self._shape_cohort)
+            self._compute_survival_rate()
+        return self._survival_rate
 
     def _tile(self, a: np.ndarray) -> np.ndarray:
         """tiles the input array a to the shape of the lifetime model, by adding non-time dimensions
@@ -331,33 +324,26 @@ class LifetimeModel(PydanticBaseModel):
 
     def reset_cached_arrays(self):
         self._sf = None
-        self._sf_conditional = None
         self._pdf = None
-        self._pdf_conditional = None
+        self._survival_rate = None
 
-    def _compute_outflow_pdf(self, pdf: np.ndarray, sf: np.ndarray):
+    def _compute_outflow_pdf(self):
         """Returns an array year-by-cohort of the probability that an item
         added to stock in year m (aka cohort m) leaves in in year n. This value equals pdf(n,m).
         """
-        # For conditional pdf, the diagonal is still along the first 2 dims:
-        # All of the inflow in a year i which hasn't survived until year t leaves the stock
-        t_diag_indices = np.diag_indices(self._n_t) + (slice(None),) * (pdf.ndim - 2)
-        pdf[t_diag_indices] = 1.0 - np.moveaxis(sf.diagonal(0, 0, 1), -1, 0)
+        t_diag_indices = np.diag_indices(self._n_t) + (slice(None),) * len(self._shape_no_t)
+        self._pdf[t_diag_indices] = 1.0 - np.moveaxis(self.sf.diagonal(0, 0, 1), -1, 0)
         for i_c in range(0, self._n_t):
-            pdf[i_c + 1 :, i_c, ...] = -1 * np.diff(sf[i_c:, i_c, ...], axis=0)
+            self._pdf[i_c + 1 :, i_c, ...] = -1 * np.diff(self.sf[i_c:, i_c, ...], axis=0)
 
-    def _compute_sf_conditional(self):
-        # If an item flows into the stock during year i, it must still be present by the end of year i-1.
-        # The share built in year c which is still present at the end of year i-1 is sf(i-1,c)
-        # The share built in year c which is still present at the end of year t is sf(t,c)
-        # The conditional probability that an item built in year c is still present at the end
-        # of year t, given that it is still present at the end of year i-1, is
-        # sf_c(t,i,c) = sf(t,c) / sf(i-1,c)
-        self._sf_conditional[:, 0, :, ...] = self.sf
-        i_sf = np.where(self.sf == 0, 1, self.sf)
-        self._sf_conditional[:, 1:, :, ...] = np.einsum(
-            "tc...,ic...->tic...", self.sf, 1 / i_sf[:-1, :, ...]
-        )
+    def _compute_survival_rate(self):
+        # The share of cohort c present at the end of year t-1 which survives year t is
+        # sf(t,c) / sf(t-1,c). If sf(t-1,c) is zero, nothing is left to survive.
+        sf_prev = self.sf[:-1, ...]
+        np.divide(self.sf[1:, ...], sf_prev, out=self._survival_rate[1:, ...], where=sf_prev > 0)
+        # The newest cohort enters during year t, so its survival rate is sf(t,t)
+        t_diag_indices = np.diag_indices(self._n_t) + (slice(None),) * len(self._shape_no_t)
+        self._survival_rate[t_diag_indices] = self.sf[t_diag_indices]
 
     def _compute_survival_factor_with_nurture(self):
         """
