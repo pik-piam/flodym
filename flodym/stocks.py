@@ -278,6 +278,7 @@ class DynamicStockModel(Stock):
     _dims_cohort: DimensionSet = None
     _initial_stock_by_cohort: Optional[np.ndarray] = None
     _initial_stock_year: int = None
+    _initial_stock_included_in_inflow: bool = False
 
     def validate_cohort_dim(self):
         t = self.dims[self.time_letter]
@@ -597,12 +598,25 @@ class DynamicStockModel(Stock):
     ) -> np.ndarray:
         """Prescribed inflow of the newest cohort over the whole period."""
         newest_cohort_inflow = self.inflow.values[i_t, ...] * self._t.interval_lengths[i_t]
-        if self._is_initial_year(i_t):
-            # So far, the newest cohort is only present through the initial stock.
-            # First take maximum of prescribed inflow and initial stock of the newest cohort,
-            # then subtract initial stock contribution:
-            # max(pi, isi) - isi = pi - min(pi, isi)
-            newest_cohort_inflow -= np.minimum(newest_cohort_inflow, present_by_cohort[i_t, ...])
+        if not self._is_initial_year(i_t):
+            return newest_cohort_inflow
+        # So far, all cohorts are only present through the inflow of the initial stock.
+        if self._initial_stock_included_in_inflow:
+            # The prescribed inflow contains the inflow of the initial stock of all cohorts
+            initial_stock_inflow = present_by_cohort.sum(axis=0)
+            if np.any(newest_cohort_inflow < initial_stock_inflow):
+                logging.warning(
+                    f"Prescribed inflow in the initial stock year {self._initial_stock_year} is "
+                    "smaller than the inflow of the initial stock it is declared to include. "
+                    "The inflow of the initial stock will be used."
+                )
+        else:
+            # The prescribed inflow and the initial stock overlap only in the newest cohort
+            initial_stock_inflow = present_by_cohort[i_t, ...]
+        # First take maximum of prescribed inflow and initial stock inflow,
+        # then subtract initial stock contribution:
+        # max(pi, isi) - isi = pi - min(pi, isi)
+        newest_cohort_inflow -= np.minimum(newest_cohort_inflow, initial_stock_inflow)
         return newest_cohort_inflow
 
     def _newest_cohort_inflow_from_stock(
@@ -635,7 +649,10 @@ class DynamicStockModel(Stock):
             raise ValueError(
                 f"Prescribed inflow before the initial stock year {self._initial_stock_year} is non-zero."
             )
-        if np.any(self.inflow.values[self._initial_year_index, ...] > 0):
+        if (
+            not self._initial_stock_included_in_inflow
+            and np.any(self.inflow.values[self._initial_year_index, ...] > 0)
+        ):
             logging.warning(
                 f"Prescribed inflow in the initial stock year {self._initial_stock_year} is non-zero. "
                 f"This creates ambiguity: Initial stock and prescribed inflow both contribute to the stock of the cohort of that year. "
@@ -660,7 +677,9 @@ class DynamicStockModel(Stock):
                 f"The maximum of both will be used."
             )
 
-    def set_initial_stock(self, initial_stock: FlodymArray, initial_year: int):
+    def set_initial_stock(
+        self, initial_stock: FlodymArray, initial_year: int, included_in_inflow: bool = False
+    ):
         """Set an initial stock by cohort at the end of a given year.
 
         The initial stock enters the stock during the initial year, and is part of the inflow of
@@ -671,6 +690,13 @@ class DynamicStockModel(Stock):
         Args:
             initial_stock (FlodymArray): Initial stock to be set. Must have same dimensions as the stock, except for time dimension.
             initial_year (int): Year in which the initial stock is given. Must be an item of the time dimension.
+            included_in_inflow (bool): Only relevant for inflow-driven computation. If False
+                (default), the prescribed inflow in the initial year is the inflow of the newest
+                cohort, and the maximum of it and the initial stock of that cohort is used. If True,
+                the prescribed inflow in the initial year already contains the inflow of the
+                initial stock of all cohorts, as written by a previous computation, e.g. when an
+                inflow corrected after a stock-driven computation is used to recompute
+                inflow-driven.
         """
         if initial_stock.dims.letters != self.dims_cohort.drop(self.time_letter).letters:
             raise ValueError(
@@ -682,6 +708,7 @@ class DynamicStockModel(Stock):
             )
         self._initial_stock_by_cohort = initial_stock.values.copy()
         self._initial_stock_year = initial_year
+        self._initial_stock_included_in_inflow = included_in_inflow
 
     @property
     def _initial_year_index(self):
@@ -699,6 +726,7 @@ class DynamicStockModel(Stock):
         if self._initial_stock_by_cohort is not None:
             new_stock._initial_stock_by_cohort = self._initial_stock_by_cohort.copy()
         new_stock._initial_stock_year = self._initial_stock_year
+        new_stock._initial_stock_included_in_inflow = self._initial_stock_included_in_inflow
         return new_stock
 
     def __str__(self):

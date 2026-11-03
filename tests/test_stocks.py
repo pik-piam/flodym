@@ -632,6 +632,31 @@ def test_stock_driven_then_corrected_inflow_driven():
         np.testing.assert_allclose(getattr(dsm, attr).values, getattr(reference, attr).values)
 
 
+@pytest.mark.parametrize("included_in_inflow", [True, False])
+def test_stock_driven_then_inflow_driven_with_initial_stock(included_in_inflow):
+    """The inflow of a stock-driven computation with initial stock contains the inflow of the
+    initial stock. With included_in_inflow=True, recomputing inflow-driven reproduces the stock."""
+    dsm = _dsm_for_cohort_tests(DynamicStockModel)
+    dsm.set_initial_stock(
+        _initial_stock_for_cohort_tests(), initial_year_tests, included_in_inflow=included_in_inflow
+    )
+    iiy = initial_year_index_tests
+    n_after = len(time_items_cohort_tests) - iiy - 1
+    dsm.stock.values[iiy + 1 :, :] = 80.0 + 2.0 * np.arange(n_after)[:, np.newaxis]
+    dsm.compute_stock_driven()
+    stock_driven_stock = dsm.stock.values.copy()
+    stock_driven_inflow = dsm.inflow.values.copy()
+
+    dsm.compute_inflow_driven()
+    if included_in_inflow:
+        np.testing.assert_allclose(dsm.stock.values, stock_driven_stock)
+        np.testing.assert_allclose(dsm.inflow.values, stock_driven_inflow)
+    else:
+        # the initial stock of the older cohorts is counted twice
+        assert np.all(dsm.stock.values[iiy:] > stock_driven_stock[iiy:])
+    dsm.check_stock_balance()
+
+
 def test_user_subclass_of_dynamic_stock_model_marks_set():
     class MyDSM(DynamicStockModel):
         def compute(self):
