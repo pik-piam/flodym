@@ -44,10 +44,3 @@ from flodym.data_reader import (
     CompoundDataReader as CompoundDataReader,
 )
 from flodym.config import config as config
-
-Flow.model_rebuild()
-Stock.model_rebuild()
-SimpleFlowDrivenStock.model_rebuild()
-DynamicStockModel.model_rebuild()
-InflowDrivenDSM.model_rebuild()
-StockDrivenDSM.model_rebuild()

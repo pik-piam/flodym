@@ -6,11 +6,10 @@ from abc import abstractmethod
 import functools
 import numpy as np
 from pydantic import BaseModel as PydanticBaseModel, ConfigDict, model_validator
-from typing import TYPE_CHECKING, Callable, Optional, Union, TypeVar, Type
+from typing import Callable, Optional, Union, TypeVar, Type
 import logging
 
-if TYPE_CHECKING:
-    from .processes import Process
+from .processes import Process
 from .flodym_arrays import StockArray, FlodymArray
 from .dimensions import Dimension, DimensionSet
 from .lifetime_models import LifetimeModel, UnevenTimeDim
@@ -62,7 +61,7 @@ class Stock(PydanticBaseModel):
     """Outflow from the stock"""
     name: Optional[str] = "unnamed"
     """Name of the stock"""
-    process: Optional["Process"] = None
+    process: Optional[Process] = None
     """Process the stock is associated with, if any. Needed for example for the mass balance."""
     time_letter: str = "t"
     """Letter of the time dimension in the dimensions set, to make sure it's the first one."""
@@ -105,12 +104,6 @@ class Stock(PydanticBaseModel):
             raise ValueError(
                 f"Time dimension must be the first dimension, i.e. time_letter (now {self.time_letter}) must be the first letter in dims.letters (now {self.dims.letters[0]})."
             )
-        return self
-
-    @model_validator(mode="after")
-    def add_to_process(self):
-        if self.process is not None:
-            self.process.stock = self
         return self
 
     @model_validator(mode="after")

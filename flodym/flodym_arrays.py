@@ -7,17 +7,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from copy import copy, deepcopy
 from numbers import Number
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Literal,
-    Optional,
-    SupportsFloat,
-    TypeVar,
-    Union,
-    overload,
-)
+from typing import Any, Callable, Literal, Optional, SupportsFloat, TypeVar, Union, overload
 
 import numpy as np
 import pandas as pd
@@ -34,9 +24,7 @@ from typing_extensions import Self
 from ._df_to_flodym_array import DataFrameToFlodymDataConverter
 from .config import config, handle_error
 from .dimensions import Dimension, DimensionSet
-
-if TYPE_CHECKING:
-    from .processes import Process
+from .processes import Process
 
 
 def _is_iterable(arg):
@@ -1049,7 +1037,7 @@ class Flow(FlodymArray):
         >>> dimensions = DimensionSet([goods, time])
         >>> fabrication = Process(name='fabrication', id=2)
         >>> use = Process(name='use', id=3)
-        >>> flow = Flow(from_process='fabrication', to_process='use', dims=dimensions)
+        >>> flow = Flow(from_process=fabrication, to_process=use, dims=dimensions)
 
     In the above example, we did not pass any values when initialising the Flow instance,
     and these would get filled with zeros.
@@ -1058,17 +1046,17 @@ class Flow(FlodymArray):
 
     model_config = ConfigDict(protected_namespaces=())
 
-    from_process: "Process"
+    from_process: Process
     """Process from which the flow originates."""
-    to_process: "Process"
+    to_process: Process
     """Process to which the flow goes."""
 
     @classmethod
     def from_array(
         cls,
         array: "FlodymArray",
-        from_process: Optional["Process"] = None,
-        to_process: Optional["Process"] = None,
+        from_process: Optional[Process] = None,
+        to_process: Optional[Process] = None,
         name: Optional[str] = None,
     ) -> "Flow":
         """Create a Flow from an existing FlodymArray, copying its dimensions and values.
@@ -1106,13 +1094,6 @@ class Flow(FlodymArray):
     def to_process_id(self) -> int:
         """ID of the process to which the flow goes."""
         return self.to_process.id
-
-    @model_validator(mode="after")
-    def attach_to_process(self):
-        """Add the flow to the from and to processes."""
-        self.from_process.add_outflow(self)
-        self.to_process.add_inflow(self)
-        return self
 
 
 class StockArray(FlodymArray):

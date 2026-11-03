@@ -9,7 +9,7 @@ from typing import Dict, Optional, SupportsFloat
 
 import numpy as np
 from pydantic import BaseModel as PydanticBaseModel
-from pydantic import ConfigDict
+from pydantic import ConfigDict, model_validator
 from typing_extensions import Self
 
 from .data_reader import (
@@ -66,6 +66,32 @@ class MFASystem(PydanticBaseModel):
     """The stocks of the MFA system,
     as a dictionary mapping the names of the MFA system stocks to the stocks themselves.
     """
+
+    @model_validator(mode="after")
+    def link_processes(self):
+        """Link each process to its inflows, outflows and stock, as given by the flows and stocks
+        of the MFA system (see :py:attr:`flodym.Process.inflows`). Existing links of the processes
+        are replaced.
+        """
+        for process in self.processes.values():
+            process.clear_links()
+        for flow in self.flows.values():
+            for process in (flow.from_process, flow.to_process):
+                if self.processes.get(process.name) is not process:
+                    raise ValueError(
+                        f"Process '{process.name}' of flow '{flow.name}' is not a process of the MFA system."
+                    )
+            flow.from_process.add_outflow(flow)
+            flow.to_process.add_inflow(flow)
+        for stock in self.stocks.values():
+            if stock.process is None:
+                continue
+            if self.processes.get(stock.process.name) is not stock.process:
+                raise ValueError(
+                    f"Process '{stock.process.name}' of stock '{stock.name}' is not a process of the MFA system."
+                )
+            stock.process.set_stock(stock)
+        return self
 
     @classmethod
     def from_data_reader(cls, definition: MFADefinition, data_reader: DataReader) -> Self:
