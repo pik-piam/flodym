@@ -10,3 +10,8 @@ from .array_plotter import (
     PyplotArrayPlotter as PyplotArrayPlotter,
 )
 from .sankey import PlotlySankeyPlotter as PlotlySankeyPlotter
+from .process_graph import (
+    ProcessGraphPlotter as ProcessGraphPlotter,
+    PlotlyProcessGraphPlotter as PlotlyProcessGraphPlotter,
+    GraphvizProcessGraphPlotter as GraphvizProcessGraphPlotter,
+)

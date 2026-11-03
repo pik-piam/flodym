@@ -23,7 +23,6 @@ from flodym import MFASystem
 
 
 class MyMFASystem(MFASystem):
-
     def compute(self):
 
         self.flows["sysenv => process_a"][...] = self.parameters["extraction"]
