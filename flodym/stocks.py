@@ -408,7 +408,8 @@ class DynamicStockModel(Stock):
 
         Args:
             get_newest_cohort_inflow: Returns the newest cohort inflow of year index i_t, given
-                i_t and the amount present by cohort in year i_t before adding this inflow.
+                i_t and the amount present by cohort in year i_t before adding this inflow, for
+                the cohorts 0 to i_t.
             use_inflow_by_cohort: Whether ``inflow_by_cohort`` is part of the older inflow by
                 cohort.
         """
@@ -425,16 +426,23 @@ class DynamicStockModel(Stock):
         present_by_cohort = older_inflow_by_cohort.copy()
         self._stock_by_cohort = np.zeros(self._shape_cohort)
         for i_t in range(self._n_t):
+            # only cohorts c <= t can be present in year t
+            existing = slice(None, i_t + 1)
             if i_t > 0:
-                present_by_cohort[i_t, ...] += self._stock_by_cohort[i_t - 1, ...]
+                present_by_cohort[i_t, :i_t, ...] += self._stock_by_cohort[i_t - 1, :i_t, ...]
             newest_cohort_inflow[i_t, ...] = get_newest_cohort_inflow(
-                i_t, present_by_cohort[i_t, ...]
+                i_t, present_by_cohort[i_t, existing, ...]
             )
             present_by_cohort[i_t, i_t, ...] += newest_cohort_inflow[i_t, ...]
-            self._stock_by_cohort[i_t, ...] = present_by_cohort[i_t, ...] * survival_rate[i_t, ...]
-        # what is present during year t, but not left at its end, leaves during year t
-        self._outflow_by_cohort = self._to_annual(present_by_cohort - self._stock_by_cohort)
+            self._stock_by_cohort[i_t, existing, ...] = (
+                present_by_cohort[i_t, existing, ...] * survival_rate[i_t, existing, ...]
+            )
         inflow_whole_period = newest_cohort_inflow + older_inflow_by_cohort.sum(axis=1)
+        # what is present during year t, but not left at its end, leaves during year t
+        # (computed in place, present_by_cohort is not needed afterwards)
+        present_by_cohort -= self._stock_by_cohort
+        present_by_cohort /= self._t.interval_lengths.reshape((-1,) + (1,) * len(self.shape))
+        self._outflow_by_cohort = present_by_cohort
         self.inflow.values[...] = self._to_annual(inflow_whole_period)
         self.stock.values[...] = self._stock_by_cohort.sum(axis=1)
         self.outflow.values[...] = self._outflow_by_cohort.sum(axis=1)
@@ -531,9 +539,27 @@ class DynamicStockModel(Stock):
         The inflow need not be marked as set (see ``config.error_behaviors.unset_array_used``).
         """
         self._check_array_known(self.inflow, "Inflow", "This will lead to a zero stock and outflow.")
-        if self._initial_stock_by_cohort is not None:
-            self._check_inflow_at_initial_year()
+        if self._initial_stock_by_cohort is None:
+            self._compute_inflow_driven_vectorized()
+            return
+        self._check_inflow_at_initial_year()
         self._compute_cohorts(self._newest_cohort_inflow_from_inflow)
+
+    def _compute_inflow_driven_vectorized(self):
+        """Same result as the time stepping in :py:meth:`_compute_cohorts`, but faster.
+        Only valid without initial stock and inflow by cohort."""
+        inflow_whole_period = self._to_whole_period(self.inflow.values)
+        self._stock_by_cohort = np.einsum(
+            "c...,tc...->tc...", inflow_whole_period, self.lifetime_model.sf
+        )
+        self._outflow_by_cohort = np.einsum(
+            "c...,tc...,t->tc...",
+            inflow_whole_period,
+            self.lifetime_model.pdf,
+            1.0 / self._t.interval_lengths,
+        )
+        self.stock.values[...] = self._stock_by_cohort.sum(axis=1)
+        self.outflow.values[...] = self._outflow_by_cohort.sum(axis=1)
 
     @_wrap_compute
     def compute_stock_driven(self):
@@ -594,7 +620,7 @@ class DynamicStockModel(Stock):
         # solve for inflow_i:
         #   inflow_i = ( stock_i - sum_{j=1...i-1}(sf_i,j * inflow_j) ) / sf_ii
         # where the sum is the surviving stock of the older cohorts.
-        survival_rate = self.lifetime_model.survival_rate[i_t, ...]
+        survival_rate = self.lifetime_model.survival_rate[i_t, : i_t + 1, ...]
         surviving_stock = (present_by_cohort * survival_rate).sum(axis=0)
         newest_cohort_inflow = (
             self.stock.values[i_t, ...] - surviving_stock

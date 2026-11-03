@@ -649,7 +649,7 @@ def test_user_subclass_of_dynamic_stock_model_marks_set():
     ids=["equal_time_steps", "unequal_time_steps"],
 )
 def test_inflow_by_cohort_driven_dsm_matches_inflow_driven_dsm(time_items):
-    """Compares the inflow-driven with the inflow by cohort driven computation."""
+    """Compares the vectorized inflow-driven computation with the time stepping."""
     time_dim = Dimension(name="time", letter="t", items=time_items, dtype=int)
     dims_test = DimensionSet(dim_list=[time_dim, dims_cohort_tests["p"]])
     cohort_dim = Dimension(name="cohort", letter="c", items=time_items, dtype=int)
