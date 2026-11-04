@@ -146,5 +146,3 @@ def test_competing_risks_invalid_input():
     combined = CompetingRisksLifetime(models=[product, Leaching(dims=dims)])
     with pytest.raises(ValueError, match="loss_rate"):
         combined._check_prms_set()
-
-
