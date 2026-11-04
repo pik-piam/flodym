@@ -14,7 +14,8 @@ from .processes import Process
 from .flodym_arrays import StockArray, FlodymArray
 from .dimensions import Dimension, DimensionSet
 from .lifetime_models import LifetimeModel, UnevenTimeDim
-from .config import ErrorBehavior, _config_hint, _exceeds_tolerance, config, handle_error
+from ._checks import balance_failure, config_hint, report_balance_failures
+from .config import ErrorBehavior, config, handle_error
 
 StockSubtype = TypeVar("StockSubtype", bound="Stock")
 
@@ -39,7 +40,7 @@ def _wrap_compute(compute: Callable) -> Callable:
             self._check_mass_balance(
                 tolerance=None,
                 error_behavior=config.error_behaviors.mass_balance_stocks,
-                hint=_config_hint("mass_balance_stocks", tolerance=True, check="mass_balance_stocks"),
+                hint=config_hint("mass_balance_stocks", tolerance=True, check="mass_balance_stocks"),
             )
         return result
 
@@ -257,24 +258,25 @@ class Stock(PydanticBaseModel):
         if error_behavior is None:
             error_behavior = config.error_behaviors.mass_balance
         return self._check_mass_balance(
-            tolerance, error_behavior, hint=_config_hint("mass_balance", tolerance=True)
+            tolerance, error_behavior, hint=config_hint("mass_balance", tolerance=True)
         )
 
     def _check_mass_balance(
         self, tolerance: Optional[float], error_behavior: ErrorBehavior | str, hint: str
     ) -> bool:
-        max_error = float(np.max(np.abs(self.get_mass_balance().values), initial=0.0))
+        return report_balance_failures(
+            [self._mass_balance_failure(tolerance)],
+            error_behavior,
+            hint=hint,
+            success_message=f"Mass balance of stock '{self.name}' is consistent.",
+        )
+
+    def _mass_balance_failure(self, tolerance: Optional[float] = None) -> Optional[str]:
+        """Description of the failed mass balance check for an error message, or None if it
+        passed. If no tolerance is given, :py:attr:`tolerance` is used."""
         if tolerance is None:
             tolerance = self.tolerance
-        if _exceeds_tolerance(max_error, tolerance):
-            handle_error(
-                behavior=error_behavior,
-                message=f"Mass balance check failed for stock '{self.name}' "
-                f"(max error: {max_error}, tolerance: {tolerance})." + hint,
-            )
-            return False
-        logging.info(f"Mass balance of stock '{self.name}' is consistent.")
-        return True
+        return balance_failure(f"stock '{self.name}'", self.get_mass_balance(), tolerance)
 
     def check_stock_balance(self) -> bool:
         """Deprecated. Use :py:meth:`check_mass_balance` instead."""

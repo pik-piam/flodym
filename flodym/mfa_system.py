@@ -25,10 +25,11 @@ from .dimensions import DimensionSet
 from .flodym_arrays import FlodymArray, Flow, Parameter
 from .flow_helper import make_empty_flows
 from .mfa_definition import MFADefinition
-from .processes import Process, _max_abs, make_processes
+from .processes import Process, make_processes
 from .stock_helper import make_empty_stocks
 from .stocks import Stock
-from .config import ErrorBehavior, _config_hint, _exceeds_tolerance, config, handle_error
+from ._checks import config_hint, report_balance_failures
+from .config import ErrorBehavior, config, handle_error
 
 
 class MFASystem(PydanticBaseModel):
@@ -249,8 +250,8 @@ class MFASystem(PydanticBaseModel):
 
     @property
     def tolerance(self) -> float:
-        """Absolute tolerance for the checks of the MFA system, based on all flows and stocks,
-        see :py:attr:`flodym.config.Config.relative_tolerance`."""
+        """Absolute tolerance based on all flows and stocks of the MFA system, see
+        :py:attr:`flodym.config.Config.relative_tolerance`. Used by :py:meth:`check_flows`."""
         return config.get_tolerance(self._absolute_float_precision)
 
     def check_mass_balance(
@@ -269,8 +270,11 @@ class MFASystem(PydanticBaseModel):
           (see :py:meth:`flodym.Stock.check_mass_balance`).
 
         Args:
-            tolerance: Absolute tolerance for all checks. If None, the tolerance of the MFA system
-                (see :py:attr:`tolerance`) is used.
+            tolerance: Absolute tolerance for all checks. If None, each process and stock is
+                checked with its own tolerance (see :py:attr:`flodym.Process.tolerance` and
+                :py:attr:`flodym.Stock.tolerance`), so that small processes and stocks are checked
+                as strictly as large ones. The tolerance of 'sysenv' includes the in- and outflows
+                of all stocks.
             error_behavior: What to do if the check fails. If None,
                 ``flodym.config.error_behaviors.mass_balance`` is used (default: raise an error).
             raise_error: Deprecated, use ``error_behavior`` instead. True corresponds to
@@ -281,35 +285,43 @@ class MFASystem(PydanticBaseModel):
         """
         logging.info(f"Checking mass balance of {self.__class__.__name__} object...")
 
-        if tolerance is None:
-            tolerance = self.tolerance
-        tolerance = float(tolerance)
+        if tolerance is not None:
+            tolerance = float(tolerance)
         error_behavior = _resolve_error_behavior(
             error_behavior, raise_error, config.error_behaviors.mass_balance, "check_mass_balance"
         )
 
-        failed = []
+        failures = []
         for process in self.processes.values():
-            mass_change = -self.total_stock_change if process.id == 0 else None
-            max_error = _max_abs(process.get_mass_balance(mass_change=mass_change))
-            if _exceeds_tolerance(max_error, tolerance):
-                failed.append(f"process '{process.name}' (max error: {max_error})")
-        for stock in self.stocks.values():
-            max_error = _max_abs(stock.get_mass_balance())
-            if _exceeds_tolerance(max_error, tolerance):
-                failed.append(f"stock '{stock.name}' (max error: {max_error})")
+            if process.id == 0:
+                failures.append(
+                    process._mass_balance_failure(
+                        tolerance=self._sysenv_tolerance(process) if tolerance is None else tolerance,
+                        mass_change=-self.total_stock_change,
+                    )
+                )
+            else:
+                failures.append(process._mass_balance_failure(tolerance=tolerance))
+        failures += [stock._mass_balance_failure(tolerance=tolerance) for stock in self.stocks.values()]
 
-        if failed:
-            message = (
-                f"Mass balance check failed (tolerance: {tolerance}) for "
-                + ", ".join(failed)
-                + "."
-                + _config_hint("mass_balance", tolerance=True)
-            )
-            handle_error(behavior=error_behavior, message=message)
-            return False
-        logging.info("Success - Mass balance is consistent!")
-        return True
+        return report_balance_failures(
+            failures,
+            error_behavior,
+            hint=config_hint("mass_balance", tolerance=True),
+            success_message="Success - Mass balance is consistent!",
+        )
+
+    def _sysenv_tolerance(self, sysenv: Process) -> float:
+        """Tolerance for the mass balance of the 'sysenv' process, which includes the in- and
+        outflows of all stocks connected to a process."""
+        precisions = [sysenv._absolute_float_precision]
+        for stock in self.stocks.values():
+            if stock.process is not None:
+                precisions += [
+                    stock.inflow._absolute_float_precision,
+                    stock.outflow._absolute_float_precision,
+                ]
+        return config.get_tolerance(max(precisions))
 
     def check_flows(
         self,
@@ -349,7 +361,7 @@ class MFASystem(PydanticBaseModel):
         # Check for NaN values
         for flow in flows:
             if np.any(np.isnan(flow.values)):
-                message = f"NaN values found in flow {flow.name}!" + _config_hint("check_flows")
+                message = f"NaN values found in flow {flow.name}!" + config_hint("check_flows")
                 handle_error(behavior=error_behavior, message=message)
                 all_good = False
 
@@ -357,7 +369,7 @@ class MFASystem(PydanticBaseModel):
         tolerance = self.tolerance
         for flow in flows:
             if np.any(flow.values < -tolerance):
-                message = f"Negative value in flow {flow.name}!" + _config_hint(
+                message = f"Negative value in flow {flow.name}!" + config_hint(
                     "check_flows", tolerance=True
                 )
                 if verbose:

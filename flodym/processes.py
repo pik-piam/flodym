@@ -1,10 +1,9 @@
-import logging
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
-import numpy as np
 from pydantic import BaseModel as PydanticBaseModel, PrivateAttr, model_validator
 
-from .config import ErrorBehavior, _config_hint, _exceeds_tolerance, config, handle_error
+from ._checks import balance_failure, config_hint, report_balance_failures
+from .config import ErrorBehavior, config
 from .mfa_definition import ProcessDefinition
 
 if TYPE_CHECKING:
@@ -184,29 +183,30 @@ class Process(PydanticBaseModel):
         Returns:
             Whether the check passed.
         """
-        max_error = _max_abs(self.get_mass_balance(mass_change=mass_change))
+        if error_behavior is None:
+            error_behavior = config.error_behaviors.mass_balance
+        return report_balance_failures(
+            [self._mass_balance_failure(tolerance, mass_change)],
+            error_behavior,
+            hint=config_hint("mass_balance", tolerance=True),
+            success_message=f"Mass balance of process '{self.name}' is consistent.",
+        )
+
+    def _mass_balance_failure(
+        self,
+        tolerance: Optional[float] = None,
+        mass_change: Union["FlodymArray", float, None] = None,
+    ) -> Optional[str]:
+        """Description of the failed mass balance check for an error message, or None if it
+        passed. If no tolerance is given, :py:attr:`tolerance` is used, extended by the float
+        precision of ``mass_change`` if given."""
         if tolerance is None:
-            tolerance = self.tolerance
-        if _exceeds_tolerance(max_error, tolerance):
-            if error_behavior is None:
-                error_behavior = config.error_behaviors.mass_balance
-            handle_error(
-                behavior=error_behavior,
-                message=f"Mass balance check failed for process '{self.name}' "
-                f"(max error: {max_error}, tolerance: {tolerance})."
-                + _config_hint("mass_balance", tolerance=True),
-            )
-            return False
-        logging.info(f"Mass balance of process '{self.name}' is consistent.")
-        return True
-
-
-def _max_abs(array: Union["FlodymArray", float]) -> float:
-    """Largest absolute value of a FlodymArray or scalar."""
-    values = np.asarray(getattr(array, "values", array))
-    if values.size == 0:
-        return 0.0
-    return float(np.max(np.abs(values)))
+            precision = self._absolute_float_precision
+            if mass_change is not None and hasattr(mass_change, "_absolute_float_precision"):
+                precision = max(precision, mass_change._absolute_float_precision)
+            tolerance = config.get_tolerance(precision)
+        balance = self.get_mass_balance(mass_change=mass_change)
+        return balance_failure(f"process '{self.name}'", balance, tolerance)
 
 
 def make_processes(definitions: List[str | ProcessDefinition]) -> dict[str, Process]:

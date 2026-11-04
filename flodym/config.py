@@ -38,23 +38,6 @@ def handle_error(
         pass
 
 
-def _config_hint(
-    error_behavior: str, tolerance: bool = False, check: Optional[str] = None
-) -> str:
-    """Brief note for error messages, naming the config options that control a check."""
-    options = [f"flodym.config.error_behaviors.{error_behavior}"]
-    if tolerance:
-        options.append("flodym.config.relative_tolerance or absolute_tolerance")
-    if check is not None:
-        options.append(f"flodym.config.checks.{check}")
-    return " Configure with " + ", ".join(options) + "."
-
-
-def _exceeds_tolerance(max_error: float, tolerance: float) -> bool:
-    """Whether a check fails. NaN errors fail as well."""
-    return not max_error <= tolerance
-
-
 class Checks(BaseModel, validate_assignment=True):
     """
     Which checks to perform automatically during computation.

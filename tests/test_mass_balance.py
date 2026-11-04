@@ -402,3 +402,21 @@ def test_error_messages_name_config_options():
     with config.override(error_behaviors={"mass_balance_stocks": "error"}):
         with pytest.raises(ValueError, match=r"flodym\.config\.checks\.mass_balance_stocks"):
             stock.compute()
+
+
+def test_mfa_system_uses_local_tolerances():
+    """An error that is small compared to the largest values of the system, but large compared
+    to the values of the process, is detected, consistent with the check of the process alone."""
+    mfa = _computed_example_mfa()
+    shredder = mfa.processes["shredder"]
+    assert shredder.tolerance < mfa.tolerance / 2
+    error = (shredder.tolerance + mfa.tolerance) / 2
+    mfa.flows["shredder => sysenv"].values[0, 0] += error
+
+    assert shredder.check_mass_balance(error_behavior="ignore") is False
+    with pytest.raises(ValueError) as error_info:
+        mfa.check_mass_balance()
+    assert "process 'shredder'" in str(error_info.value)
+    assert "process 'sysenv'" not in str(error_info.value)
+    # with the system-wide tolerance, the error is not detected
+    assert mfa.check_mass_balance(tolerance=mfa.tolerance) is True
