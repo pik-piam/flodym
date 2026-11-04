@@ -153,9 +153,7 @@ def test_make_empty_helpers_as_attribute_dict():
     assert type(stocks) is dict
 
     flows = make_empty_flows(mfa.processes, flow_definitions, mfa.dims, as_attribute_dict=True)
-    stocks = make_empty_stocks(
-        stock_definitions, mfa.processes, mfa.dims, as_attribute_dict=True
-    )
+    stocks = make_empty_stocks(stock_definitions, mfa.processes, mfa.dims, as_attribute_dict=True)
     assert isinstance(flows, AttributeDict)
     assert isinstance(stocks, AttributeDict)
     assert flows.sysenv__to__shredder is flows["sysenv => shredder"]
