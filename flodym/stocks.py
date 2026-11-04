@@ -40,7 +40,9 @@ def _wrap_compute(compute: Callable) -> Callable:
             self._check_mass_balance(
                 tolerance=None,
                 error_behavior=config.error_behaviors.mass_balance,
-                hint=config_hint("mass_balance", tolerance=True, check="mass_balance_after_compute"),
+                hint=config_hint(
+                    "mass_balance", tolerance=True, check="mass_balance_after_compute"
+                ),
             )
         return result
 

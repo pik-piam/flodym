@@ -313,13 +313,17 @@ class MFASystem(PydanticBaseModel):
             if process.id == 0:
                 failures.append(
                     process._mass_balance_failure(
-                        tolerance=self._sysenv_tolerance(process) if tolerance is None else tolerance,
+                        tolerance=self._sysenv_tolerance(process)
+                        if tolerance is None
+                        else tolerance,
                         mass_change=-self.total_stock_change,
                     )
                 )
             else:
                 failures.append(process._mass_balance_failure(tolerance=tolerance))
-        failures += [stock._mass_balance_failure(tolerance=tolerance) for stock in self.stocks.values()]
+        failures += [
+            stock._mass_balance_failure(tolerance=tolerance) for stock in self.stocks.values()
+        ]
 
         return report_balance_failures(
             failures,
@@ -424,7 +428,9 @@ class MFASystem(PydanticBaseModel):
         """
         for flow_name, parameter_name in self.flow_parameters.items():
             if flow_name not in self.flows:
-                raise KeyError(f"Flow '{flow_name}' of flow_parameters is not a flow of the system.")
+                raise KeyError(
+                    f"Flow '{flow_name}' of flow_parameters is not a flow of the system."
+                )
             if parameter_name not in self.parameters:
                 raise KeyError(
                     f"Parameter '{parameter_name}' given for flow '{flow_name}' is not a parameter "

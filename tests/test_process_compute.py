@@ -64,7 +64,8 @@ def make_mfa(
         flows=flows,
         stocks=stocks,
         parameters=[
-            ParameterDefinition(name=name, dim_letters=dims) for name, dims in parameter_dims.items()
+            ParameterDefinition(name=name, dim_letters=dims)
+            for name, dims in parameter_dims.items()
         ],
     )
     return MFASystem.from_data_reader(definition, DictReader(parameter_values))
@@ -288,7 +289,12 @@ def stock_mfa(subclass: type, lifetime: bool = True) -> MFASystem:
     stock_kwargs = {"lifetime_model_class": FixedLifetime} if lifetime else {}
     mfa = make_mfa(
         processes=["sysenv", ProcessDefinition(name="use", outflow_shares={"eol": "share"}), "eol"],
-        flows=[flow("sysenv", "use"), flow("use", "eol"), flow("use", "sysenv"), flow("eol", "sysenv")],
+        flows=[
+            flow("sysenv", "use"),
+            flow("use", "eol"),
+            flow("use", "sysenv"),
+            flow("eol", "sysenv"),
+        ],
         parameter_values={"share": 0.6},
         parameter_dims={"share": ()},
         stocks=[

@@ -244,7 +244,6 @@ class Process(PydanticBaseModel):
         balance = self.get_mass_balance(mass_change=mass_change)
         return balance_failure(f"process '{self.name}'", balance, tolerance)
 
-
     # ------------------------------------------------------------------------------------------
     # Shares and dimension splitter
 
@@ -762,7 +761,11 @@ class Process(PydanticBaseModel):
             return
         tolerance = self._share_tolerance()
         values = share.values
-        if np.any(np.isnan(values)) or np.any(values < -tolerance) or np.any(values > 1 + tolerance):
+        if (
+            np.any(np.isnan(values))
+            or np.any(values < -tolerance)
+            or np.any(values > 1 + tolerance)
+        ):
             handle_error(
                 behavior=config.error_behaviors.process_shares,
                 message=(

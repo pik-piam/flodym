@@ -199,8 +199,9 @@ def test_automatic_stock_check_runs_once_for_nested_compute(monkeypatch):
     monkeypatch.setattr(
         InflowDrivenDSM,
         "_check_mass_balance",
-        lambda self, *args, **kwargs: calls.append(kwargs["error_behavior"])
-        or original(self, *args, **kwargs),
+        lambda self, *args, **kwargs: (
+            calls.append(kwargs["error_behavior"]) or original(self, *args, **kwargs)
+        ),
     )
     dsm.compute()
     assert calls == []
@@ -407,9 +408,7 @@ def test_error_messages_name_config_options():
 
     stock = _inconsistent_stock()
     with config.override(checks={"mass_balance_after_compute": True}):
-        with pytest.raises(
-            ValueError, match=r"flodym\.config\.checks\.mass_balance_after_compute"
-        ):
+        with pytest.raises(ValueError, match=r"flodym\.config\.checks\.mass_balance_after_compute"):
             stock.compute()
 
 
