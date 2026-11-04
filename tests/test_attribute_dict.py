@@ -5,7 +5,14 @@ import pickle
 import numpy as np
 import pytest
 
-from flodym import AttributeDict
+from flodym import (
+    AttributeDict,
+    FlowDefinition,
+    SimpleFlowDrivenStock,
+    StockDefinition,
+    make_empty_flows,
+    make_empty_stocks,
+)
 from flodym._attribute_dict import _to_attribute_name
 from flodym.example_objects import get_example_mfa
 
@@ -124,3 +131,32 @@ def test_mfa_system_containers():
 
     mfa.flows.sysenv__to__shredder[...] = 2.0
     np.testing.assert_array_equal(flow.values, 2.0)
+
+
+def test_make_empty_helpers_as_attribute_dict():
+    mfa = get_example_mfa()
+    flow_definitions = [
+        FlowDefinition(from_process_name="sysenv", to_process_name="shredder", dim_letters=("t",))
+    ]
+    stock_definitions = [
+        StockDefinition(
+            name="slag piles",
+            process="slag piles",
+            dim_letters=("t",),
+            subclass=SimpleFlowDrivenStock,
+        )
+    ]
+
+    flows = make_empty_flows(mfa.processes, flow_definitions, mfa.dims)
+    stocks = make_empty_stocks(stock_definitions, mfa.processes, mfa.dims)
+    assert type(flows) is dict
+    assert type(stocks) is dict
+
+    flows = make_empty_flows(mfa.processes, flow_definitions, mfa.dims, as_attribute_dict=True)
+    stocks = make_empty_stocks(
+        stock_definitions, mfa.processes, mfa.dims, as_attribute_dict=True
+    )
+    assert isinstance(flows, AttributeDict)
+    assert isinstance(stocks, AttributeDict)
+    assert flows.sysenv__to__shredder is flows["sysenv => shredder"]
+    assert stocks.slag_piles is stocks["slag piles"]
