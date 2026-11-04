@@ -290,9 +290,10 @@ dsm = StockDrivenDSM(
 dsm.compute()
 
 # %% [markdown]
-# The visualization shows how the extension by cohort immediately reduces the outflow,
-# While for the extension by year, the outflow is only reduced after newly produced cohorts with
-# the extended lifetimes have reached the end of their lifetime.
+# The visualization shows how the extension by year immediately reduces the outflow, as it
+# applies to all items in the stock. For the extension by cohort, the outflow is only reduced
+# gradually, as only newly produced cohorts have the extended lifetimes, and their outflow
+# becomes relevant only as they age.
 
 # %%
 import plotly.express as px
