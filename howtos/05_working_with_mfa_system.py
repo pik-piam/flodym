@@ -178,13 +178,13 @@ my_mfa_system.check_mass_balance()
 # - each stock: the stock change in each time step must equal its net inflow over the time step.
 #
 # The checks of single processes and stocks are also available as `check_mass_balance()` methods of `Process` and `Stock`, and the errors themselves as `get_mass_balance()`.
-# Stocks are checked automatically after each computation.
+# Optionally, stocks are also checked automatically after each computation, which helps to find where in a computation the mass balance is violated. This is off by default and can be switched on with `flodym.config.checks.mass_balance_after_compute = True`.
 #
 # There is also a `check_flows()` method, which checks for negative or NaN flow values.
 #
 # What happens if a check fails, and the tolerance of the checks, is controlled by the global configuration `flodym.config`.
-# By default, a failed mass balance check raises an error, while a failed automatic check after a stock computation and a failed flow check log a warning.
-# The tolerance is a multiple (`relative_tolerance`, default 100) of the float precision of the largest value in the system. Alternatively, an `absolute_tolerance` can be set.
+# By default, a failed mass balance check raises an error, while a failed flow check logs a warning.
+# Each process and stock is checked with its own tolerance: a multiple (`relative_tolerance`, default 100) of the float precision of its largest value. Alternatively, an `absolute_tolerance` can be set.
 # Options can be changed permanently by assignment, or temporarily with `override`.
 # The `error_behavior` and `tolerance` arguments of the check methods override the configuration for a single call.
 
@@ -195,6 +195,9 @@ flodym.config.error_behaviors.check_flows = "error"
 
 with flodym.config.override(relative_tolerance=1000.0, error_behaviors={"mass_balance": "warn"}):
     my_mfa_system.check_mass_balance()
+
+with flodym.config.override(checks={"mass_balance_after_compute": True}):
+    my_mfa_system.compute()
 
 my_mfa_system.check_flows(error_behavior="info")
 

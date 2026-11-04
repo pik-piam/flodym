@@ -22,7 +22,7 @@ StockSubtype = TypeVar("StockSubtype", bound="Stock")
 
 def _wrap_compute(compute: Callable) -> Callable:
     """Adds checks before a stock compute routine, and marks the stock arrays as set and checks
-    the mass balance of the stock (if ``flodym.config.checks.mass_balance_stocks``) after it.
+    the mass balance of the stock (if ``flodym.config.checks.mass_balance_after_compute``) after it.
     Nested calls (e.g. via ``super().compute()``) only run the outermost checks."""
 
     @functools.wraps(compute)
@@ -36,11 +36,11 @@ def _wrap_compute(compute: Callable) -> Callable:
         finally:
             self._in_compute = False
         self.mark_all_set()
-        if config.checks.mass_balance_stocks:
+        if config.checks.mass_balance_after_compute:
             self._check_mass_balance(
                 tolerance=None,
-                error_behavior=config.error_behaviors.mass_balance_stocks,
-                hint=config_hint("mass_balance_stocks", tolerance=True, check="mass_balance_stocks"),
+                error_behavior=config.error_behaviors.mass_balance,
+                hint=config_hint("mass_balance", tolerance=True, check="mass_balance_after_compute"),
             )
         return result
 
@@ -243,9 +243,8 @@ class Stock(PydanticBaseModel):
         """Check whether inflow, outflow and stock are consistent within a tolerance
         (see :py:meth:`get_mass_balance`).
 
-        This check is performed automatically after each computation of the stock if
-        ``flodym.config.checks.mass_balance_stocks`` is True, with the error behavior
-        ``flodym.config.error_behaviors.mass_balance_stocks``.
+        This check is also performed automatically after each computation of the stock if
+        ``flodym.config.checks.mass_balance_after_compute`` is True (default: False).
 
         Args:
             tolerance: Absolute tolerance. If None, :py:attr:`tolerance` is used.

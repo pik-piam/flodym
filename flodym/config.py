@@ -43,9 +43,12 @@ class Checks(BaseModel, validate_assignment=True):
     Which checks to perform automatically during computation.
     """
 
-    mass_balance_stocks: bool = True
+    mass_balance_after_compute: bool = False
     """Whether to check the mass balance of a stock after each of its computations
-    (see :py:meth:`flodym.Stock.check_mass_balance`)."""
+    (see :py:meth:`flodym.Stock.check_mass_balance`). Failures are handled according to
+    :py:attr:`ErrorBehaviors.mass_balance`.
+    Off by default, since :py:meth:`flodym.MFASystem.check_mass_balance` checks all stocks as well.
+    Enabling it helps to find where in a computation the mass balance is violated."""
 
 
 class ErrorBehaviors(BaseModel, validate_assignment=True):
@@ -58,13 +61,9 @@ class ErrorBehaviors(BaseModel, validate_assignment=True):
     is used in an operation or a stock computation.
     """
     mass_balance: ErrorBehavior = ErrorBehavior.ERROR
-    """What to do if an explicitly called mass balance check fails
+    """What to do if a mass balance check fails
     (see :py:meth:`flodym.MFASystem.check_mass_balance`, :py:meth:`flodym.Process.check_mass_balance`,
-    :py:meth:`flodym.Stock.check_mass_balance`).
-    """
-    mass_balance_stocks: ErrorBehavior = ErrorBehavior.WARN
-    """What to do if the automatic mass balance check after a stock computation fails
-    (see :py:attr:`Checks.mass_balance_stocks`).
+    :py:meth:`flodym.Stock.check_mass_balance`, and :py:attr:`Checks.mass_balance_after_compute`).
     """
     check_flows: ErrorBehavior = ErrorBehavior.WARN
     """What to do if a flow has negative or NaN values (see :py:meth:`flodym.MFASystem.check_flows`)."""

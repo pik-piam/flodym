@@ -45,9 +45,8 @@ def _computed_example_mfa():
 
 
 def test_config_defaults():
-    assert config.checks.mass_balance_stocks is True
+    assert config.checks.mass_balance_after_compute is False
     assert config.error_behaviors.mass_balance == ErrorBehavior.ERROR
-    assert config.error_behaviors.mass_balance_stocks == ErrorBehavior.WARN
     assert config.error_behaviors.check_flows == ErrorBehavior.WARN
     assert config.relative_tolerance == 100.0
     assert config.absolute_tolerance is None
@@ -154,32 +153,36 @@ class _InconsistentStock(SimpleFlowDrivenStock):
         self.stock.values[...] *= 2
 
 
-def test_automatic_stock_check_warns_by_default(caplog):
-    stock = _InconsistentStock(
+def _inconsistent_stock() -> _InconsistentStock:
+    return _InconsistentStock(
         dims=_dims(), inflow=StockArray(dims=_dims(), values=np.ones(_dims().shape))
     )
-    with caplog.at_level(logging.WARNING):
+
+
+def test_automatic_stock_check_off_by_default(caplog):
+    stock = _inconsistent_stock()
+    with caplog.at_level(logging.INFO):
         stock.compute()
-    assert any("Mass balance check failed for stock" in r.getMessage() for r in caplog.records)
+    assert not any("Mass balance" in r.getMessage() for r in caplog.records)
+    assert stock.check_mass_balance(error_behavior="ignore") is False
 
 
-def test_automatic_stock_check_error_behavior():
-    stock = _InconsistentStock(
-        dims=_dims(), inflow=StockArray(dims=_dims(), values=np.ones(_dims().shape))
-    )
-    with config.override(error_behaviors={"mass_balance_stocks": "error"}):
+def test_automatic_stock_check_enabled():
+    stock = _inconsistent_stock()
+    with config.override(checks={"mass_balance_after_compute": True}):
         with pytest.raises(ValueError, match="Mass balance check failed for stock"):
             stock.compute()
+        _simple_stock().compute()
 
 
-def test_automatic_stock_check_can_be_disabled(caplog):
-    stock = _InconsistentStock(
-        dims=_dims(), inflow=StockArray(dims=_dims(), values=np.ones(_dims().shape))
-    )
-    with config.override(checks={"mass_balance_stocks": False}):
+def test_automatic_stock_check_error_behavior(caplog):
+    stock = _inconsistent_stock()
+    with config.override(
+        checks={"mass_balance_after_compute": True}, error_behaviors={"mass_balance": "warn"}
+    ):
         with caplog.at_level(logging.WARNING):
             stock.compute()
-    assert not any("Mass balance" in r.getMessage() for r in caplog.records)
+    assert any("Mass balance check failed for stock" in r.getMessage() for r in caplog.records)
 
 
 def test_automatic_stock_check_runs_once_for_nested_compute(monkeypatch):
@@ -196,10 +199,14 @@ def test_automatic_stock_check_runs_once_for_nested_compute(monkeypatch):
     monkeypatch.setattr(
         InflowDrivenDSM,
         "_check_mass_balance",
-        lambda self, *args, **kwargs: calls.append(kwargs["error_behavior"]) or original(self, *args, **kwargs),
+        lambda self, *args, **kwargs: calls.append(kwargs["error_behavior"])
+        or original(self, *args, **kwargs),
     )
     dsm.compute()
-    assert calls == [ErrorBehavior.WARN]
+    assert calls == []
+    with config.override(checks={"mass_balance_after_compute": True}):
+        dsm.compute()
+    assert calls == [ErrorBehavior.ERROR]
 
 
 def test_stock_deprecated_methods():
@@ -398,9 +405,11 @@ def test_error_messages_name_config_options():
         mfa.flows["shredder => sysenv"].values[0, 0] = -1.0
         mfa.check_flows(error_behavior="error")
 
-    stock = _InconsistentStock(dims=_dims(), inflow=StockArray(dims=_dims(), values=np.ones(_dims().shape)))
-    with config.override(error_behaviors={"mass_balance_stocks": "error"}):
-        with pytest.raises(ValueError, match=r"flodym\.config\.checks\.mass_balance_stocks"):
+    stock = _inconsistent_stock()
+    with config.override(checks={"mass_balance_after_compute": True}):
+        with pytest.raises(
+            ValueError, match=r"flodym\.config\.checks\.mass_balance_after_compute"
+        ):
             stock.compute()
 
 
