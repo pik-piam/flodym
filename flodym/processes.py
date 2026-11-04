@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Union
 import numpy as np
 from pydantic import BaseModel as PydanticBaseModel, PrivateAttr, model_validator
 
-from .config import ErrorBehavior, config, handle_error
+from .config import ErrorBehavior, _config_hint, _exceeds_tolerance, config, handle_error
 from .mfa_definition import ProcessDefinition
 
 if TYPE_CHECKING:
@@ -187,13 +187,14 @@ class Process(PydanticBaseModel):
         max_error = _max_abs(self.get_mass_balance(mass_change=mass_change))
         if tolerance is None:
             tolerance = self.tolerance
-        if max_error > tolerance:
+        if _exceeds_tolerance(max_error, tolerance):
             if error_behavior is None:
                 error_behavior = config.error_behaviors.mass_balance
             handle_error(
                 behavior=error_behavior,
                 message=f"Mass balance check failed for process '{self.name}' "
-                f"(max error: {max_error}, tolerance: {tolerance}).",
+                f"(max error: {max_error}, tolerance: {tolerance})."
+                + _config_hint("mass_balance", tolerance=True),
             )
             return False
         logging.info(f"Mass balance of process '{self.name}' is consistent.")

@@ -28,7 +28,7 @@ from .mfa_definition import MFADefinition
 from .processes import Process, _max_abs, make_processes
 from .stock_helper import make_empty_stocks
 from .stocks import Stock
-from .config import ErrorBehavior, config, handle_error
+from .config import ErrorBehavior, _config_hint, _exceeds_tolerance, config, handle_error
 
 
 class MFASystem(PydanticBaseModel):
@@ -292,16 +292,19 @@ class MFASystem(PydanticBaseModel):
         for process in self.processes.values():
             mass_change = -self.total_stock_change if process.id == 0 else None
             max_error = _max_abs(process.get_mass_balance(mass_change=mass_change))
-            if max_error > tolerance:
+            if _exceeds_tolerance(max_error, tolerance):
                 failed.append(f"process '{process.name}' (max error: {max_error})")
         for stock in self.stocks.values():
             max_error = _max_abs(stock.get_mass_balance())
-            if max_error > tolerance:
+            if _exceeds_tolerance(max_error, tolerance):
                 failed.append(f"stock '{stock.name}' (max error: {max_error})")
 
         if failed:
             message = (
-                f"Mass balance check failed (tolerance: {tolerance}) for " + ", ".join(failed) + "."
+                f"Mass balance check failed (tolerance: {tolerance}) for "
+                + ", ".join(failed)
+                + "."
+                + _config_hint("mass_balance", tolerance=True)
             )
             handle_error(behavior=error_behavior, message=message)
             return False
@@ -346,7 +349,7 @@ class MFASystem(PydanticBaseModel):
         # Check for NaN values
         for flow in flows:
             if np.any(np.isnan(flow.values)):
-                message = f"NaN values found in flow {flow.name}!"
+                message = f"NaN values found in flow {flow.name}!" + _config_hint("check_flows")
                 handle_error(behavior=error_behavior, message=message)
                 all_good = False
 
@@ -354,7 +357,9 @@ class MFASystem(PydanticBaseModel):
         tolerance = self.tolerance
         for flow in flows:
             if np.any(flow.values < -tolerance):
-                message = f"Negative value in flow {flow.name}!"
+                message = f"Negative value in flow {flow.name}!" + _config_hint(
+                    "check_flows", tolerance=True
+                )
                 if verbose:
                     message += "\n Items:"
                     indices = flow.items_where(lambda x: x < -tolerance)

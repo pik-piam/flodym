@@ -14,7 +14,7 @@ from .processes import Process
 from .flodym_arrays import StockArray, FlodymArray
 from .dimensions import Dimension, DimensionSet
 from .lifetime_models import LifetimeModel, UnevenTimeDim
-from .config import ErrorBehavior, config, handle_error
+from .config import ErrorBehavior, _config_hint, _exceeds_tolerance, config, handle_error
 
 StockSubtype = TypeVar("StockSubtype", bound="Stock")
 
@@ -36,7 +36,11 @@ def _wrap_compute(compute: Callable) -> Callable:
             self._in_compute = False
         self.mark_all_set()
         if config.checks.mass_balance_stocks:
-            self.check_mass_balance(error_behavior=config.error_behaviors.mass_balance_stocks)
+            self._check_mass_balance(
+                tolerance=None,
+                error_behavior=config.error_behaviors.mass_balance_stocks,
+                hint=_config_hint("mass_balance_stocks", tolerance=True, check="mass_balance_stocks"),
+            )
         return result
 
     wrapper._is_wrapped_compute = True
@@ -250,16 +254,23 @@ class Stock(PydanticBaseModel):
         Returns:
             Whether the check passed.
         """
+        if error_behavior is None:
+            error_behavior = config.error_behaviors.mass_balance
+        return self._check_mass_balance(
+            tolerance, error_behavior, hint=_config_hint("mass_balance", tolerance=True)
+        )
+
+    def _check_mass_balance(
+        self, tolerance: Optional[float], error_behavior: ErrorBehavior | str, hint: str
+    ) -> bool:
         max_error = float(np.max(np.abs(self.get_mass_balance().values), initial=0.0))
         if tolerance is None:
             tolerance = self.tolerance
-        if max_error > tolerance:
-            if error_behavior is None:
-                error_behavior = config.error_behaviors.mass_balance
+        if _exceeds_tolerance(max_error, tolerance):
             handle_error(
                 behavior=error_behavior,
                 message=f"Mass balance check failed for stock '{self.name}' "
-                f"(max error: {max_error}, tolerance: {tolerance}).",
+                f"(max error: {max_error}, tolerance: {tolerance})." + hint,
             )
             return False
         logging.info(f"Mass balance of stock '{self.name}' is consistent.")

@@ -192,14 +192,14 @@ def test_automatic_stock_check_runs_once_for_nested_compute(monkeypatch):
         lifetime_model=NormalLifetime(dims=dims, mean=5.0, std=2.0),
     )
     calls = []
-    original = InflowDrivenDSM.check_mass_balance
+    original = InflowDrivenDSM._check_mass_balance
     monkeypatch.setattr(
         InflowDrivenDSM,
-        "check_mass_balance",
-        lambda self, **kwargs: calls.append(kwargs) or original(self, **kwargs),
+        "_check_mass_balance",
+        lambda self, *args, **kwargs: calls.append(kwargs["error_behavior"]) or original(self, *args, **kwargs),
     )
     dsm.compute()
-    assert calls == [{"error_behavior": ErrorBehavior.WARN}]
+    assert calls == [ErrorBehavior.WARN]
 
 
 def test_stock_deprecated_methods():
@@ -370,3 +370,35 @@ def test_mfa_system_without_stocks_tolerance():
         process.remove_stock()
     assert mfa.tolerance > 0.0
     assert mfa.total_stock_change == 0.0
+
+
+def test_mass_balance_nan_fails():
+    mfa = _computed_example_mfa()
+    tolerance_before = mfa.tolerance
+    mfa.flows["shredder => remelting"].values[0, 0] = np.nan
+    assert mfa.tolerance == pytest.approx(tolerance_before)
+    with pytest.raises(ValueError, match="process 'shredder'"):
+        mfa.check_mass_balance()
+    assert mfa.processes["shredder"].check_mass_balance(error_behavior="ignore") is False
+
+    stock = _simple_stock()
+    stock.compute()
+    stock.stock.values[0, 0] = np.nan
+    assert stock.check_mass_balance(error_behavior="ignore") is False
+
+
+def test_error_messages_name_config_options():
+    mfa = _computed_example_mfa()
+    mfa.flows["shredder => remelting"].values[...] *= 1.1
+    with pytest.raises(ValueError, match=r"flodym\.config\.error_behaviors\.mass_balance"):
+        mfa.check_mass_balance()
+    with pytest.raises(ValueError, match=r"flodym\.config\.relative_tolerance"):
+        mfa.processes["shredder"].check_mass_balance()
+    with pytest.raises(ValueError, match=r"flodym\.config\.error_behaviors\.check_flows"):
+        mfa.flows["shredder => sysenv"].values[0, 0] = -1.0
+        mfa.check_flows(error_behavior="error")
+
+    stock = _InconsistentStock(dims=_dims(), inflow=StockArray(dims=_dims(), values=np.ones(_dims().shape)))
+    with config.override(error_behaviors={"mass_balance_stocks": "error"}):
+        with pytest.raises(ValueError, match=r"flodym\.config\.checks\.mass_balance_stocks"):
+            stock.compute()
