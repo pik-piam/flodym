@@ -25,7 +25,7 @@ from .dimensions import DimensionSet
 from .flodym_arrays import FlodymArray, Flow, Parameter
 from .flow_helper import make_empty_flows
 from .mfa_definition import MFADefinition
-from .processes import Process, make_processes, set_process_parameters
+from .processes import Process, compute_processes, make_processes, set_process_parameters
 from .stock_helper import make_empty_stocks
 from .stocks import Stock
 from ._checks import config_hint, report_balance_failures
@@ -439,16 +439,15 @@ class MFASystem(PydanticBaseModel):
         values, see :py:meth:`flodym.Process.compute`.
 
         Unset flows with a parameter (see :py:attr:`flow_parameters`) are set first. Then, all
-        processes are computed recursively, i.e. each computed process triggers the computation
-        of its neighbors, until no further process can be computed. Underdetermined processes
-        are skipped.
+        processes are tried, and each computed process triggers a new try of its neighbors, until
+        no further process can be computed (see :py:func:`flodym.compute_processes`).
+        Underdetermined processes are skipped.
 
         Returns:
             The names of the processes (except 'sysenv') which could not be computed.
         """
         self.set_flows_from_parameters()
-        for process in self.processes.values():
-            process.compute(on_underdetermined=ErrorBehavior.INFO, recursive=True)
+        compute_processes(self.processes.values())
         not_computed = [p.name for p in self.processes.values() if p.id != 0 and not p.is_computed]
         if not_computed:
             logging.info(

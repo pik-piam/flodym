@@ -18,6 +18,7 @@ from flodym.flodym_array_helper import flodym_array_stack as flodym_array_stack
 from flodym.processes import (
     Process as Process,
     make_processes as make_processes,
+    compute_processes as compute_processes,
     set_process_parameters as set_process_parameters,
     UnderdeterminedError as UnderdeterminedError,
 )

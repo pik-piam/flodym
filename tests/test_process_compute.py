@@ -350,3 +350,27 @@ def test_stock_process_underdetermined_changes_nothing():
         mfa.processes["use"].compute()
     assert not mfa.stocks["use"].inflow.is_set
     assert not mfa.stocks["use"].stock.is_set
+
+
+def chain_mfa(n_processes: int) -> MFASystem:
+    """sysenv -> p0 -> p1 -> ... -> p(n-1) -> sysenv, with processes defined in reverse order."""
+    names = [f"p{i}" for i in range(n_processes)]
+    links = ["sysenv"] + names + ["sysenv"]
+    flows = [flow(a, b) for a, b in zip(links[:-1], links[1:])]
+    return make_mfa(["sysenv"] + names[::-1], flows, {}, {})
+
+
+def test_long_chain_without_recursion_limit():
+    mfa = chain_mfa(3000)
+    mfa.flows["sysenv => p0"][...] = 1.0
+    assert mfa.compute_all_possible() == []
+    np.testing.assert_allclose(mfa.flows["p2999 => sysenv"].values, 1.0)
+
+
+def test_compute_neighbors():
+    mfa = chain_mfa(3)
+    mfa.flows["sysenv => p0"][...] = 1.0
+    assert mfa.processes["p0"].compute()
+    assert not mfa.processes["p1"].is_computed
+    assert mfa.processes["p1"].compute(compute_neighbors=True)
+    assert all(p.is_computed for name, p in mfa.processes.items() if name != "sysenv")

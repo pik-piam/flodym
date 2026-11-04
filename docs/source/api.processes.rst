@@ -8,4 +8,6 @@ Processes
 
 .. autofunction:: flodym.set_process_parameters
 
+.. autofunction:: flodym.compute_processes
+
 .. autoexception:: flodym.UnderdeterminedError

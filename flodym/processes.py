@@ -1,5 +1,6 @@
 import logging
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Sequence, Union
+from collections import deque
+from typing import TYPE_CHECKING, Dict, Iterable, List, Literal, Optional, Sequence, Union
 
 import numpy as np
 from pydantic import BaseModel as PydanticBaseModel, PrivateAttr, model_validator
@@ -393,7 +394,7 @@ class Process(PydanticBaseModel):
     def compute(
         self,
         on_underdetermined: Optional[ErrorBehavior | str] = None,
-        recursive: bool = False,
+        compute_neighbors: bool = False,
     ) -> bool:
         """Compute the unknown in- and outflows of the process (and its stock, if any), from the
         known ones, the shares and the dimension splitter.
@@ -430,13 +431,30 @@ class Process(PydanticBaseModel):
             on_underdetermined: What to do if the process cannot be computed from the given
                 values. If None, ``flodym.config.error_behaviors.process_underdetermined`` is used
                 (default: raise an :py:class:`flodym.UnderdeterminedError`).
-            recursive: If True, after a successful computation, the neighboring processes are
-                computed as well, recursively. Underdetermined neighbors are skipped with an info
-                log message. See also :py:meth:`flodym.MFASystem.compute_all_possible`.
+            compute_neighbors: If True, after a successful computation, the neighboring
+                processes are computed as well, and so on, until no further process can be
+                computed (see :py:func:`compute_processes`). Underdetermined neighbors are skipped
+                with an info log message. See also :py:meth:`flodym.MFASystem.compute_all_possible`.
 
         Returns:
             Whether the process is computed afterwards.
         """
+        is_computed = self._compute(on_underdetermined, short_message=False)
+        if compute_neighbors and is_computed:
+            compute_processes(self._neighbors())
+        return is_computed
+
+    def _neighbors(self) -> List["Process"]:
+        """Processes connected to this one by a flow, without duplicates."""
+        neighbors = [f.from_process for f in self._inflows.values()]
+        neighbors += [f.to_process for f in self._outflows.values()]
+        return list({id(p): p for p in neighbors}.values())
+
+    def _compute(
+        self, on_underdetermined: Optional[ErrorBehavior | str], short_message: bool
+    ) -> bool:
+        """Compute this process only, see :py:meth:`compute`. Returns whether it is computed
+        afterwards. If ``short_message``, underdetermination is reported in one line."""
         if self.id == 0:
             logging.debug(f"Process '{self.name}' is the system boundary and is not computed.")
             return False
@@ -458,7 +476,7 @@ class Process(PydanticBaseModel):
         except UnderdeterminedError as error:
             if on_underdetermined == ErrorBehavior.ERROR:
                 raise
-            message = error.short_message if recursive else str(error)
+            message = error.short_message if short_message else str(error)
             handle_error(behavior=on_underdetermined, message=message)
             return False
 
@@ -491,12 +509,6 @@ class Process(PydanticBaseModel):
                 hint=hint,
                 success_message=f"Mass balance of process '{self.name}' is consistent.",
             )
-
-        if recursive:
-            neighbors = [f.from_process for f in self._inflows.values()]
-            neighbors += [f.to_process for f in self._outflows.values()]
-            for neighbor in neighbors:
-                neighbor.compute(on_underdetermined=ErrorBehavior.INFO, recursive=True)
         return True
 
     def _compute_without_stock(self) -> None:
@@ -814,6 +826,30 @@ class Process(PydanticBaseModel):
                     "needed." + config_hint("process_shares", tolerance=True)
                 ),
             )
+
+
+def compute_processes(processes: Iterable[Process]) -> None:
+    """Compute the given processes, and all processes which become computable as a consequence,
+    until no further process can be computed (see :py:meth:`Process.compute`).
+    Underdetermined processes are skipped with an info log message.
+
+    The processes to try are kept in a queue, which initially contains the given processes. When
+    a process is computed, its neighbors which are not computed yet are added to the queue, since
+    their flows have changed. As each process can be computed only once, this terminates.
+    """
+    queue = deque(processes)
+    queued = {id(p) for p in queue}
+    while queue:
+        process = queue.popleft()
+        queued.discard(id(process))
+        if process.id == 0 or process.is_computed:
+            continue
+        if not process._compute(on_underdetermined=ErrorBehavior.INFO, short_message=True):
+            continue
+        for neighbor in process._neighbors():
+            if neighbor.id != 0 and not neighbor.is_computed and id(neighbor) not in queued:
+                queue.append(neighbor)
+                queued.add(id(neighbor))
 
 
 def make_processes(definitions: List[str | ProcessDefinition]) -> dict[str, Process]:
