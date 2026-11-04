@@ -879,7 +879,9 @@ class TabulatedLifetime(LifetimeModel):
         no_t_axes = (np.newaxis,) * len(self._shape_no_t)
         future_cohorts = np.triu(np.ones((self._n_t, self._n_t), dtype=bool), k=1)
         if np.any(np.where(future_cohorts[(...,) + no_t_axes], values, 0.0) != 0):
-            raise ValueError("survival_factor must be zero for cohorts after the time step (c > t).")
+            raise ValueError(
+                "survival_factor must be zero for cohorts after the time step (c > t)."
+            )
         # change from t-1 to t, for t > c
         later_steps = np.tril(np.ones((self._n_t - 1, self._n_t), dtype=bool))
         increase = np.where(later_steps[(...,) + no_t_axes], np.diff(values, axis=0), 0.0)
