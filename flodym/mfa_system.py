@@ -296,13 +296,17 @@ class MFASystem(PydanticBaseModel):
             if process.id == 0:
                 failures.append(
                     process._mass_balance_failure(
-                        tolerance=self._sysenv_tolerance(process) if tolerance is None else tolerance,
+                        tolerance=self._sysenv_tolerance(process)
+                        if tolerance is None
+                        else tolerance,
                         mass_change=-self.total_stock_change,
                     )
                 )
             else:
                 failures.append(process._mass_balance_failure(tolerance=tolerance))
-        failures += [stock._mass_balance_failure(tolerance=tolerance) for stock in self.stocks.values()]
+        failures += [
+            stock._mass_balance_failure(tolerance=tolerance) for stock in self.stocks.values()
+        ]
 
         return report_balance_failures(
             failures,
