@@ -16,6 +16,8 @@ from flodym import (
     ExponentialLifetime,
     Leaching,
     CompetingRisksLifetime,
+    TabulatedLifetime,
+    FixedLifetime,
 )
 
 dims = DimensionSet(
@@ -269,3 +271,123 @@ def test_hazard_factor_on_competing_risks():
     combined = CompetingRisksLifetime(models=models(), hazard_factor_by_year=year_factor)
     separate = CompetingRisksLifetime(models=models(hazard_factor_by_year=year_factor))
     np.testing.assert_allclose(combined.sf, separate.sf, rtol=1e-12, atol=1e-15)
+
+
+def test_get_arrays():
+    lifetime_model = LogNormalLifetime(dims=dims, mean=mean, std=0.3, relative_std=True)
+    for getter, values in [
+        (lifetime_model.get_sf, lifetime_model.sf),
+        (lifetime_model.get_survival_rate, lifetime_model.survival_rate),
+        (lifetime_model.get_pdf, lifetime_model.pdf),
+    ]:
+        array = getter()
+        assert array.dims.letters == ("t", "c", "p")
+        np.testing.assert_array_equal(array.values, values)
+        # the returned values are a copy
+        array.values[...] = 0.0
+        assert np.any(values != 0.0)
+
+    cohort_dim = Dimension(name="production year", letter="y", items=dims["t"].items)
+    assert lifetime_model.get_sf(cohort_dim=cohort_dim).dims.letters == ("t", "y", "p")
+    with pytest.raises(ValueError, match="must not be part of"):
+        lifetime_model.get_sf(cohort_dim=Dimension(name="other", letter="p", items=dims["t"].items))
+    with pytest.raises(ValueError, match="same items"):
+        lifetime_model.get_sf(cohort_dim=Dimension(name="cohort", letter="c", items=[1, 2]))
+
+
+def test_tabulated_lifetime():
+    reference = LogNormalLifetime(dims=dims, mean=mean, std=0.3, relative_std=True)
+    tabulated = TabulatedLifetime(dims=dims, survival_factor=reference.get_sf())
+    for name in ["sf", "survival_rate", "pdf"]:
+        np.testing.assert_allclose(getattr(tabulated, name), getattr(reference, name))
+
+    # same stock results
+    inflow = StockArray(dims=dims, values=np.ones(dims.shape))
+    results = []
+    for lifetime_model in [reference, tabulated]:
+        dsm = InflowDrivenDSM(dims=dims, inflow=inflow, lifetime_model=lifetime_model)
+        dsm.compute()
+        results.append(dsm.stock.values)
+    np.testing.assert_allclose(results[1], results[0])
+
+    # survival factor without the product dimension, as FlodymArray and as np.ndarray
+    single = LogNormalLifetime(dims=dims["t",], mean=8.0, std=2.0)
+    for survival_factor in [single.get_sf(), single.sf[..., np.newaxis]]:
+        tabulated = TabulatedLifetime(dims=dims, survival_factor=survival_factor)
+        np.testing.assert_allclose(tabulated.sf, single.sf[..., np.newaxis] * np.ones(2))
+
+    # period effects apply to tabulated survival factors as well
+    reference.hazard_factor_by_year = year_factor
+    tabulated = TabulatedLifetime(
+        dims=dims,
+        survival_factor=LogNormalLifetime(
+            dims=dims, mean=mean, std=0.3, relative_std=True
+        ).get_sf(),
+        hazard_factor_by_year=year_factor,
+    )
+    np.testing.assert_allclose(tabulated.sf, reference.sf, rtol=1e-12, atol=1e-15)
+
+
+def test_tabulated_lifetime_invalid_input():
+    survival_factor = LogNormalLifetime(dims=dims, mean=mean, std=2.0).sf
+    too_large = survival_factor.copy()
+    too_large[3, 2] = 1.5
+    future_cohort = survival_factor.copy()
+    future_cohort[2, 3] = 0.5
+    increasing = survival_factor.copy()
+    increasing[10, 2] = (increasing[9, 2, :] + 1) / 2
+    for values, match in [
+        (too_large, "between 0 and 1"),
+        (future_cohort, "zero for cohorts after"),
+        (increasing, "must not increase"),
+    ]:
+        with pytest.raises(ValueError, match=match):
+            TabulatedLifetime(dims=dims, survival_factor=values)
+    with pytest.raises(ValueError, match="Lifetime factors"):
+        TabulatedLifetime(dims=dims, survival_factor=survival_factor, lt_factor_by_year=factor)
+    with pytest.raises(ValueError, match="must be set"):
+        TabulatedLifetime(dims=dims)._check_prms_set()
+
+
+long_dims = DimensionSet(
+    dim_list=[Dimension(name="time", letter="t", items=list(range(201)), dtype=int)]
+)
+
+
+def test_mean_lifetime_by_cohort():
+    exponential = ExponentialLifetime(dims=long_dims, mean=10.0)
+    truncated = exponential.get_mean_lifetime_by_cohort(tail="none").values
+    extrapolated = exponential.get_mean_lifetime_by_cohort(tail="constant_rate").values
+    # discretization error of the time steps is about 0.1 %
+    np.testing.assert_allclose(truncated[:100], 10.0, rtol=1e-3)
+    np.testing.assert_allclose(extrapolated, 10.0, rtol=1e-3)
+    assert np.all(truncated[100:] <= extrapolated[100:])
+    assert truncated[-1] < 1.0
+
+    weibull = WeibullMeanStdLifetime(dims=long_dims, mean=10.0, std=4.0)
+    np.testing.assert_allclose(
+        weibull.get_mean_lifetime_by_cohort(tail="none").values[:100], 10.0, rtol=1e-3
+    )
+
+    # inflow in the middle of the time step, leaving after 5 years: exact
+    fixed = FixedLifetime(dims=long_dims, mean=5.0)
+    np.testing.assert_allclose(fixed.get_mean_lifetime_by_cohort(tail="none").values[:150], 5.0)
+    # nothing leaves the stock in the last time step for young cohorts
+    assert np.isinf(fixed.get_mean_lifetime_by_cohort(tail="constant_rate").values[-1])
+
+    # period effects and competing risks are included
+    faster = ExponentialLifetime(dims=long_dims, mean=10.0, hazard_factor_by_year=2.0)
+    np.testing.assert_allclose(
+        faster.get_mean_lifetime_by_cohort(tail="constant_rate").values, 5.0, rtol=5e-3
+    )
+    loss_rate = 0.05
+    combined = CompetingRisksLifetime(
+        models=[exponential, Leaching(dims=long_dims, loss_rate=loss_rate)]
+    )
+    expected = 1 / (1 / 10.0 - np.log(1 - loss_rate))
+    np.testing.assert_allclose(
+        combined.get_mean_lifetime_by_cohort(tail="constant_rate").values, expected, rtol=5e-3
+    )
+
+    with pytest.raises(ValueError, match="tail must be"):
+        exponential.get_mean_lifetime_by_cohort(tail="linear")

@@ -183,6 +183,8 @@ print("Stock values for Vehicles:", my_dsm.stock["Vehicles"].values)
 #   per time unit, independent of their age. Parameter `mean`.
 # - `Leaching`: the same, but parametrized by `loss_rate`, the share of the stock leaving per
 #   time unit (e.g. per year).
+# - `TabulatedLifetime`: the survival factor is given directly by year and age-cohort, e.g.
+#   from statistics or from an external model, as `survival_factor`.
 #
 # For the models with `mean` and `std`, setting `relative_std=True` makes `std` relative to the
 # mean, i.e. the coefficient of variation std / mean:
@@ -212,6 +214,28 @@ my_dsm = InflowDrivenDSM(dims=dims, lifetime_model=lifetime_model, inflow=inflow
 my_dsm.compute()
 
 print("Stock values for Vehicles, with leaching:", my_dsm.stock["Vehicles"].values)
+
+# %% [markdown]
+# The survival factor, the one-step survival rate and the outflow share (pdf) of a lifetime model
+# can be retrieved as `FlodymArray`s by year and age-cohort with `get_sf()`,
+# `get_survival_rate()` and `get_pdf()`. By default, the cohort dimension has the letter `c`;
+# a different one can be passed as `cohort_dim`.
+#
+# `get_mean_lifetime_by_cohort()` returns the mean time the items of each cohort stay in the
+# stock, including all effects described in this how-to. As survival beyond the end of the time
+# horizon is unknown, `tail` must be chosen: `"none"` ignores it (lower bound), and
+# `"constant_rate"` extrapolates with the survival rate of the last time step.
+
+# %%
+survival_factor = lifetime_model.get_sf()
+print("Dimensions of the survival factor:", survival_factor.dims.letters)
+
+# With the short time horizon of this example, a large share of cohort 2000 is still present at
+# the end, so the two options for the tail differ strongly.
+print("Share of cohort 2000 present in 2010:", survival_factor[{"t": 2010, "c": 2000}].values)
+for tail in ["none", "constant_rate"]:
+    mean_lifetime = lifetime_model.get_mean_lifetime_by_cohort(tail=tail)
+    print(f"Mean lifetime of cohort 2000, tail '{tail}':", mean_lifetime[{"t": 2000}].values)
 
 # %% [markdown]
 # ## Lifetime extension

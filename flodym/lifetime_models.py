@@ -223,6 +223,9 @@ class LifetimeModel(PydanticBaseModel):
 
     @property
     def sf(self):
+        """Survival factor by year and age-cohort: sf(t,c) is the share of the inflow of cohort c
+        still present at the end of year t. Zero for c > t. Shape (time, cohort, other dims).
+        """
         if self._sf is None:
             if self._has_period_effects:
                 self._sf = self._sf_from_survival_rate(self.survival_rate)
@@ -245,6 +248,10 @@ class LifetimeModel(PydanticBaseModel):
 
     @property
     def pdf(self):
+        """Share of the inflow of cohort c leaving the stock in year t: pdf(t,c) =
+        sf(t-1,c) - sf(t,c) for c < t, 1 - sf(t,t) for c = t, and zero for c > t.
+        Shape (time, cohort, other dims).
+        """
         if self._pdf is None:
             self._pdf = np.zeros(self._shape_cohort)
             self._compute_outflow_pdf()
@@ -312,6 +319,108 @@ class LifetimeModel(PydanticBaseModel):
     def _t_diag_indices(self) -> tuple:
         """Indices of the main diagonal of the time and cohort axes of a (t, c, ...) array."""
         return np.diag_indices(self._n_t) + (slice(None),) * len(self._shape_no_t)
+
+    def _get_dims_cohort(self, cohort_dim: Dimension | None = None) -> DimensionSet:
+        """Dimensions (time, cohort, other dimensions) of arrays by year and age-cohort.
+
+        Args:
+            cohort_dim: Cohort dimension with the same items as the time dimension. If not given,
+                a dimension with name "cohort" and letter "c" is used.
+        """
+        time_dim = self.dims[self.time_letter]
+        if cohort_dim is None:
+            cohort_dim = Dimension(
+                name="cohort", letter="c", items=time_dim.items, dtype=time_dim.dtype
+            )
+        if cohort_dim.letter in self.dims.letters or cohort_dim.name in self.dims.names:
+            raise ValueError(
+                f"Cohort dimension (letter '{cohort_dim.letter}', name '{cohort_dim.name}') must "
+                "not be part of the lifetime model dimensions. Pass a different cohort_dim."
+            )
+        if cohort_dim.items != time_dim.items:
+            raise ValueError("Cohort dimension must have the same items as the time dimension.")
+        return time_dim + cohort_dim + self.dims.drop(self.time_letter)
+
+    def get_sf(self, cohort_dim: Dimension | None = None) -> FlodymArray:
+        """Survival factor sf as FlodymArray with dimensions (time, cohort, other dimensions).
+
+        Args:
+            cohort_dim: Cohort dimension with the same items as the time dimension. If not given,
+                a dimension with name "cohort" and letter "c" is used.
+        """
+        dims = self._get_dims_cohort(cohort_dim)
+        return FlodymArray(dims=dims, values=self.sf.copy(), name="survival_factor")
+
+    def get_survival_rate(self, cohort_dim: Dimension | None = None) -> FlodymArray:
+        """One-step survival rate as FlodymArray with dimensions (time, cohort, other dimensions).
+
+        Args:
+            cohort_dim: Cohort dimension with the same items as the time dimension. If not given,
+                a dimension with name "cohort" and letter "c" is used.
+        """
+        dims = self._get_dims_cohort(cohort_dim)
+        return FlodymArray(dims=dims, values=self.survival_rate.copy(), name="survival_rate")
+
+    def get_pdf(self, cohort_dim: Dimension | None = None) -> FlodymArray:
+        """Share of each age-cohort leaving the stock in each time step (pdf) as FlodymArray with
+        dimensions (time, cohort, other dimensions).
+
+        Args:
+            cohort_dim: Cohort dimension with the same items as the time dimension. If not given,
+                a dimension with name "cohort" and letter "c" is used.
+        """
+        dims = self._get_dims_cohort(cohort_dim)
+        return FlodymArray(dims=dims, values=self.pdf.copy(), name="pdf")
+
+    def get_mean_lifetime_by_cohort(self, tail: Literal["constant_rate", "none"]) -> FlodymArray:
+        """Mean time the items of each age-cohort remain in the stock, including the effects of
+        lifetime factors, period effects and competing risks.
+
+        The result has the dimensions of the lifetime model, where the time dimension denotes the
+        age-cohort, i.e. the time step of inflow. It is computed by integrating the survival
+        factor over time, interpolating linearly between the inflow time and the ends of the time
+        steps. For smooth distributions, the resulting relative error is roughly
+        (time step length / mean lifetime) ** 2 / 12, e.g. 0.1 % for yearly time steps and a mean
+        lifetime of 10 years.
+
+        Survival beyond the end of the time horizon is unknown, so the result for cohorts with
+        a large share surviving at the end of the time horizon depends strongly on ``tail``.
+        This share can be checked with :py:meth:`get_sf`.
+
+        Args:
+            tail: Treatment of survival beyond the end of the time horizon.
+                ``"constant_rate"``: extrapolate assuming that the survival rate per unit of time
+                of the last time step persists. This is exact for an exponential lifetime, but
+                can be far off for other distributions, especially for young cohorts. If nothing
+                leaves the stock in the last time step, the result is infinite.
+                ``"none"``: ignore survival beyond the time horizon; the result is then a lower
+                bound.
+        """
+        if tail not in ("constant_rate", "none"):
+            raise ValueError(f"tail must be 'constant_rate' or 'none', not '{tail}'.")
+        sf = self.sf
+        expand = (slice(None),) + (np.newaxis,) * len(self._shape_no_t)
+        interval_lengths = self._t.interval_lengths
+        quad_points, quad_weights = self._get_quad_points_and_weights()
+        mean_inflow_point = sum(w * p for p, w in zip(quad_points, quad_weights))
+        # time from inflow to the end of the inflow time step, by cohort
+        first_lengths = (1.0 - mean_inflow_point) * interval_lengths
+        newest_cohort_sf = sf[self._t_diag_indices]
+        mean_lifetime = (1.0 + newest_cohort_sf) / 2 * first_lengths[expand]
+        # later time steps t > c: trapezoid between sf(t-1,c) and sf(t,c)
+        trapezoids = (sf[:-1] + sf[1:]) / 2 * interval_lengths[1:][expand + (np.newaxis,)]
+        later_steps = np.tril(np.ones((self._n_t - 1, self._n_t), dtype=bool))
+        later_steps = later_steps[(...,) + (np.newaxis,) * len(self._shape_no_t)]
+        mean_lifetime += np.where(later_steps, trapezoids, 0.0).sum(axis=0)
+        if tail == "constant_rate":
+            sf_last = sf[-1]
+            exposure_last = np.full(self._n_t, interval_lengths[-1])
+            exposure_last[-1] = first_lengths[-1]
+            with np.errstate(divide="ignore", invalid="ignore"):
+                hazard = -np.log(self.survival_rate[-1]) / exposure_last[expand]
+                tail_integral = np.where(sf_last > 0, sf_last / hazard, 0.0)
+            mean_lifetime += tail_integral
+        return FlodymArray(dims=self.dims, values=mean_lifetime, name="mean_lifetime_by_cohort")
 
     def _tile(self, a: np.ndarray) -> np.ndarray:
         """tiles the input array a to the shape of the lifetime model, by adding non-time dimensions
@@ -703,6 +812,90 @@ class WeibullMeanStdLifetime(StandardDeviationLifetimeModel):
         shape = self._weibull_shape[i_c, ...]
         scale = mean / scipy.special.gamma(1 + 1 / shape)
         return scipy.stats.weibull_min.sf(ages, c=shape, loc=0, scale=scale)
+
+
+class TabulatedLifetime(LifetimeModel):
+    """Lifetime model with the survival factor given directly by year and age-cohort, e.g. from
+    statistics or from an external model.
+
+    As no distribution is known, lifetime factors cannot be used. Period effects can be used.
+    inflow_at and n_pts_per_interval are only used for removal_share_by_year and
+    :py:meth:`get_mean_lifetime_by_cohort`, and should match the inflow time assumed in the
+    given survival factor.
+    """
+
+    survival_factor: FlodymArray | np.ndarray | None = None
+    """Share of the inflow of cohort c still present at the end of time step t.
+    As FlodymArray, its dimensions must be the time dimension, a cohort dimension with the same
+    items as the time dimension, and a subset of the other dimensions of the lifetime model, in
+    any order. The cohort dimension is the one which is not part of the lifetime model.
+    For example, the output of :py:meth:`get_sf` of another lifetime model can be used.
+    As np.ndarray, its shape must be broadcastable to (time, cohort, other dimensions).
+    Values must be between 0 and 1, zero for cohorts after the time step (c > t), and must not
+    increase over time for each cohort.
+    """
+
+    @model_validator(mode="after")
+    def _cast_survival_factor(self):
+        if self.lt_factor_by_year is not None or self.lt_factor_by_cohort is not None:
+            raise ValueError("Lifetime factors cannot be used with TabulatedLifetime.")
+        value = self.survival_factor
+        if value is None:
+            return self
+        if isinstance(value, FlodymArray):
+            cohort_letters = [
+                letter for letter in value.dims.letters if letter not in self.dims.letters
+            ]
+            if len(cohort_letters) != 1 or self.time_letter not in value.dims.letters:
+                raise ValueError(
+                    f"Dimensions of survival_factor ({value.dims.letters}) must be the time "
+                    "dimension, one cohort dimension, and a subset of the lifetime model "
+                    f"dimensions ({self.dims.letters})."
+                )
+            dims_cohort = self._get_dims_cohort(value.dims[cohort_letters[0]])
+            values = value.cast_values_to(dims_cohort).astype(float)
+        elif isinstance(value, np.ndarray):
+            values = np.empty(self._shape_cohort)
+            try:
+                values[...] = value
+            except ValueError:
+                raise ValueError(
+                    f"survival_factor (shape {value.shape}) cannot be broadcast to shape "
+                    f"{self._shape_cohort} (time, cohort, other dimensions)."
+                )
+        else:
+            raise ValueError(
+                f"survival_factor must be a FlodymArray or np.ndarray, but is {type(value)}."
+            )
+        self._check_survival_factor(values)
+        object.__setattr__(self, "survival_factor", values)
+        self.reset_cached_arrays()
+        return self
+
+    def _check_survival_factor(self, values: np.ndarray):
+        tolerance = 1e-12
+        if np.min(values) < -tolerance or np.max(values) > 1 + tolerance:
+            raise ValueError("survival_factor must be between 0 and 1.")
+        no_t_axes = (np.newaxis,) * len(self._shape_no_t)
+        future_cohorts = np.triu(np.ones((self._n_t, self._n_t), dtype=bool), k=1)
+        if np.any(np.where(future_cohorts[(...,) + no_t_axes], values, 0.0) != 0):
+            raise ValueError("survival_factor must be zero for cohorts after the time step (c > t).")
+        # change from t-1 to t, for t > c
+        later_steps = np.tril(np.ones((self._n_t - 1, self._n_t), dtype=bool))
+        increase = np.where(later_steps[(...,) + no_t_axes], np.diff(values, axis=0), 0.0)
+        if np.max(increase, initial=0.0) > tolerance:
+            raise ValueError("survival_factor must not increase over time for an age-cohort.")
+
+    def _check_prms_set(self):
+        if self.survival_factor is None:
+            raise ValueError("Lifetime parameter survival_factor must be set before use.")
+
+    def _compute_base_sf(self) -> np.ndarray:
+        self._check_prms_set()
+        return np.clip(self.survival_factor, 0.0, 1.0)
+
+    def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
+        raise NotImplementedError("TabulatedLifetime uses the given survival factor directly.")
 
 
 class CompetingRisksLifetime(LifetimeModel):
