@@ -12,6 +12,7 @@ from pydantic import BaseModel as PydanticBaseModel
 from pydantic import ConfigDict
 from typing_extensions import Self
 
+from ._attribute_dict import AttributeDict
 from .data_reader import (
     CompoundDataReader,
     CSVDimensionReader,
@@ -44,27 +45,37 @@ class MFASystem(PydanticBaseModel):
 
     MFA flows, stocks and parameters are defined as instances of subclasses of :py:class:`flodym.FlodymArray`.
     Dimensions are managed with the :py:class:`flodym.Dimension` and :py:class:`flodym.DimensionSet`.
+
+    Parameters, processes, flows and stocks can be passed as plain dictionaries. They are converted
+    to :py:class:`flodym.AttributeDict` objects, such that their entries can also be accessed as
+    attributes, e.g. ``mfa.flows.sysenv__to__process_1``. Dictionaries assigned to these fields after
+    initialization are not converted.
     """
 
     model_config = ConfigDict(protected_namespaces=(), extra="allow")
 
     dims: DimensionSet
     """All dimensions that appear in the MFA system."""
-    parameters: Dict[str, Parameter]
+    parameters: AttributeDict[Parameter]
     """The parameters of the MFA system,
     as a dictionary mapping the names of the MFA system parameters to the parameters themselves.
+    Also accessible as attributes, see :py:class:`flodym.AttributeDict`.
     """
-    processes: Dict[str, Process]
+    processes: AttributeDict[Process]
     """The processes of the MFA system, i.e. the nodes of the MFA system graph,
     as a dictionary mapping the names of the MFA system processes to the processes themselves.
+    Also accessible as attributes, see :py:class:`flodym.AttributeDict`.
     """
-    flows: Dict[str, Flow]
+    flows: AttributeDict[Flow]
     """The flows of the MFA system, i.e. the edges of the MFA system graph,
     as a dictionary mapping the names of the MFA system flows to the flows themselves.
+    Also accessible as attributes, e.g. ``flows["sysenv => process 1"]`` as
+    ``flows.sysenv__to__process_1``, see :py:class:`flodym.AttributeDict`.
     """
-    stocks: Dict[str, Stock] = {}
+    stocks: AttributeDict[Stock] = AttributeDict()
     """The stocks of the MFA system,
     as a dictionary mapping the names of the MFA system stocks to the stocks themselves.
+    Also accessible as attributes, see :py:class:`flodym.AttributeDict`.
     """
 
     @classmethod
