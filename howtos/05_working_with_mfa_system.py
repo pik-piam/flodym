@@ -225,9 +225,40 @@ for name, f in my_mfa_system.flows.items():
 
 # %% [markdown]
 # Only flows which are not set (see `FlodymArray.is_set`) are computed, which is why we marked all flows as unset first.
-# Single processes can be computed with `Process.compute()`; `compute_all_possible()` computes all processes it can, and returns the names of those it cannot.
-# Processes with stocks are computed together with their stock.
-# See the documentation of `Process.compute()` for the rules applied.
+#
+# The rules for a process without stock are:
+# - The inflows sum to a total throughput, which is split into the outflows. The shares of flows refer to this total.
+# - The total is computed from the inflows or from the outflows: as the sum of the flows of that side if all are known, as a known flow divided by its share, or from the known flows if all unknown flows of the side have shares.
+# - If the flows to compute have dimensions which the total does not have, the total is multiplied with the dimension splitter. It must sum to one over these dimensions.
+# - Each unknown flow with a share is the total times its share. One unknown flow per side may have no share; it receives the remainder.
+#
+# This also works backwards, from known outflows to unknown inflows.
+# A process with stock has two totals, the stock inflow and the stock outflow, and the stock is computed along with the process.
+# The documentation of `Process.compute()` describes the details.
+#
+# `Process.compute()` computes a single process. If it is underdetermined, i.e. not enough values are given, it raises an `UnderdeterminedError` and leaves the process unchanged:
+
+# %%
+from flodym import UnderdeterminedError
+
+my_mfa_system.mark_all_unset()
+try:
+    my_mfa_system.processes["process_a"].compute()
+except UnderdeterminedError as error:
+    print(error)
+
+# %% [markdown]
+# `compute_all_possible()` instead skips underdetermined processes, and returns the names of the processes it could not compute.
+# It tries all processes, and tries the neighbors of each computed process again, until no further process can be computed.
+
+# %%
+print("Not computed:", my_mfa_system.compute_all_possible())
+
+my_mfa_system.flows["sysenv => process_a"][...] = my_mfa_system.parameters["extraction"]
+print("Not computed:", my_mfa_system.compute_all_possible())
+
+# %% [markdown]
+# Inconsistent values are reported according to `flodym.config.error_behaviors`: shares outside [0, 1] or summing to more than one, dimension splitters not summing to one, and shares not fulfilled after the computation of an overdetermined process (option `process_shares`), unused dimension splitters (`unused_dimension_splitter`), and underdetermined processes in `Process.compute()` (`process_underdetermined`).
 #
 # With definition objects (see below), shares and dimension splitters are given in a `ProcessDefinition`, and flows can be set from a parameter with the `parameter` argument of `FlowDefinition`. Example 2 shows this.
 
