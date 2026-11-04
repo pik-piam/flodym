@@ -4,17 +4,20 @@ These are used when defining the MFA system, and can be used to check the input 
 and put it into ojects with the desired properties.
 """
 
+from typing import Dict, List, Optional
+
 import numpy as np
 import pandas as pd
 from pydantic import (
-    BaseModel as PydanticBaseModel,
     AliasChoices,
+    ConfigDict,
     Field,
     field_validator,
     model_validator,
-    ConfigDict,
 )
-from typing import List, Optional, Dict
+from pydantic import (
+    BaseModel as PydanticBaseModel,
+)
 
 
 class DimensionDefinition(PydanticBaseModel):
@@ -41,8 +44,8 @@ class DefinitionWithDimLetters(PydanticBaseModel):
 
     model_config = ConfigDict(protected_namespaces=())
 
-    dim_letters: tuple
-    """letters of the dimensions that the object is defined on"""
+    dim_letters: tuple[str, ...]
+    """Letters of the dimensions that the object is defined on."""
 
     @field_validator("dim_letters", mode="before")
     def check_dimensions(cls, v):
@@ -72,6 +75,9 @@ class FlowDefinition(DefinitionWithDimLetters):
     """Process to which the flow goes."""
     name_override: Optional[str] = None
     """Optional name for the flow. Will be generated from the connecting process names if not provided."""
+    parameter: Optional[str] = None
+    """Optional name of a parameter whose values the flow is set to, see
+    :py:meth:`flodym.MFASystem.set_flows_from_parameters`."""
 
 
 class StockDefinition(DefinitionWithDimLetters):
@@ -92,12 +98,7 @@ class StockDefinition(DefinitionWithDimLetters):
     Available lifetime models can be found in :py:data:`flodym.lifetime_models`.
     """
     solver: Optional[str] = "manual"
-    """Algorithm to use for solving the equation system in the stock-driven DSM.
-    Options are: "manual" (default), which uses
-    an own python implementation, and "lapack", which calls the lapack trtrs routine via scipy.
-    The lapack implementation is more precise. Speed depends on the dimensionality,
-    but the manual implementation is usually faster.
-    """
+    """Deprecated and ignored. The stock-driven DSM always uses the former "manual" algorithm."""
 
     @model_validator(mode="after")
     def init_solver(self):
@@ -127,16 +128,35 @@ class ParameterDefinition(DefinitionWithDimLetters):
 
 
 class ProcessDefinition(PydanticBaseModel):
-    id: int
-    """ID of the process."""
+    """Define a process, optionally with an explicit ID and with parameters used by
+    :py:meth:`flodym.Process.compute`. In :py:attr:`MFADefinition.processes`, it can be used
+    instead of a process name, see :py:func:`flodym.make_processes`.
+
+    In- and outflows in ``inflow_shares`` and ``outflow_shares`` are given either by flow name,
+    or by the name of the process they come from or go to, if only one flow connects the two
+    processes.
+
+    **Examples**
+
+        >>> from flodym import ProcessDefinition
+        >>> ProcessDefinition(name="shredder", outflow_shares={"remelting": "shredder yield"})
+    """
+
     name: str
     """Name of the process."""
-    inflow_shares: Optional[Dict[str, str]] = None
-    """parameter names to use as inflow shares, keyed by from_process name of inflow"""
-    outflow_shares: Optional[Dict[str, str]] = None
-    """parameter names to use as outflow shares, keyed by to_process name of outflow"""
+    id: Optional[int] = None
+    """ID of the process. If None, it is assigned automatically, see
+    :py:func:`flodym.make_processes`."""
+    inflow_shares: Dict[str, str] = {}
+    """Names of the parameters giving the share of an inflow in the total throughput of the
+    process, keyed by flow name or by the name of the process the inflow comes from."""
+    outflow_shares: Dict[str, str] = {}
+    """Names of the parameters giving the share of an outflow in the total throughput of the
+    process, keyed by flow name or by the name of the process the outflow goes to."""
     dimension_splitter: Optional[str] = None
-    """Name of the parameter to use for splitting the total process flow into new dimensions."""
+    """Name of the parameter by which the total throughput of the process is multiplied to add
+    dimensions it does not have, but the flows to compute do (see
+    :py:meth:`flodym.Process.compute`). It must sum to one over these added dimensions."""
 
 
 class MFADefinition(PydanticBaseModel):
@@ -146,13 +166,13 @@ class MFADefinition(PydanticBaseModel):
 
     dimensions: List[DimensionDefinition]
     """List of definitions of dimensions used in the model."""
-    processes: List[str|ProcessDefinition]
-    """List of process names used in the model."""
+    processes: List[str | ProcessDefinition]
+    """List of the processes used in the model, given as names or process definitions."""
     flows: List[FlowDefinition]
     """List of definitions of flows used in the model."""
-    stocks: List[StockDefinition]
+    stocks: List[StockDefinition] = []
     """List of definitions of stocks used in the model."""
-    parameters: List[ParameterDefinition]
+    parameters: List[ParameterDefinition] = []
     """List of definitions of parameters used in the model."""
 
     @model_validator(mode="after")
@@ -165,6 +185,27 @@ class MFADefinition(PydanticBaseModel):
                 raise ValueError(f"Undefined dimension in {item}")
         return self
 
+    @model_validator(mode="after")
+    def check_parameter_names(self):
+        """Check that parameters used by flow and process definitions are defined."""
+        defined_parameters = {p.name for p in self.parameters}
+        used_parameters = []
+        for flow in self.flows:
+            if flow.parameter is not None:
+                used_parameters.append((flow.parameter, f"flow definition {flow}"))
+        for process in self.processes:
+            if isinstance(process, str):
+                continue
+            used_by = f"definition of process '{process.name}'"
+            names = list(process.inflow_shares.values()) + list(process.outflow_shares.values())
+            if process.dimension_splitter is not None:
+                names.append(process.dimension_splitter)
+            used_parameters += [(name, used_by) for name in names]
+        for name, used_by in used_parameters:
+            if name not in defined_parameters:
+                raise ValueError(f"Parameter '{name}' used in {used_by} is not defined.")
+        return self
+
     def to_dfs(self) -> Dict[str, pd.DataFrame]:
         """Export definition information to pandas DataFrames.
         Column names are the field names, rows have the lists.
@@ -175,6 +216,8 @@ class MFADefinition(PydanticBaseModel):
         """
         all_dfs = {}
         for field_name, def_list in self.model_dump().items():
+            if not def_list:
+                continue
             def_dfs = []
             for definition in def_list:
                 if isinstance(definition, str):

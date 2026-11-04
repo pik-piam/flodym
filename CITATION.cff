@@ -1,0 +1,50 @@
+cff-version: "1.2.0"
+authors:
+- family-names: Dürrwächter
+  given-names: Jakob
+  orcid: "https://orcid.org/0000-0001-8961-5340"
+- family-names: Dacie
+  given-names: Sally
+- family-names: Hosak
+  given-names: Merlin
+  orcid: "https://orcid.org/0009-0005-7965-1846"
+- family-names: Weiss
+  given-names: Bennet
+  orcid: "https://orcid.org/0009-0009-9859-9683"
+- family-names: Ueckerdt
+  given-names: Falko
+  orcid: "https://orcid.org/0000-0001-5585-030X"
+contact:
+- family-names: Dürrwächter
+  given-names: Jakob
+  orcid: "https://orcid.org/0000-0001-8961-5340"
+doi: 10.5281/zenodo.19064877
+message: If you use this software, please cite our article in the
+  Journal of Open Source Software.
+preferred-citation:
+  authors:
+  - family-names: Dürrwächter
+    given-names: Jakob
+    orcid: "https://orcid.org/0000-0001-8961-5340"
+  - family-names: Hosak
+    given-names: Merlin
+    orcid: "https://orcid.org/0009-0005-7965-1846"
+  - family-names: Weiss
+    given-names: Bennet
+    orcid: "https://orcid.org/0009-0009-9859-9683"
+  - family-names: Ueckerdt
+    given-names: Falko
+    orcid: "https://orcid.org/0000-0001-5585-030X"
+  date-published: 2026-03-30
+  doi: 10.21105/joss.10105
+  issn: 2475-9066
+  issue: 119
+  journal: Journal of Open Source Software
+  publisher:
+    name: Open Journals
+  start: 10105
+  title: "flodym: A Python package for dynamic material flow analysis"
+  type: article
+  url: "https://joss.theoj.org/papers/10.21105/joss.10105"
+  volume: 11
+title: "flodym: A Python package for dynamic material flow analysis"

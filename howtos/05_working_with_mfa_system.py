@@ -23,7 +23,6 @@ from flodym import MFASystem
 
 
 class MyMFASystem(MFASystem):
-
     def compute(self):
 
         self.flows["sysenv => process_a"][...] = self.parameters["extraction"]
@@ -172,6 +171,65 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 my_mfa_system.check_mass_balance()
+
+# %% [markdown]
+# The check covers
+# - each process: the sum of its inflows minus the sum of its outflows must equal the net inflow of its stock (or zero if it has no stock). For `sysenv`, it must equal the negative mass change of all stocks in the system.
+# - each stock: the stock change in each time step must equal its net inflow over the time step.
+#
+# The checks of single processes and stocks are also available as `check_mass_balance()` methods of `Process` and `Stock`, and the errors themselves as `get_mass_balance()`.
+# Optionally, stocks are also checked automatically after each computation, which helps to find where in a computation the mass balance is violated. This is off by default and can be switched on with `flodym.config.checks.mass_balance_after_compute = True`.
+#
+# There is also a `check_flows()` method, which checks for negative or NaN flow values.
+#
+# What happens if a check fails, and the tolerance of the checks, is controlled by the global configuration `flodym.config`.
+# By default, a failed mass balance check raises an error, while a failed flow check logs a warning.
+# Each process and stock is checked with its own tolerance: a multiple (`relative_tolerance`, default 100) of the float precision of its largest value. Alternatively, an `absolute_tolerance` can be set.
+# Options can be changed permanently by assignment, or temporarily with `override`.
+# The `error_behavior` and `tolerance` arguments of the check methods override the configuration for a single call.
+
+# %%
+import flodym
+
+flodym.config.error_behaviors.check_flows = "error"
+
+with flodym.config.override(relative_tolerance=1000.0, error_behaviors={"mass_balance": "warn"}):
+    my_mfa_system.check_mass_balance()
+
+with flodym.config.override(checks={"mass_balance_after_compute": True}):
+    my_mfa_system.compute()
+
+my_mfa_system.check_flows(error_behavior="info")
+
+# %% [markdown]
+# ## Compute processes automatically
+#
+# Instead of writing all system equations in `compute()`, many processes can be computed automatically from the known flows, the shares of flows in the process throughput, and a dimension splitter, which adds dimensions to the process throughput.
+#
+# In our system, `process_a` splits its inflow (dimensions r, t) by product with the dimension splitter `product_shares`, and sends the share `process_a_yield` to `process_b`. The outflow without share, to `sysenv`, receives the remainder.
+# `process_b` passes everything on.
+
+# %%
+process_a = my_mfa_system.processes["process_a"]
+process_a.set_dimension_splitter(my_mfa_system.parameters["product_shares"])
+process_a.set_outflow_share("process_b", my_mfa_system.parameters["process_a_yield"])
+
+manual_results = {name: f.values.copy() for name, f in my_mfa_system.flows.items()}
+
+my_mfa_system.mark_all_unset()
+my_mfa_system.flows["sysenv => process_a"][...] = my_mfa_system.parameters["extraction"]
+my_mfa_system.compute_all_possible()
+
+for name, f in my_mfa_system.flows.items():
+    assert np.allclose(f.values, manual_results[name])
+
+# %% [markdown]
+# Only flows which are not set (see `FlodymArray.is_set`) are computed, which is why we marked all flows as unset first.
+# Single processes can be computed with `Process.compute()`; `compute_all_possible()` computes all processes it can, and returns the names of those it cannot.
+# Processes with stocks are computed together with their stock.
+# See the documentation of `Process.compute()` for the rules applied.
+#
+# With definition objects (see below), shares and dimension splitters are given in a `ProcessDefinition`, and flows can be set from a parameter with the `parameter` argument of `FlowDefinition`. Example 2 shows this.
 
 # %% [markdown]
 # ## Generate attributes from Definition objects

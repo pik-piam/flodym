@@ -35,6 +35,7 @@
    example1
    example2
    example3
+   example4
    example5
 
 .. toctree::
@@ -49,3 +50,4 @@
    api.stocks
    api.processes
    api.export_and_plotting
+   api.config

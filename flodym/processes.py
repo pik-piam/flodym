@@ -1,48 +1,66 @@
-from typing import List, Dict, Optional
-from pydantic import BaseModel as PydanticBaseModel, model_validator
 import logging
-from functools import reduce
-import numpy as np
+from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Sequence, Union
 
-from .flodym_arrays import Flow, FlodymArray, Parameter
-from .stocks import Stock
-from .mfa_definition import ProcessDefinition
+import numpy as np
+from pydantic import BaseModel as PydanticBaseModel, PrivateAttr, model_validator
+
+from ._checks import balance_failure, config_hint, max_abs, report_balance_failures
+from .config import ErrorBehavior, config, handle_error
 from .dimensions import DimensionSet
-from .config import config, handle_error, ErrorBehavior
+from .mfa_definition import ProcessDefinition
+
+if TYPE_CHECKING:
+    from .flodym_arrays import FlodymArray, Flow, Parameter
+    from .stocks import Stock
+
+Side = Literal["in", "out"]
+"""Side of a process: ``"in"`` for its inflows, ``"out"`` for its outflows."""
+SIDES: tuple[Side, Side] = ("in", "out")
 
 
 class UnderdeterminedError(Exception):
-    """Exception raised when a process is underdetermined."""
+    """Raised by :py:meth:`Process.compute` if the given flows, shares and stock values are not
+    sufficient to compute the process."""
 
     def __init__(self, process: "Process", message: str):
-        message = f"Cannot compute process '{process.name}' with ID {process.id}, as it is underdetermined. \n" + message
-        super().__init__(message)
-        self.message = message
+        self.process_name = process.name
+        self.short_message = f"Process '{process.name}' is underdetermined. Skip computation."
+        super().__init__(
+            f"Cannot compute process '{process.name}' (ID {process.id}), as it is "
+            f"underdetermined.\n{message}" + config_hint("process_underdetermined")
+        )
 
-class Process(PydanticBaseModel, arbitrary_types_allowed=True):
+
+class Process(PydanticBaseModel):
     """Processes serve as nodes for the MFA system layout definition.
     Flows are defined between two processes. Stocks are connected to a process.
     Processes do not contain values themselves.
 
-    Processes get an ID by the order they are defined in the :py:attribute::`MFASystem.definition`.
+    Processes get an ID by the order they are defined in the :py:attribute::`MFASystem.definition`,
+    or explicitly by a :py:class:`flodym.ProcessDefinition`.
     The process with ID 0 necessarily contains everything outside the system boundary.
     It has to be named 'sysenv'.
+
+    When an :py:class:`flodym.MFASystem` is set up, the process is linked to its inflows,
+    outflows and stock (see :py:attr:`inflows`, :py:attr:`outflows`, :py:attr:`stock`).
+
+    Optionally, shares of in- and outflows and a dimension splitter can be given (see
+    :py:meth:`set_inflow_share`, :py:meth:`set_outflow_share` and
+    :py:meth:`set_dimension_splitter`, or :py:class:`flodym.ProcessDefinition`), which allow to
+    compute unknown flows of the process with :py:meth:`compute`.
     """
 
     name: str
     """Name of the process."""
     id: int
     """ID of the process."""
-    _inflows: Dict[str, Flow] = {}
-    """Inflows to the process, keyed by linked process name."""
-    _outflows: Dict[str, Flow] = {}
-    """Outflows from the process, keyed by linked process name."""
-    dimension_splitter: Optional["FlodymArray"] = None
-    stock: Optional[Stock] = None
-    _inflow_shares: Dict[str, "FlodymArray"] = {}
-    _outflow_shares: Dict[str, "FlodymArray"] = {}
-    _total: FlodymArray = None
-    _was_overdetermined: bool = None
+    _inflows: Dict[str, "Flow"] = PrivateAttr(default_factory=dict)
+    _outflows: Dict[str, "Flow"] = PrivateAttr(default_factory=dict)
+    _stock: Optional["Stock"] = PrivateAttr(default=None)
+    _inflow_shares: Dict[str, "FlodymArray"] = PrivateAttr(default_factory=dict)
+    _outflow_shares: Dict[str, "FlodymArray"] = PrivateAttr(default_factory=dict)
+    _dimension_splitter: Optional["FlodymArray"] = PrivateAttr(default=None)
+    _splitter_used: bool = PrivateAttr(default=False)
 
     @model_validator(mode="after")
     def check_id0(self):
@@ -53,494 +71,821 @@ class Process(PydanticBaseModel, arbitrary_types_allowed=True):
             )
         return self
 
-    def __repr__(self):
-        return ""  # TODO
+    def __repr_args__(self):
+        """Arguments shown by ``repr()`` and ``str()``. Linked flows and the stock are shown by
+        name only, since they link back to the process."""
+        yield "name", self.name
+        yield "id", self.id
+        yield "inflows", list(self._inflows)
+        yield "outflows", list(self._outflows)
+        yield "stock", None if self._stock is None else self._stock.name
+        if self._inflow_shares:
+            yield "inflow_shares", {k: v.name for k, v in self._inflow_shares.items()}
+        if self._outflow_shares:
+            yield "outflow_shares", {k: v.name for k, v in self._outflow_shares.items()}
+        if self._dimension_splitter is not None:
+            yield "dimension_splitter", self._dimension_splitter.name
 
     @property
-    def inflows(self) -> Dict[str, Flow]:
-        """Inflows to the process."""
+    def inflows(self) -> Dict[str, "Flow"]:
+        """Inflows to the process, keyed by flow name."""
         return self._inflows
 
     @property
-    def outflows(self) -> Dict[str, Flow]:
-        """Outflows from the process."""
+    def outflows(self) -> Dict[str, "Flow"]:
+        """Outflows from the process, keyed by flow name."""
         return self._outflows
 
-    def add_inflow(self, flow: Flow) -> None:
-        """Add an inflow flow to the process."""
-        self._inflows[flow.from_process.name] = flow
-
-    def add_outflow(self, flow: Flow) -> None:
-        """Add an outflow flow from the process."""
-        self._outflows[flow.to_process.name] = flow
-
-    def remove_inflow(self, from_process: str) -> None:
-        """Remove an inflow from the process."""
-        if from_process in self._inflows:
-            del self._inflows[from_process]
-        else:
-            raise ValueError(f"In process {self.name}: No inflow from process '{from_process}' found.")
-
-    def remove_outflow(self, to_process: str) -> None:
-        """Remove an outflow from the process."""
-        if to_process in self._outflows:
-            del self._outflows[to_process]
-        else:
-            raise ValueError(f"In process {self.name}: No outflow to process '{to_process}' found.")
-
-    def add_inflow_share(self, from_process: str, share: FlodymArray):
-        if from_process not in self._inflows:
-            raise ValueError(f"In process {self.name}: Cannot add inflow share from process {from_process}, as no such inflow found.")
-        self._inflow_shares[from_process] = share
-
-    def add_outflow_share(self, to_process: str, share: FlodymArray):
-        if to_process not in self._outflows:
-            raise ValueError(f"In process {self.name}: Cannot add outflow share to process {to_process}, as no such outflow found.")
-        self._outflow_shares[to_process] = share
-
-    def remove_inflow_share(self, from_process: str):
-        """Remove the inflow share for a given process."""
-        if from_process in self._inflow_shares:
-            del self._inflow_shares[from_process]
-        else:
-            raise ValueError(f"In process {self.name}: No inflow share for process '{from_process}' found.")
-
-    def remove_outflow_share(self, to_process: str):
-        """Remove the outflow share for a given process."""
-        if to_process in self._outflow_shares:
-            del self._outflow_shares[to_process]
-        else:
-            raise ValueError(f"In process {self.name}: No outflow share for process '{to_process}' found.")
-
     @property
-    def is_computed(self) -> bool:
-        """Check if the process has been computed."""
-        if self.unknown_flows("in") or self.unknown_flows("out"):
-            return False
-        if self.stock is not None and not self.stock.is_computed:
-            return False
-        return True
+    def stock(self) -> Optional["Stock"]:
+        """Stock connected to the process, if any."""
+        return self._stock
 
-    def compute(self, on_underdetermined: ErrorBehavior = "error", recursive: bool=False) -> None:
-        """Compute all unknown flows of the process, based on topological information and known in/outflows.
-        This covers most cases of MFA processes, but not all.
-        Sometimes manual computations are still necessary.
-        For example, if there is a 2x2 equation system to solve (see example 1).
+    def add_inflow(self, flow: "Flow") -> None:
+        """Link a flow as inflow to the process."""
+        if flow.to_process is not self:
+            raise ValueError(f"Flow '{flow.name}' does not go to process '{self.name}'.")
+        self._inflows[flow.name] = flow
 
-        Topological information needed for this includes:
-        - the inflows and outflows
-        - the shares of some in- or outflows relative to the process total
-        - an array to multiply with to apply a dimension split
+    def add_outflow(self, flow: "Flow") -> None:
+        """Link a flow as outflow from the process."""
+        if flow.from_process is not self:
+            raise ValueError(f"Flow '{flow.name}' does not come from process '{self.name}'.")
+        self._outflows[flow.name] = flow
 
-        The computation assumes the following process structure:
-        - one or several inflows
-        - combined into a total
-        - possible dimension change
-        - one or several outflows
-        Though quite general, this applies some restrictions on the possible process layouts.
-        For example, no dimension expansion of individual in- or outflows through multiplication with shares is allowed.
-        However, this can be realized by adding an own process which only applies this dimension splitting.
-
-        The computation follows the following steps:
-        - Detect if the total can be calculated from either the known inflows and inflow shares (forward mode),
-          or from the known outflows and outflow shares (backward mode)
-          Let's assume forward mode in the following, but backward mode works in the same way.
-          The total can be calculated...
-          - If all inflows are given, the total is simply their sum.
-          - If a flow and its share are given, the total is that flow divided by its share
-          - If the shares of all unknown flows are given, the total is t = sum(known_flows) / (1 - sum(shares_of_unknown_flows))
-          If none of the three conditions is met on neither side (in/out), then the total cannot be calculated, and thus the whole
-          process cannot be calculated.
-        - Detect if there is a dimension_splitter and if it provides dimension information that the total does not have.
-          If this is the case, apply dimension splitter by multiplying the total with it
-        - Compute unknown flows. All but one unknown flows on each side need a share. Each of these unknown outflows with share
-          is then calculated as total * share. If there is one remaining unknown flow without share, it is calculated as
-          total - sum(known_flows_of_this_side).
-          If more than one unknown flow on one side has no share defined, it cannot be calculated, and thus the whole process cannot be calculated.
-        """
-        if self.is_computed:
-            logging.debug(f"Process {self.name} with ID {self.id} is already computed.")
-            return
-        if self.id == 0:
-            logging.debug(f"Process {self.name} with ID {self.id} is the system boundary and cannot be computed.")
-            return
-        try:
-
-            self._was_overdetermined = self.is_overdetermined
-            self.try_compute()
-
-            if not self.is_computed:
-                raise ValueError(
-                    f"In Process {self.name}: After computation, there are still unknown flows. "
-                    "This indicates an internal flodym error."
-                )
-
-            if config.checks.mass_balance_processes:
-                self.check_mass_balance()
-
-            if recursive:
-                for flow in self.inflows.values():
-                    flow.from_process.compute(on_underdetermined=on_underdetermined, recursive=True)
-                for flow in self.outflows.values():
-                    flow.to_process.compute(on_underdetermined=on_underdetermined, recursive=True)
-
-        except UnderdeterminedError as e:
-            if on_underdetermined is None:
-                on_underdetermined = config.error_behaviors.process_underdetermined
-            if on_underdetermined == ErrorBehavior.INFO:
-                # shorter message for readability in recursive mode (many will be underdertermined)
-                e.message = f"Process {self.name} is underdetermined. Skip computation."
-            handle_error(behavior=on_underdetermined, error=e)
-
-    def try_compute(self):
-        if self.stock is None:
-            self.compute_no_stock()
-        else:
-            self.stock.compute_process()
-
-    def compute_no_stock(self):
-        if self.name == "fabrication":
-            pass
-        self.compute_total()
-        self.apply_dimension_splitter()
-        self.compute_flows()
-        self.check_shares()
-
-    def flows(self, direction: str):
-        if direction == "in":
-            return self._inflows
-        elif direction == "out":
-            return self._outflows
-        else:
-            raise ValueError("Direction must be 'in' or 'out'.")
-
-    def shares(self, side: str):
-        if side == "in":
-            return self._inflow_shares
-        elif side == "out":
-            return self._outflow_shares
-        else:
-            raise ValueError("Direction must be 'in' or 'out'.")
-
-    def neither_known(self, side: str) -> List[str]:
-        return [
-            name for name, flow in self.flows(side).items() if not flow.is_set
-            and name not in self.shares(side)
-        ]
-
-    def known_flows(self, side: str) -> Dict[str, Flow]:
-        return {
-            name: flow for name, flow in self.flows(side).items() if flow.is_set
-        }
-
-    def unknown_flows(self, side: str) -> Dict[str, Flow]:
-        return {
-            name: flow for name, flow in self.flows(side).items() if not flow.is_set
-        }
-
-    def both_known(self, side: str) -> List[str]:
-        return [
-            name for name, flow in self.flows(side).items() if flow.is_set
-            and name in self.shares(side)
-        ]
-
-    @property
-    def is_overdetermined(self) -> bool:
-        n_degree_of_freedom = len(self.flows("in")) + len(self.flows("out")) + 1  # +1 for total
-        n_conditions = 2  # sum_inflows = total and sum_outflows = total
-        n_given = (len(self.known_flows("in")) + len(self.known_flows("out")) + len(self.shares("in")) + len(self.shares("out")))
-        return n_given > n_degree_of_freedom - n_conditions
-
-    def can_compute_total(self, from_side: str) -> bool:
-        """Check if the process can compute the total flow through the process in the given direction."""
-        return (self.both_known(from_side) or
-            (len(self.neither_known(from_side)) == 0 and len(self.known_flows(from_side)) >= 1))
-
-    def can_compute_flows(self, sides: List[str] = ["in", "out"]) -> bool:
-        """Check if the process can compute the flows in the given direction."""
-        return all(len(self.neither_known(side)) <= 1 for side in sides)
-
-    def compute_total(self, try_sides: List[str] = ["in", "out"]):
-        """Compute the total flow based on the inflows or outflows."""
-        side = None
-        for s in try_sides:
-            if self.can_compute_total(s):
-                side = s
-                break
-        if side is None:
-            message = self.get_underdetermined_error_message_total(try_sides)
-            raise UnderdeterminedError(process=self, message=message)
-
-        if len(self.known_flows(side)) == len(self.flows(side)):
-            # all flows are known
-            self._total = sum(self.flows(side).values())
-        elif self.both_known(side):
-            name = self.both_known(side)[0]
-            excess_dims = self.shares(side)[name].dims - self.flows(side)[name].dims
-            if excess_dims:
-                names = ", ".join(excess_dims.names)
-                raise ValueError(
-                    f"In Process {self.name}: Share of flow to/from process {name} has dimensions "
-                    f"{names} not contained in the flow's dimensions."
-                )
-            self._total = self.flows(side)[name] / self.shares(side)[name]
-        else:
-            sum_known = sum(self.known_flows(side).values())
-            shares_unknown = {name: self.shares(side)[name] for name in self.unknown_flows(side)}
-            dims_unknown = reduce(
-                lambda x, y: x | y.dims, shares_unknown.values(), DimensionSet(dim_list=[])
-            )
-            if dims_unknown - sum_known.dims:
-                share_names = ", ".join(
-                    [name for name, share in shares_unknown.items() if share.dims - sum_known.dims]
-                )
-                excess_names = ", ".join((dims_unknown-sum_known.dims).names)
-                raise ValueError(
-                    f"In Process {self.name}: Error when trying to infer total flow from known "
-                    f"flows and shares of unknown flows: Shares of flows to/from process(es) "
-                    f"{share_names} has dimensions " f"{excess_names} not contained in all the "
-                    f"known flows from/to processes {', '.join(self.known_flows(side))}"
-                )
-            sum_shares_unknown = sum([s.cast_to(dims_unknown) for s in shares_unknown.values()])
-            self._total = sum_known / (1 - sum_shares_unknown)
-
-    def get_underdetermined_error_message_total(self, sides: List[str]) -> str:
-        message = "Failed to compute total flow of process from given in/outflows.\n"
-        for side in sides:
-            message += f"Tried to compute from {side}flows, but failed. Reasons:\n"
-            if not self.known_flows(side):
-                message += f"- no flow from this side has an absolute value given\n"
-            for linked_process in self.neither_known(side):
-                message += f"- for flow from/to process {linked_process}, neither share nor absolute value is given.\n"
-        return message
-
-    def get_underdetermined_error_message_flows(self, sides: List[str]) -> str:
-        message = ""
-        for side in sides:
-            message += f"Failed to compute {side}flows from total; For more than one {side}flow, neither share nor absolute value was given.\n"
-            message += f"Please provide either share or absolute value for all but one of the flows from/to the processes "
-            message += ", ".join(self.neither_known(side)) + ".\n"
-        return message
-
-    def apply_dimension_splitter(self, sides: list[str] = ["in", "out"]):
-        """Apply the dimension splitter to the total flow."""
-
-        # set union of all unknown flows
-        dims_unknown = DimensionSet(dim_list=[])
-        for side in sides:
-            for flow in self.unknown_flows(side).values():
-                dims_unknown |= flow.dims
-        missing_dims = dims_unknown - self._total.dims
-
-        if not missing_dims:
-            if self.dimension_splitter is not None:
-                self.handle_unused_splitter()
-            return
-
-        if self.dimension_splitter is None:
+    def set_stock(self, stock: "Stock") -> None:
+        """Link a stock to the process. A process can have only one stock."""
+        if stock.process is not self:
+            raise ValueError(f"Stock '{stock.name}' is not connected to process '{self.name}'.")
+        if self._stock is not None and self._stock is not stock:
             raise ValueError(
-                f"Process {self.name} has missing dimensions {missing_dims.names} for unknown flows, but no dimension splitter is set."
+                f"Process '{self.name}' already has the stock '{self._stock.name}'; "
+                f"it cannot also have the stock '{stock.name}'."
             )
+        self._stock = stock
 
-        splitter_dims = self.dimension_splitter.dims
-        if missing_dims - splitter_dims:
-            raise ValueError(
-                f"Dimension splitter of process {self.name} does not cover all dimensions {missing_dims.names} needed to determine unknown flows from total flow."
-            )
+    def remove_inflow(self, flow_name: str) -> None:
+        """Remove the link to an inflow, given by its name."""
+        if flow_name not in self._inflows:
+            raise ValueError(f"In process {self.name}: No inflow '{flow_name}' found.")
+        del self._inflows[flow_name]
 
-        common_dims = splitter_dims & self._total.dims
-        splitter_sum = self.dimension_splitter.sum_to(common_dims.letters)
-        if np.max(np.abs((splitter_sum.values - 1))) > self.tolerance:
-            raise ValueError(
-                f"Dimension splitter of process {self.name} does not sum to 1 if summed to common dimensions with process total {common_dims.names}."
-            )
+    def remove_outflow(self, flow_name: str) -> None:
+        """Remove the link to an outflow, given by its name."""
+        if flow_name not in self._outflows:
+            raise ValueError(f"In process {self.name}: No outflow '{flow_name}' found.")
+        del self._outflows[flow_name]
 
-        self._total *= self.dimension_splitter
+    def remove_stock(self) -> None:
+        """Remove the link to the stock."""
+        self._stock = None
 
-    def handle_unused_splitter(self):
-        message = f"In Process {self.name}: Dimension splitter is set, but not used. Given split may not be fulfilled."
-        handle_error(
-            behavior=config.error_behaviors.unused_dimension_splitter,
-            message=message
-        )
+    def clear_links(self) -> None:
+        """Remove the links to all inflows, outflows and the stock."""
+        self._inflows = {}
+        self._outflows = {}
+        self._stock = None
 
-    def compute_flows(self, sides: List[str] = ["in", "out"]):
-        """Compute the flows based on the total flow."""
+    def get_sum_inflows(self) -> Union["FlodymArray", float]:
+        """Sum of all inflows to the process, reduced to the dimensions common to all inflows.
+        Zero if the process has no inflows."""
+        return sum(self._inflows.values(), 0.0)
 
-        if not self.can_compute_flows(sides):
-            message = self.get_underdetermined_error_message_flows(sides)
-            raise UnderdeterminedError(process=self, message=message)
+    def get_sum_outflows(self) -> Union["FlodymArray", float]:
+        """Sum of all outflows from the process, reduced to the dimensions common to all outflows.
+        Zero if the process has no outflows."""
+        return sum(self._outflows.values(), 0.0)
 
-        for side in sides:
-            # saving in temp flow avoids reducing dimensions.
-            # This may be important for inferring the last flow by subtracting all known from the total,
-            # because the dimension set intersection is used for that subtraction.
-            temp_flows = {}
-            for share_name, share in self.shares(side).items():
-                if share_name in self.unknown_flows(side):
-                    if share.dims - self._total.dims:
-                        names = ", ".join((share.dims - self._total.dims).names)
-                        raise ValueError(
-                            f"In Process {self.name}: Share of flow to/from process {share_name} "
-                            f"has dimensions {names} not contained in the processes' total "
-                            f"dimensions {', '.join(self._total.dims.names)}. If you wish to "
-                            "perform this dimensional split, consider outsourcing it to its own "
-                            "process with a dimension_splitter."
-                        )
-                    temp_flows[share_name] = self._total * share
-            # calculate the last by sum, if necessary
-            if len(self.unknown_flows(side)) - len(temp_flows) == 1:
-                unknown_name = [n for n in self.unknown_flows(side) if n not in temp_flows][0]
-                unknown_flow = self.unknown_flows(side)[unknown_name]
-                sum_known = sum(self.known_flows(side).values()) + sum(temp_flows.values())
-                if isinstance(sum_known, FlodymArray) and unknown_flow.dims - sum_known.dims:
-                    known_names = ", ".join(self.known_flows(side))
-                    missing_names = ", ".join((unknown_flow.dims - sum_known.dims).names)
-                    raise ValueError(
-                        f"In Process {self.name}: One of the flows with set values ({known_names}) "
-                        f"is missing dimensions ({missing_names}), which are needed to compute "
-                        f"the unknown flow from/to process {unknown_name} by subtracting known "
-                        "flows from the total."
-                    )
-                unknown_flow[...] = self._total - sum_known
-            # reduce dimensions and transfer to actual flows
-            for flow_name, flow in temp_flows.items():
-                self.flows(side)[flow_name][...] = flow
-
-    def check_shares(self, sides: List[str] = ["in", "out"]):
-        if not config.checks.process_shares:
-            return
-        for side in sides:
-            for name, share in self.shares(side).items():
-                error = self._total * share - self.flows(side)[name]
-                max_error = np.max(np.abs(error.values))
-                if max_error > self.tolerance:
-                    message = (
-                        f"after computation of process {self.name}: Share of flow to/from process "
-                        f"{name} is not fulfilled (error = {max_error})."
-                    )
-                    if self._was_overdetermined:
-                        message += (
-                            "This may be due to the process being overdetermined."
-                            "If it is not intentional, consider removing some shares or given flows."
-                        )
-                    else:
-                        message += "This may be due to lacking float precision, or an internal flodym error."
-                    handle_error(
-                        behavior=config.error_behaviors.process_shares,
-                        message=message
-                    )
-
-    def get_sum_inflows(self) -> FlodymArray:
-        """Sum of all inflows to the process."""
-        if not self.is_computed:
-            raise ValueError(f"Cannot compute sum_inflows for process {self.name} before it is computed.")
-        if not self.inflows:
-            return 0.
-        return sum(self.inflows.values())
-
-    def get_sum_outflows(self) -> FlodymArray:
-        """Sum of all outflows from the process."""
-        if not self.is_computed:
-            raise ValueError(f"Cannot compute sum_outflows for process {self.name} before it is computed.")
-        if not self.outflows:
-            return 0.
-        return sum(self.outflows.values())
-
-    def get_net_inflow(self):
+    def get_net_inflow(self) -> Union["FlodymArray", float]:
+        """Sum of all inflows minus sum of all outflows of the process.
+        Unless the process is 'sysenv', this equals the net inflow of its stock (or zero), if the
+        mass balance is satisfied."""
         return self.get_sum_inflows() - self.get_sum_outflows()
+
+    def get_mass_balance(
+        self, mass_change: Union["FlodymArray", float, None] = None
+    ) -> Union["FlodymArray", float]:
+        """Mass balance error of the process: The net inflow of the process
+        (see :py:meth:`get_net_inflow`) minus its mass change.
+        Zero if the mass balance is satisfied.
+
+        Args:
+            mass_change: The mass change of the process per year. If None, it is the net inflow of
+                the stock of the process, or zero if the process has no stock.
+                For the 'sysenv' process, it must be given, as the negative mass change of the
+                whole system, see :py:meth:`flodym.MFASystem.check_mass_balance`.
+        """
+        if mass_change is None:
+            if self.id == 0:
+                raise ValueError(
+                    "The mass balance of the 'sysenv' process depends on the stock changes of the "
+                    "whole MFA system and can only be computed if mass_change is given. "
+                    "Use MFASystem.check_mass_balance() instead."
+                )
+            mass_change = 0.0 if self._stock is None else self._stock.net_inflow
+        return self.get_net_inflow() - mass_change
 
     @property
     def _absolute_float_precision(self) -> float:
-        """The numpy float precision, multiplied by the maximum absolute flow or stock value."""
-        if self.inflows:
-            max_inflow = max([f._absolute_float_precision for f in self.inflows.values()])
-        else:
-            max_inflow = 0.
-        if self.outflows:
-            max_outflow = max([f._absolute_float_precision for f in self.outflows.values()])
-        else:
-            max_outflow = 0.
-        return max(max_inflow, max_outflow)
+        """Machine epsilon times the largest absolute value of the in- and outflows of the process
+        and of the in- and outflow of its stock."""
+        arrays = list(self._inflows.values()) + list(self._outflows.values())
+        if self._stock is not None:
+            arrays += [self._stock.inflow, self._stock.outflow]
+        return max((a._absolute_float_precision for a in arrays), default=0.0)
 
     @property
     def tolerance(self) -> float:
-        """The tolerance for checks like mass balance"""
-        if config.absolute_tolerance is not None:
-            return config.absolute_tolerance
-        return config.relative_tolerance * self._absolute_float_precision
+        """Absolute tolerance for the mass balance check of the process, see
+        :py:attr:`flodym.config.Config.relative_tolerance`."""
+        return config.get_tolerance(self._absolute_float_precision)
 
-    def check_mass_balance(self, tolerance: float = None, error_behavior: ErrorBehavior = None, mass_change_target: FlodymArray = None):
-        """Compute mass balance, and check whether it is within a certain tolerance.
-        Throw an error if it isn't.
+    def check_mass_balance(
+        self,
+        tolerance: Optional[float] = None,
+        error_behavior: Optional[ErrorBehavior | str] = None,
+        mass_change: Union["FlodymArray", float, None] = None,
+    ) -> bool:
+        """Check whether the mass balance of the process (see :py:meth:`get_mass_balance`) is
+        satisfied within a tolerance.
 
         Args:
-            tolerance (float, optional): A tolerance override for the mass balance check.
-                If None, takes the  processes's own tolerance
-            error_behavior (ErrorBehavior): What to do if the mass balance check fails.
-                If None, takes the global config setting, which defaults to raising an error
+            tolerance: Absolute tolerance. If None, :py:attr:`tolerance` is used.
+            error_behavior: What to do if the check fails. If None,
+                ``flodym.config.error_behaviors.mass_balance`` is used (default: raise an error).
+            mass_change: See :py:meth:`get_mass_balance`.
+
+        Returns:
+            Whether the check passed.
         """
+        if error_behavior is None:
+            error_behavior = config.error_behaviors.mass_balance
+        return report_balance_failures(
+            [self._mass_balance_failure(tolerance, mass_change)],
+            error_behavior,
+            hint=config_hint("mass_balance", tolerance=True),
+            success_message=f"Mass balance of process '{self.name}' is consistent.",
+        )
 
-        if self.id == 0 and mass_change_target is None:
-            logging.info(f"mass_change_target not given. Skip mass balance check for system environment.")
-            return
-
-        logging.info(f"Checking mass balance of {self.__class__.__name__} object...")
-
-        if mass_change_target is None:
-            mass_change_target = 0. if self.stock is None else self.stock.net_inflow
-        # net_inflow = mass_change, so the difference should be zero
-        mass_balance = self.get_net_inflow() - mass_change_target
-        max_error =  np.max(np.abs(mass_balance.values))
+    def _mass_balance_failure(
+        self,
+        tolerance: Optional[float] = None,
+        mass_change: Union["FlodymArray", float, None] = None,
+    ) -> Optional[str]:
+        """Description of the failed mass balance check for an error message, or None if it
+        passed. If no tolerance is given, :py:attr:`tolerance` is used, extended by the float
+        precision of ``mass_change`` if given."""
         if tolerance is None:
-            tolerance = self.tolerance
-        if max_error > tolerance:
-            message = f"In process {self.name}: Mass balance check failed (error = {max_error})"
-            if error_behavior is None:
-                error_behavior = config.error_behaviors.mass_balance
-            handle_error(behavior=error_behavior, message=message)
+            precision = self._absolute_float_precision
+            if mass_change is not None and hasattr(mass_change, "_absolute_float_precision"):
+                precision = max(precision, mass_change._absolute_float_precision)
+            tolerance = config.get_tolerance(precision)
+        balance = self.get_mass_balance(mass_change=mass_change)
+        return balance_failure(f"process '{self.name}'", balance, tolerance)
+
+
+    # ------------------------------------------------------------------------------------------
+    # Shares and dimension splitter
+
+    @property
+    def inflow_shares(self) -> Dict[str, "FlodymArray"]:
+        """Shares of inflows in the total throughput of the process, keyed by flow name.
+        Set them with :py:meth:`set_inflow_share`."""
+        return dict(self._inflow_shares)
+
+    @property
+    def outflow_shares(self) -> Dict[str, "FlodymArray"]:
+        """Shares of outflows in the total throughput of the process, keyed by flow name.
+        Set them with :py:meth:`set_outflow_share`."""
+        return dict(self._outflow_shares)
+
+    @property
+    def dimension_splitter(self) -> Optional["FlodymArray"]:
+        """Array by which the total throughput of the process is multiplied in
+        :py:meth:`compute`, to add dimensions which it does not have, but the flows to compute do.
+        Set it with :py:meth:`set_dimension_splitter`."""
+        return self._dimension_splitter
+
+    def set_inflow_share(self, flow: str, share: "FlodymArray") -> None:
+        """Set the share of an inflow in the total throughput of the process, used by
+        :py:meth:`compute`. The array is stored by reference, so later changes of its values are
+        taken into account.
+
+        Args:
+            flow: Name of the inflow, or name of the process it comes from, if only one flow
+                comes from there. The process must be linked to its flows, see
+                :py:meth:`flodym.MFASystem.relink`.
+            share: The share. Its dimensions must be contained in those of the total throughput
+                of the process.
+        """
+        self._set_share("in", flow, share)
+
+    def set_outflow_share(self, flow: str, share: "FlodymArray") -> None:
+        """Set the share of an outflow in the total throughput of the process.
+        See :py:meth:`set_inflow_share`."""
+        self._set_share("out", flow, share)
+
+    def remove_inflow_share(self, flow: str) -> None:
+        """Remove the share of an inflow, given by flow name or name of the process it comes
+        from."""
+        self._remove_share("in", flow)
+
+    def remove_outflow_share(self, flow: str) -> None:
+        """Remove the share of an outflow, given by flow name or name of the process it goes
+        to."""
+        self._remove_share("out", flow)
+
+    def set_dimension_splitter(self, splitter: Optional["FlodymArray"]) -> None:
+        """Set the dimension splitter of the process (see :py:attr:`dimension_splitter`), or
+        remove it by passing None. It must sum to one over the dimensions it adds to the total
+        throughput of the process."""
+        if splitter is not None:
+            self._check_share_values(splitter, "Dimension splitter")
+        self._dimension_splitter = splitter
+
+    def _flows(self, side: Side) -> Dict[str, "Flow"]:
+        if side == "in":
+            return self._inflows
+        if side == "out":
+            return self._outflows
+        raise ValueError(f"Side must be 'in' or 'out', not '{side}'.")
+
+    def _shares(self, side: Side) -> Dict[str, "FlodymArray"]:
+        if side == "in":
+            return self._inflow_shares
+        if side == "out":
+            return self._outflow_shares
+        raise ValueError(f"Side must be 'in' or 'out', not '{side}'.")
+
+    def _resolve_flow_name(self, side: Side, flow: str) -> str:
+        """Get the name of an in- or outflow, given by flow name or by the name of the process
+        it comes from or goes to."""
+        flows = self._flows(side)
+        if flow in flows:
+            return flow
+        matches = [
+            name
+            for name, f in flows.items()
+            if (f.from_process if side == "in" else f.to_process).name == flow
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            raise ValueError(
+                f"In process '{self.name}': Several {side}flows connect to process '{flow}' "
+                f"({', '.join(matches)}). Give the flow name instead."
+            )
+        raise ValueError(
+            f"In process '{self.name}': No {side}flow named '{flow}' or connected to a process "
+            f"named '{flow}' found. Existing {side}flows: {', '.join(flows) or 'none'}. "
+            "Are the flows linked to the process (see MFASystem.relink())?"
+        )
+
+    def _set_share(self, side: Side, flow: str, share: "FlodymArray") -> None:
+        from .flodym_arrays import FlodymArray
+
+        if not isinstance(share, FlodymArray):
+            raise TypeError(f"Share must be a FlodymArray, not {type(share).__name__}.")
+        name = self._resolve_flow_name(side, flow)
+        self._check_share_values(share, f"Share of flow '{name}'")
+        self._shares(side)[name] = share
+
+    def _remove_share(self, side: Side, flow: str) -> None:
+        shares = self._shares(side)
+        name = flow if flow in shares else self._resolve_flow_name(side, flow)
+        if name not in shares:
+            raise ValueError(f"In process '{self.name}': No share for {side}flow '{name}' found.")
+        del shares[name]
+
+    # ------------------------------------------------------------------------------------------
+    # Computation
+
+    @property
+    def is_computed(self) -> bool:
+        """Whether all in- and outflows of the process and its stock (if any) are set
+        (see :py:attr:`flodym.FlodymArray.is_set`)."""
+        if self._unknown_flows("in") or self._unknown_flows("out"):
+            return False
+        return self._stock is None or self._stock.is_computed
+
+    @property
+    def is_overdetermined(self) -> bool:
+        """Whether more flow values, shares and stock values are given than needed to compute
+        the process. In this case, the given values may be inconsistent.
+
+        Unknowns are the in- and outflows and the totals of the in- and outflow side (one shared
+        total without stock; with stock, its inflow, outflow and stock). Equations are the sums
+        of each side, the given flows, shares and stock arrays, and the stock model equations.
+        """
+        n_flows = len(self._inflows) + len(self._outflows)
+        n_given = len(self._known_flows("in")) + len(self._known_flows("out"))
+        n_given += len(self._inflow_shares) + len(self._outflow_shares)
+        if self._stock is None:
+            n_unknowns = n_flows + 1
+            n_equations = 2 + n_given
         else:
-            logging.info(f"In process {self.name}: Success - Mass balance is consistent!")
+            stock_arrays = (self._stock.inflow, self._stock.outflow, self._stock.stock)
+            n_unknowns = n_flows + 3
+            n_equations = 2 + n_given + self._stock._n_equations
+            n_equations += sum(a.is_set for a in stock_arrays)
+        return n_equations > n_unknowns
+
+    def compute(
+        self,
+        on_underdetermined: Optional[ErrorBehavior | str] = None,
+        recursive: bool = False,
+    ) -> bool:
+        """Compute the unknown in- and outflows of the process (and its stock, if any), from the
+        known ones, the shares and the dimension splitter.
+
+        Flows are known if they are set (see :py:attr:`flodym.FlodymArray.is_set`). This covers
+        many, but not all MFA processes; others have to be computed manually, for example if two
+        processes depend on each other and form an equation system.
+
+        The computation assumes the following structure of a process without stock: The inflows
+        sum to a total throughput, which may be multiplied with the dimension splitter, and which
+        is split into the outflows. It proceeds as follows:
+
+        - The total is computed from the inflows or from the outflows (whichever is possible) as
+
+          - the sum of the flows of that side, if all are known,
+          - a known flow divided by its share, if both are given,
+          - or as ``sum(known flows) / (1 - sum(shares of unknown flows))``, if the shares of all
+            unknown flows of that side are given.
+
+          This means that the shares of a side refer to the total of that side.
+        - If unknown flows have dimensions the total does not have, the total is multiplied
+          with the dimension splitter, which must sum to one over these dimensions.
+        - Each unknown flow with a share is computed as total times share.
+          One unknown flow per side may have no share; it is the total minus all other flows.
+
+        Dimensions of flows are thus only added by the dimension splitter. To add dimensions to
+        single flows, insert a process with a dimension splitter.
+
+        For a process with stock, the total of the inflows is the inflow of the stock, and the
+        total of the outflows is its outflow. See :py:meth:`flodym.Stock.compute_process` for how
+        stocks of each type are computed.
+
+        Args:
+            on_underdetermined: What to do if the process cannot be computed from the given
+                values. If None, ``flodym.config.error_behaviors.process_underdetermined`` is used
+                (default: raise an :py:class:`flodym.UnderdeterminedError`).
+            recursive: If True, after a successful computation, the neighboring processes are
+                computed as well, recursively. Underdetermined neighbors are skipped with an info
+                log message. See also :py:meth:`flodym.MFASystem.compute_all_possible`.
+
+        Returns:
+            Whether the process is computed afterwards.
+        """
+        if self.id == 0:
+            logging.debug(f"Process '{self.name}' is the system boundary and is not computed.")
+            return False
+        if self.is_computed:
+            logging.debug(f"Process '{self.name}' is already computed.")
+            return True
+        if on_underdetermined is None:
+            on_underdetermined = config.error_behaviors.process_underdetermined
+        on_underdetermined = ErrorBehavior(on_underdetermined)
+
+        try:
+            was_overdetermined = self.is_overdetermined
+            self._check_shares_linked()
+            self._splitter_used = False
+            if self._stock is None:
+                self._compute_without_stock()
+            else:
+                self._stock.compute_process()
+        except UnderdeterminedError as error:
+            if on_underdetermined == ErrorBehavior.ERROR:
+                raise
+            message = error.short_message if recursive else str(error)
+            handle_error(behavior=on_underdetermined, message=message)
+            return False
+
+        if not self.is_computed:
+            raise RuntimeError(
+                f"After computation of process '{self.name}', there are still unknown flows or "
+                "stock arrays. This indicates an internal flodym error."
+            )
+        # checked after the computation, to avoid repeated messages for underdetermined processes
+        self._check_share_sums()
+        if self._dimension_splitter is not None and not self._splitter_used:
+            handle_error(
+                behavior=config.error_behaviors.unused_dimension_splitter,
+                message=(
+                    f"In process '{self.name}': The dimension splitter is set, but was not used, "
+                    "since no dimensions had to be added. The split it gives may not be fulfilled."
+                    + config_hint("unused_dimension_splitter")
+                ),
+            )
+        if was_overdetermined or config.checks.mass_balance_after_compute:
+            hint = config_hint("mass_balance", tolerance=True)
+            if was_overdetermined:
+                hint = (
+                    " The process was overdetermined, so the given values may be inconsistent."
+                    + hint
+                )
+            report_balance_failures(
+                [self._mass_balance_failure()],
+                config.error_behaviors.mass_balance,
+                hint=hint,
+                success_message=f"Mass balance of process '{self.name}' is consistent.",
+            )
+
+        if recursive:
+            neighbors = [f.from_process for f in self._inflows.values()]
+            neighbors += [f.to_process for f in self._outflows.values()]
+            for neighbor in neighbors:
+                neighbor.compute(on_underdetermined=ErrorBehavior.INFO, recursive=True)
+        return True
+
+    def _compute_without_stock(self) -> None:
+        side = self._choose_total_side(SIDES)
+        self._check_can_compute_flows(SIDES)
+        total = self._compute_total(side)
+        total = self._apply_dimension_splitter(total, SIDES)
+        for side in SIDES:
+            self._compute_flows(total, side)
+            self._check_shares_fulfilled(total, side)
+
+    def _compute_side_from_total(self, total: "FlodymArray", side: Side) -> None:
+        """Compute the unknown flows of one side from a given total of this side, which may be
+        extended by the dimension splitter. Used for processes with stock."""
+        total = self._apply_dimension_splitter(total, (side,))
+        self._compute_flows(total, side)
+        self._check_shares_fulfilled(total, side)
+
+    def _known_flows(self, side: Side) -> Dict[str, "Flow"]:
+        return {name: f for name, f in self._flows(side).items() if f.is_set}
+
+    def _unknown_flows(self, side: Side) -> Dict[str, "Flow"]:
+        return {name: f for name, f in self._flows(side).items() if not f.is_set}
+
+    def _neither_known(self, side: Side) -> List[str]:
+        """Flows of which neither the value nor the share is given."""
+        return [name for name in self._unknown_flows(side) if name not in self._shares(side)]
+
+    def _both_known(self, side: Side) -> List[str]:
+        """Flows of which both the value and the share are given."""
+        return [name for name in self._known_flows(side) if name in self._shares(side)]
+
+    def _total_method(self, side: Side) -> Optional[str]:
+        """How the total can be computed from a side, or None if it cannot."""
+        if not self._flows(side):
+            return None
+        if not self._unknown_flows(side):
+            return "sum"
+        if self._both_known(side):
+            return "share"
+        if not self._neither_known(side) and self._known_flows(side):
+            return "remainder"
+        return None
+
+    def can_compute_total(self, side: Side) -> bool:
+        """Whether the total throughput of the process can be computed from the given side."""
+        return self._total_method(side) is not None
+
+    def can_compute_flows(self, sides: Sequence[Side] = SIDES) -> bool:
+        """Whether the unknown flows of the given sides can be computed from a total, i.e.
+        whether at most one unknown flow per side has no share."""
+        return all(len(self._neither_known(side)) <= 1 for side in sides)
+
+    def _choose_total_side(self, sides: Sequence[Side]) -> Side:
+        """The side from which the total can be computed, preferring sides where all flows are
+        known. Raises an UnderdeterminedError if there is none."""
+        ranking = ["sum", "share", "remainder"]
+        candidates = [(ranking.index(m), s) for s in sides if (m := self._total_method(s))]
+        if not candidates:
+            raise UnderdeterminedError(self, self._total_failure_message(sides))
+        return min(candidates)[1]
+
+    def _check_can_compute_total(self, side: Side) -> None:
+        if not self.can_compute_total(side):
+            raise UnderdeterminedError(self, self._total_failure_message((side,)))
+
+    def _check_can_compute_flows(self, sides: Sequence[Side]) -> None:
+        if not self.can_compute_flows(sides):
+            message = ""
+            for side in sides:
+                if len(self._neither_known(side)) > 1:
+                    message += (
+                        f"Cannot compute the {side}flows from the total, since for more than one "
+                        f"of them, neither share nor value is given: "
+                        f"{', '.join(self._neither_known(side))}. Give a share or value for all "
+                        "but one of them.\n"
+                    )
+            raise UnderdeterminedError(self, message)
+
+    def _total_failure_message(self, sides: Sequence[Side]) -> str:
+        message = "Cannot compute the total throughput of the process.\n"
+        for side in sides:
+            message += f"From the {side}flows, since:\n"
+            if not self._flows(side):
+                message += f"- the process has no {side}flows\n"
+                continue
+            if not self._known_flows(side):
+                message += f"- no {side}flow is known (is_set=True)\n"
+            for name in self._neither_known(side):
+                message += f"- for flow '{name}', neither share nor value is given\n"
+        return message
+
+    def _compute_total(self, side: Side) -> "FlodymArray":
+        """Total throughput of the process, computed from the flows of one side."""
+        method = self._total_method(side)
+        flows = self._flows(side)
+        shares = self._shares(side)
+        if method == "sum":
+            return sum(flows.values(), 0.0)  # type: ignore[return-value]
+        if method == "share":
+            for name in self._both_known(side):
+                excess_dims = shares[name].dims - flows[name].dims
+                if excess_dims:
+                    raise ValueError(
+                        f"In process '{self.name}': The share of flow '{name}' has dimensions "
+                        f"{excess_dims.names}, which the flow does not have."
+                    )
+                if not np.any(shares[name].values == 0):
+                    return flows[name] / shares[name]
+            # all shares have zeros: the total is not determined where the share is zero
+            if self._total_method_remainder_possible(side):
+                return self._compute_total_from_remainder(side)
+            raise ValueError(
+                f"In process '{self.name}': Cannot compute the total throughput of the process "
+                f"from the {side}flows {', '.join(self._both_known(side))} and their shares, "
+                "since the shares are zero for some items."
+            )
+        if method == "remainder":
+            return self._compute_total_from_remainder(side)
+        raise UnderdeterminedError(self, self._total_failure_message((side,)))
+
+    def _total_method_remainder_possible(self, side: Side) -> bool:
+        return not self._neither_known(side) and bool(self._known_flows(side))
+
+    def _compute_total_from_remainder(self, side: Side) -> "FlodymArray":
+        """Total as sum(known flows) / (1 - sum(shares of unknown flows))."""
+        shares = self._shares(side)
+        known_flows = self._known_flows(side)
+        sum_known = sum(known_flows.values(), 0.0)
+        shares_unknown = {name: shares[name] for name in self._unknown_flows(side)}
+        dims_unknown = DimensionSet(dim_list=[])
+        for share in shares_unknown.values():
+            dims_unknown |= share.dims
+        excess_dims = dims_unknown - sum_known.dims
+        if excess_dims:
+            share_names = [n for n, s in shares_unknown.items() if s.dims - sum_known.dims]
+            raise ValueError(
+                f"In process '{self.name}': Cannot compute the total throughput of the process "
+                f"from the known {side}flows {', '.join(known_flows)} and the shares of the "
+                f"unknown flows {', '.join(share_names)}, since these shares have the dimensions "
+                f"{excess_dims.names}, which not all known flows have."
+            )
+        sum_shares = sum((s.cast_to(dims_unknown) for s in shares_unknown.values()), 0.0)
+        remaining_share = 1.0 - sum_shares
+        if np.any(np.isclose(np.asarray(getattr(remaining_share, "values", remaining_share)), 0)):
+            raise ValueError(
+                f"In process '{self.name}': Cannot compute the total throughput of the process "
+                f"from the known {side}flows {', '.join(known_flows)}, since the shares of the "
+                "unknown flows sum to one for some items, so the known flows must be zero there."
+            )
+        return sum_known / remaining_share
+
+    def _apply_dimension_splitter(
+        self, total: "FlodymArray", sides: Sequence[Side]
+    ) -> "FlodymArray":
+        """Multiply the total with the dimension splitter, if unknown flows of the given sides
+        have dimensions which the total does not have."""
+        dims_unknown = DimensionSet(dim_list=[])
+        for side in sides:
+            for flow in self._unknown_flows(side).values():
+                dims_unknown |= flow.dims
+        missing_dims = dims_unknown - total.dims
+        if not missing_dims:
+            return total
+
+        splitter = self._dimension_splitter
+        if splitter is None:
+            raise ValueError(
+                f"In process '{self.name}': Unknown flows have the dimensions "
+                f"{missing_dims.names}, which the total throughput of the process does not have. "
+                "Set a dimension splitter to add them."
+            )
+        if missing_dims - splitter.dims:
+            raise ValueError(
+                f"In process '{self.name}': The dimension splitter does not have the dimensions "
+                f"{(missing_dims - splitter.dims).names}, which unknown flows have, but the total "
+                "throughput of the process does not have."
+            )
+        added_dims = splitter.dims - total.dims
+        if config.error_behaviors.process_shares != ErrorBehavior.IGNORE:
+            splitter_sum = splitter.sum_to((splitter.dims & total.dims).letters)
+            tolerance = self._share_tolerance(n_summed=int(np.prod(added_dims.shape)))
+            max_error = max_abs(splitter_sum - 1.0)
+            if not max_error <= tolerance:
+                handle_error(
+                    behavior=config.error_behaviors.process_shares,
+                    message=(
+                        f"In process '{self.name}': The dimension splitter does not sum to one "
+                        f"over the dimensions it adds ({', '.join(added_dims.names)}), with a "
+                        f"maximum error of {max_error}." + config_hint("process_shares")
+                    ),
+                )
+        self._splitter_used = True
+        return total * splitter
+
+    def _compute_flows(self, total: "FlodymArray", side: Side) -> None:
+        """Compute the unknown flows of a side from the total."""
+        unknown_flows = self._unknown_flows(side)
+        if not unknown_flows:
+            return
+        shares = self._shares(side)
+        # Computed flows are first kept with the dimensions of the total: Reducing them to the
+        # flow dimensions before computing the remaining flow could lose dimensions it needs.
+        computed = {}
+        for name in unknown_flows:
+            if name not in shares:
+                continue
+            excess_dims = shares[name].dims - total.dims
+            if excess_dims:
+                raise ValueError(
+                    f"In process '{self.name}': The share of flow '{name}' has the dimensions "
+                    f"{excess_dims.names}, which the total throughput of the process does not "
+                    "have. To add these dimensions to the flow, insert a separate process with "
+                    "a dimension splitter."
+                )
+            computed[name] = total * shares[name]
+        remaining = [name for name in unknown_flows if name not in computed]
+        if remaining:
+            name = remaining[0]
+            flow = unknown_flows[name]
+            other_flows = list(self._known_flows(side).values()) + list(computed.values())
+            sum_others = sum(other_flows, 0.0)
+            from .flodym_arrays import FlodymArray
+
+            if isinstance(sum_others, FlodymArray) and flow.dims - sum_others.dims:
+                raise ValueError(
+                    f"In process '{self.name}': Cannot compute flow '{name}' as the total "
+                    f"throughput minus the other {side}flows, since not all of these have its "
+                    f"dimensions {(flow.dims - sum_others.dims).names}."
+                )
+            flow[...] = total - sum_others
+        for name, values in computed.items():
+            unknown_flows[name][...] = values
+
+    def _check_shares_linked(self) -> None:
+        for side in SIDES:
+            unlinked = [name for name in self._shares(side) if name not in self._flows(side)]
+            if unlinked:
+                raise ValueError(
+                    f"In process '{self.name}': Shares are given for the {side}flows "
+                    f"{', '.join(unlinked)}, which are not linked to the process."
+                )
+
+    def _share_tolerance(self, n_summed: int = 1) -> float:
+        """Tolerance for checks of dimensionless shares and splitters."""
+        return config.relative_tolerance * float(np.finfo(np.float64).eps) * max(1, n_summed)
+
+    def _check_share_values(self, share: "FlodymArray", label: str) -> None:
+        """Check that a share or dimension splitter is between zero and one."""
+        if config.error_behaviors.process_shares == ErrorBehavior.IGNORE:
+            return
+        tolerance = self._share_tolerance()
+        values = share.values
+        if np.any(np.isnan(values)) or np.any(values < -tolerance) or np.any(values > 1 + tolerance):
+            handle_error(
+                behavior=config.error_behaviors.process_shares,
+                message=(
+                    f"In process '{self.name}': {label} ('{share.name}') has values which are "
+                    "NaN or not between zero and one." + config_hint("process_shares")
+                ),
+            )
+
+    def _check_share_sums(self) -> None:
+        """Check that the shares of each side sum to at most one, and to one if all flows of the
+        side have a share."""
+        if config.error_behaviors.process_shares == ErrorBehavior.IGNORE:
+            return
+        for side in SIDES:
+            shares = self._shares(side)
+            if not shares:
+                continue
+            for name, share in shares.items():
+                self._check_share_values(share, f"Share of flow '{name}'")
+            dims = DimensionSet(dim_list=[])
+            for share in shares.values():
+                dims |= share.dims
+            share_sum = sum((s.cast_to(dims) for s in shares.values()), 0.0)
+            sum_values = np.asarray(getattr(share_sum, "values", share_sum))
+            tolerance = self._share_tolerance(n_summed=len(shares))
+            all_have_shares = len(shares) == len(self._flows(side))
+            if all_have_shares:
+                failed = not np.all(np.abs(sum_values - 1.0) <= tolerance)
+                expected = "sum to one, since all of them have shares"
+            else:
+                failed = not np.all(sum_values <= 1.0 + tolerance)
+                expected = "sum to at most one"
+            if failed:
+                handle_error(
+                    behavior=config.error_behaviors.process_shares,
+                    message=(
+                        f"In process '{self.name}': The shares of the {side}flows "
+                        f"({', '.join(shares)}) do not {expected}." + config_hint("process_shares")
+                    ),
+                )
+
+    def _check_shares_fulfilled(self, total: "FlodymArray", side: Side) -> None:
+        """Check that the computed flows of a side fulfill their shares, which may not be the
+        case if the process is overdetermined."""
+        if config.error_behaviors.process_shares == ErrorBehavior.IGNORE:
+            return
+        flows = self._flows(side)
+        failures = []
+        for name, share in self._shares(side).items():
+            error = total * share - flows[name]
+            max_error = max_abs(error)
+            if not max_error <= self.tolerance:
+                failures.append(f"'{name}' (max error: {max_error})")
+        if failures:
+            handle_error(
+                behavior=config.error_behaviors.process_shares,
+                message=(
+                    f"In process '{self.name}': After computation, the shares of the {side}flows "
+                    f"{', '.join(failures)} are not fulfilled. This may be due to the process "
+                    "being overdetermined, i.e. more flow values or shares being given than "
+                    "needed." + config_hint("process_shares", tolerance=True)
+                ),
+            )
 
 
-def make_processes(definitions: List[str|ProcessDefinition]) -> dict[str, Process]:
-    """Create a dictionary of processes from a list of process names."""
+def make_processes(definitions: List[str | ProcessDefinition]) -> dict[str, Process]:
+    """Create a dictionary of processes from a list of process names or process definitions.
+
+    Processes given as :py:class:`flodym.ProcessDefinition` with an ``id`` get that ID. IDs need
+    not be contiguous, but must be unique and non-negative. Processes given as names or as
+    definitions without ``id`` get the smallest IDs not used by any definition, in the order they
+    are listed. If no IDs are given explicitly, the IDs are thus the positions in the list.
+
+    The parameters of process definitions (such as shares) are set separately, by
+    :py:func:`set_process_parameters`.
+    The process with ID 0 must be named 'sysenv'.
+    """
+    explicit_ids = [
+        d.id for d in definitions if isinstance(d, ProcessDefinition) and d.id is not None
+    ]
+    if any(i < 0 for i in explicit_ids):
+        raise ValueError(f"Process IDs must be non-negative, but got {sorted(explicit_ids)}.")
+    if len(set(explicit_ids)) != len(explicit_ids):
+        raise ValueError(f"Process IDs must be unique, but got {sorted(explicit_ids)}.")
+    used_ids = set(explicit_ids)
+    next_free_id = 0
     processes = {}
     for definition in definitions:
-        if isinstance(definition, str):
-            name = definition
-            id = len(processes)
-        elif isinstance(definition, ProcessDefinition):
-            if definition.id != len(processes):
-                raise ValueError(f"Processes must be defined with consecutive IDs starting from 0, but found {definition.id} in {len(processes)}'th definition.")
-            name = definition.name
+        name = definition.name if isinstance(definition, ProcessDefinition) else definition
+        if isinstance(definition, ProcessDefinition) and definition.id is not None:
             id = definition.id
+        else:
+            while next_free_id in used_ids:
+                next_free_id += 1
+            id = next_free_id
+            used_ids.add(id)
+        if name in processes:
+            raise ValueError(f"Process name '{name}' is defined more than once.")
         processes[name] = Process(name=name, id=id)
     return processes
 
 
-def set_process_parameters(processes: Dict[str, Process], definitions: List[ProcessDefinition], parameters: Dict[str, Parameter]):
+def set_process_parameters(
+    processes: Dict[str, Process],
+    definitions: List[str | ProcessDefinition],
+    parameters: Dict[str, "Parameter"],
+) -> None:
+    """Set the shares and dimension splitters given in process definitions (see
+    :py:class:`flodym.ProcessDefinition`) to the processes. Process names in ``definitions``
+    are skipped. The processes must be linked to their flows (see
+    :py:meth:`flodym.MFASystem.relink`). Called by :py:meth:`flodym.MFASystem.from_data_reader`.
+
+    Args:
+        processes: The processes, keyed by name.
+        definitions: Process names or definitions, as in :py:attr:`flodym.MFADefinition.processes`.
+        parameters: The parameters, keyed by name.
+    """
     for definition in definitions:
         if isinstance(definition, str):
             continue
-
         if definition.name not in processes:
-            raise ValueError(f"Process {definition.name} is not defined in the processes dictionary.")
+            raise ValueError(f"Process '{definition.name}' is not defined.")
         process = processes[definition.name]
 
-        if definition.inflow_shares:
-            for from_process, parameter_name in definition.inflow_shares.items():
-                if parameter_name not in parameters:
-                    raise ValueError(f"Parameter {parameter_name} given in definition of process {definition.name} is not defined.")
-                process.add_inflow_share(from_process, parameters[parameter_name])
+        def get_parameter(name: str) -> "Parameter":
+            if name not in parameters:
+                raise ValueError(
+                    f"Parameter '{name}' given in the definition of process '{definition.name}' "
+                    "is not defined."
+                )
+            return parameters[name]
 
-        if definition.outflow_shares:
-            for to_process, parameter_name in definition.outflow_shares.items():
-                if parameter_name not in parameters:
-                    raise ValueError(f"Parameter {parameter_name} given in definition of process {definition.name} is not defined.")
-                process.add_outflow_share(to_process, parameters[parameter_name])
-
-        if definition.dimension_splitter:
-            if definition.dimension_splitter not in parameters:
-                raise ValueError(f"Dimension splitter {definition.dimension_splitter} given in definition of process {definition.name} is not defined.")
-            process.dimension_splitter = parameters[definition.dimension_splitter]
+        for flow, parameter_name in definition.inflow_shares.items():
+            process.set_inflow_share(flow, get_parameter(parameter_name))
+        for flow, parameter_name in definition.outflow_shares.items():
+            process.set_outflow_share(flow, get_parameter(parameter_name))
+        if definition.dimension_splitter is not None:
+            process.set_dimension_splitter(get_parameter(definition.dimension_splitter))

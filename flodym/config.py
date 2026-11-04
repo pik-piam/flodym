@@ -1,7 +1,11 @@
-from pydantic import BaseModel, confloat
-from typing import Optional
+"""Global configuration of flodym, accessible via ``flodym.config``."""
+
+from contextlib import contextmanager
 from enum import Enum
+from typing import Annotated, Any, Generator, Optional
 import logging
+
+from pydantic import BaseModel, Field
 
 
 class ErrorBehavior(str, Enum):
@@ -11,12 +15,17 @@ class ErrorBehavior(str, Enum):
     IGNORE = "ignore"
 
 
-def handle_error(behavior: ErrorBehavior, message: str=None, error: Exception = None):
+def handle_error(
+    behavior: ErrorBehavior, message: Optional[str] = None, error: Optional[Exception] = None
+):
+    """Raise, log, or ignore an error, depending on the given behavior.
+    Exactly one of message or error must be given.
+    """
 
     # ensures valid ErrorBehavior
     behavior = ErrorBehavior(behavior)
 
-    if message is None == error is None:
+    if (message is None) == (error is None):
         raise ValueError("Exactly one of message or error must be provided.")
 
     if behavior == ErrorBehavior.ERROR:
@@ -31,16 +40,16 @@ def handle_error(behavior: ErrorBehavior, message: str=None, error: Exception = 
 
 class Checks(BaseModel, validate_assignment=True):
     """
-    Which checks to perform during computation.
+    Which checks to perform automatically during computation.
     """
 
-    mass_balance_processes: bool = True
-    """Whether to check mass balance after each `process.compute()` call."""
-    mass_balance_stocks: bool = True
-    """Whether to check mass balance after each `stock.compute()` call."""
-    process_shares: bool = True
-    """Whether to check if unused shares are fulfilled after each `process.compute()` call.
-    Includes checking dimension splitter"""
+    mass_balance_after_compute: bool = False
+    """Whether to check the mass balance of a stock after each of its computations
+    (see :py:meth:`flodym.Stock.check_mass_balance`), and of a process after each
+    :py:meth:`flodym.Process.compute` (see :py:meth:`flodym.Process.check_mass_balance`).
+    Failures are handled according to :py:attr:`ErrorBehaviors.mass_balance`.
+    Off by default, since :py:meth:`flodym.MFASystem.check_mass_balance` checks all processes and
+    stocks as well. Enabling it helps to find where in a computation the mass balance is violated."""
 
 
 class ErrorBehaviors(BaseModel, validate_assignment=True):
@@ -48,18 +57,31 @@ class ErrorBehaviors(BaseModel, validate_assignment=True):
     What to do if a check fails.
     """
 
+    unset_array_used: ErrorBehavior = ErrorBehavior.IGNORE
+    """What to do if a FlodymArray which is not set (see :py:attr:`flodym.FlodymArray.is_set`)
+    is used in an operation or a stock computation.
+    """
     mass_balance: ErrorBehavior = ErrorBehavior.ERROR
-    """what to do if mass balance is not satisfied."""
+    """What to do if a mass balance check fails
+    (see :py:meth:`flodym.MFASystem.check_mass_balance`, :py:meth:`flodym.Process.check_mass_balance`,
+    :py:meth:`flodym.Stock.check_mass_balance`, and :py:attr:`Checks.mass_balance_after_compute`).
+    """
+    check_flows: ErrorBehavior = ErrorBehavior.WARN
+    """What to do if a flow has negative or NaN values (see :py:meth:`flodym.MFASystem.check_flows`)."""
     process_underdetermined: ErrorBehavior = ErrorBehavior.ERROR
-    """What to do if a process is underdetermined.
-    Does not apply to recursive mode and `MFASystem.compute_all_possible()`.
+    """What to do if :py:meth:`flodym.Process.compute` is called on a process which cannot be
+    computed from the given values. Not used by :py:meth:`flodym.MFASystem.compute_all_possible`
+    and in recursive mode, where underdetermined processes are skipped.
     """
     process_shares: ErrorBehavior = ErrorBehavior.WARN
-    """What to do if process shares are not fulfilled."""
+    """What to do if the shares or the dimension splitter of a process are inconsistent:
+    If shares are not between zero and one or sum to more than one, if a dimension splitter does
+    not sum to one over the dimensions it adds, or if a share is not fulfilled after
+    :py:meth:`flodym.Process.compute` (which can happen if the process is overdetermined).
+    If ``"ignore"``, the checks are skipped."""
     unused_dimension_splitter: ErrorBehavior = ErrorBehavior.WARN
-    """What to do if a dimension splitter is not used in a process"""
-    check_flows: ErrorBehavior = ErrorBehavior.WARN
-    """What to do if a flow has negative or NaN value."""
+    """What to do if a process has a dimension splitter, but it is not used in
+    :py:meth:`flodym.Process.compute`, since no dimensions have to be added."""
 
 
 class Config(BaseModel, validate_assignment=True):
@@ -68,20 +90,54 @@ class Config(BaseModel, validate_assignment=True):
     """
 
     checks: Checks = Checks()
-    """Which checks to perform during computation."""
+    """Which checks to perform automatically during computation."""
 
     error_behaviors: ErrorBehaviors = ErrorBehaviors()
     """What to do if a check fails."""
 
-    relative_tolerance: Optional[confloat(ge=0)] = 10.
-    """Tolerance relative to a float precision metric used for mass balance and other checks.
-    Increase if your mass balance checks fail due to rounding errors.
-    Overridden by `absolute_tolerance` if set.
+    relative_tolerance: Annotated[float, Field(ge=0)] = 100.0
+    """Tolerance for mass balance and other checks, relative to the float precision of the checked
+    values: The absolute tolerance is ``relative_tolerance`` times the machine epsilon of the
+    data type, times the largest absolute value of the arrays involved in the check.
+    Increase if checks fail due to rounding errors.
+    Not used if :py:attr:`absolute_tolerance` is set.
     """
-    absolute_tolerance: Optional[confloat(ge=0)] = None
-    """Absolute tolerance used for mass balance and other checks.
-    Overrides `relative_tolerance` if set.
-    If None, `relative_tolerance` is used.
+
+    absolute_tolerance: Optional[Annotated[float, Field(ge=0)]] = None
+    """Absolute tolerance for mass balance and other checks.
+    If set, it is used instead of :py:attr:`relative_tolerance`.
     """
+
+    def get_tolerance(self, float_precision: float) -> float:
+        """Absolute tolerance for checks, given the float precision of the checked values
+        (machine epsilon times the largest absolute value).
+        Returns :py:attr:`absolute_tolerance` if set, else ``relative_tolerance * float_precision``.
+        """
+        if self.absolute_tolerance is not None:
+            return self.absolute_tolerance
+        return self.relative_tolerance * float_precision
+
+    @contextmanager
+    def override(self, **changes: Any) -> Generator["Config", None, None]:
+        """Temporarily change config options within a ``with`` block.
+        Nested options are given as dictionaries.
+
+        Example:
+            >>> with config.override(error_behaviors={"unset_array_used": "error"}):
+            ...     ...
+        """
+        old_values = {}
+        try:
+            for name, value in changes.items():
+                old_values[name] = getattr(self, name)
+                if isinstance(value, dict):
+                    old_value = old_values[name]
+                    value = type(old_value).model_validate({**old_value.model_dump(), **value})
+                setattr(self, name, value)
+            yield self
+        finally:
+            for name, value in old_values.items():
+                setattr(self, name, value)
+
 
 config = Config()
