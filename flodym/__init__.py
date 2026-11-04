@@ -30,6 +30,7 @@ from flodym.lifetime_models import (
     LogNormalLifetime as LogNormalLifetime,
     WeibullLifetime as WeibullLifetime,
     WeibullMeanStdLifetime as WeibullMeanStdLifetime,
+    CompetingRisksLifetime as CompetingRisksLifetime,
     ExponentialLifetime as ExponentialLifetime,
     Leaching as Leaching,
 )

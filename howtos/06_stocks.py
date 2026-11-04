@@ -193,21 +193,20 @@ from flodym import LogNormalLifetime
 lifetime_model = LogNormalLifetime(dims=dims, mean=lifetime_mean, std=0.3, relative_std=True)
 
 # %% [markdown]
-# Several independent causes of leaving the stock can be combined with `competing_risk`,
-# which takes another lifetime model with the same dimensions.
-# The survival rates of both models are multiplied.
+# Several independent causes of leaving the stock can be combined with `CompetingRisksLifetime`,
+# which takes a list of lifetime models with the same dimensions.
+# The survival rates of the models are multiplied.
 # For example, items can reach the end of their product lifetime, while some material is
 # additionally lost from the stock every year, independent of the product age:
 
 # %%
-from flodym import Leaching
+from flodym import CompetingRisksLifetime, Leaching
 
-lifetime_model = LogNormalLifetime(
-    dims=dims,
-    mean=lifetime_mean,
-    std=0.3,
-    relative_std=True,
-    competing_risk=Leaching(dims=dims, loss_rate=0.05),
+lifetime_model = CompetingRisksLifetime(
+    models=[
+        LogNormalLifetime(dims=dims, mean=lifetime_mean, std=0.3, relative_std=True),
+        Leaching(dims=dims, loss_rate=0.05),
+    ]
 )
 my_dsm = InflowDrivenDSM(dims=dims, lifetime_model=lifetime_model, inflow=inflow)
 my_dsm.compute()

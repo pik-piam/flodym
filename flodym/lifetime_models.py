@@ -6,7 +6,7 @@ import numpy as np
 import scipy.special
 import scipy.stats
 from pydantic import BaseModel as PydanticBaseModel, ConfigDict, PrivateAttr, model_validator
-from typing import ClassVar, Optional, TypeAlias, Literal, SupportsFloat
+from typing import Any, ClassVar, TypeAlias, Literal, SupportsFloat
 from numbers import Number
 import warnings
 
@@ -83,21 +83,7 @@ class LifetimeModel(PydanticBaseModel):
     representing e.g. product design or material choice.
     Dimensions must be a subset of the lifetime model dimensions.
     """
-    competing_risk: Optional["LifetimeModel"] = None
-    """A second lifetime model describing an additional, independent cause of leaving the stock,
-    e.g. a constant loss rate (see :py:class:`Leaching`) on top of a product lifetime.
-    The one-step survival rates of both models are multiplied, which is equivalent to
-    multiplying their survival factors. The sf, pdf and survival_rate of this model then refer
-    to the combined model.
-    Must have the same dimensions as this lifetime model. Its lifetime factors are applied
-    independently of the ones of this model. It can itself have a competing risk.
-    """
     _sf: np.ndarray | None = PrivateAttr(default=None)
-    """Survival factor of this model alone, without competing risk."""
-    _combined_sf: np.ndarray | None = PrivateAttr(default=None)
-    """Survival factor including the competing risk."""
-    _competing_risk_sf: np.ndarray | None = PrivateAttr(default=None)
-    """Survival factor of the competing risk used in _combined_sf, used to detect changes."""
     _pdf: np.ndarray | None = PrivateAttr(default=None)
     _survival_rate: np.ndarray | None = PrivateAttr(default=None)
     _t: UnevenTimeDim | None = PrivateAttr(default=None)
@@ -119,22 +105,6 @@ class LifetimeModel(PydanticBaseModel):
                 f"If the time dimension uses a different letter, set time_letter explicitly."
             )
         self._t = UnevenTimeDim(dim=self.dims[self.time_letter])
-        return self
-
-    @model_validator(mode="after")
-    def _check_competing_risk(self):
-        other = self.competing_risk
-        if other is None:
-            return self
-        if other is self:
-            raise ValueError("A lifetime model cannot be its own competing risk.")
-        if other.dims.letters != self.dims.letters or other.dims.shape != self.dims.shape:
-            raise ValueError(
-                f"Dimensions of competing risk ({other.dims.letters}, shape {other.dims.shape}) "
-                f"must match lifetime model dimensions ({self.dims.letters}, shape {self.dims.shape})."
-            )
-        if not np.array_equal(other._t.bounds, self._t.bounds):
-            raise ValueError("Time dimension of competing risk must match lifetime model.")
         return self
 
     @model_validator(mode="after")
@@ -176,8 +146,6 @@ class LifetimeModel(PydanticBaseModel):
         unset_prms = [prm_name for prm_name in self._prm_names if getattr(self, prm_name) is None]
         if unset_prms:
             raise ValueError(f"Lifetime parameters {unset_prms} must be set before use.")
-        if self.competing_risk is not None:
-            self.competing_risk._check_prms_set()
 
     @property
     def shape(self):
@@ -223,16 +191,6 @@ class LifetimeModel(PydanticBaseModel):
                 value = self._scale_prm(prm_name, value, self.lt_factor_by_cohort)
             self._scaled_prms[prm_name] = value
 
-    def _update_competing_risk(self):
-        """Resets the combined arrays if the survival factor of the competing risk has changed
-        since they were computed, e.g. because its parameters were changed."""
-        if self.competing_risk is None or self._combined_sf is None:
-            return
-        if self._competing_risk_sf is not self.competing_risk.sf:
-            self._combined_sf = None
-            self._pdf = None
-            self._survival_rate = None
-
     @property
     def sf(self):
         if self._sf is None:
@@ -244,17 +202,10 @@ class LifetimeModel(PydanticBaseModel):
                 self._compute_survival_factor_with_nurture()
             else:
                 self._compute_survival_factor()
-        if self.competing_risk is None:
-            return self._sf
-        self._update_competing_risk()
-        if self._combined_sf is None:
-            self._competing_risk_sf = self.competing_risk.sf
-            self._combined_sf = self._sf * self._competing_risk_sf
-        return self._combined_sf
+        return self._sf
 
     @property
     def pdf(self):
-        self._update_competing_risk()
         if self._pdf is None:
             self._pdf = np.zeros(self._shape_cohort)
             self._compute_outflow_pdf()
@@ -267,7 +218,6 @@ class LifetimeModel(PydanticBaseModel):
         still present at the end of year t.
         It equals sf(t,c) / sf(t-1,c) for c < t, sf(t,t) for c = t, and zero for c > t.
         """
-        self._update_competing_risk()
         if self._survival_rate is None:
             self._survival_rate = np.zeros(self._shape_cohort)
             self._compute_survival_rate()
@@ -381,8 +331,6 @@ class LifetimeModel(PydanticBaseModel):
 
     def reset_cached_arrays(self):
         self._sf = None
-        self._combined_sf = None
-        self._competing_risk_sf = None
         self._pdf = None
         self._survival_rate = None
 
@@ -493,7 +441,7 @@ class Leaching(LifetimeModel):
     of age, for example by leaching, corrosion or dissipation.
     sf(age) = (1 - loss_rate) ** age.
     This is an exponential lifetime with mean -1 / ln(1 - loss_rate).
-    Often used as competing_risk of another lifetime model.
+    Often combined with another lifetime model in a :py:class:`CompetingRisksLifetime`.
     Lifetime factors f change the rate such that the mean lifetime is multiplied by f, i.e.
     1 - loss_rate is raised to the power 1 / f.
     """
@@ -677,3 +625,106 @@ class WeibullMeanStdLifetime(StandardDeviationLifetimeModel):
         shape = self._weibull_shape[i_c, ...]
         scale = mean / scipy.special.gamma(1 + 1 / shape)
         return scipy.stats.weibull_min.sf(ages, c=shape, loc=0, scale=scale)
+
+
+class CompetingRisksLifetime(LifetimeModel):
+    """Combination of several lifetime models, which describe independent causes of leaving the
+    stock, for example a product lifetime and a constant material loss (see :py:class:`Leaching`).
+    An item remains in the stock only if it survives all causes, so the survival factors, and
+    thereby the one-step survival rates, of the models are multiplied.
+
+    dims and time_letter are taken from the first model if not given.
+    Lifetime factors, inflow_at and n_pts_per_interval cannot be set here; set them in the
+    individual models instead.
+    Changes to the parameters of the individual models are taken into account in the next
+    access of sf, pdf or survival_rate.
+    """
+
+    models: list[LifetimeModel]
+    """Lifetime models to combine. All must have the same dimensions."""
+
+    _model_sfs: tuple[np.ndarray, ...] | None = PrivateAttr(default=None)
+    """Survival factors of the individual models used in the cached arrays, to detect changes."""
+
+    _fields_of_models: ClassVar[list[str]] = [
+        "lt_factor_by_year",
+        "lt_factor_by_cohort",
+        "inflow_at",
+        "n_pts_per_interval",
+    ]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _dims_from_models(cls, data: Any) -> Any:
+        if isinstance(data, dict) and data.get("models"):
+            first_model = data["models"][0]
+            if isinstance(first_model, LifetimeModel):
+                data = {"dims": first_model.dims, "time_letter": first_model.time_letter, **data}
+        return data
+
+    @model_validator(mode="after")
+    def _check_models(self):
+        if len(self.models) < 2:
+            raise ValueError("CompetingRisksLifetime needs at least two lifetime models.")
+        fields_set_here = sorted(self.model_fields_set & set(self._fields_of_models))
+        if fields_set_here:
+            raise ValueError(
+                f"{fields_set_here} cannot be set in CompetingRisksLifetime. "
+                "Set them in the individual lifetime models instead."
+            )
+        time_items = self.dims[self.time_letter].items
+        for model in self.models:
+            if model.dims.letters != self.dims.letters or model.dims.shape != self.dims.shape:
+                raise ValueError(
+                    f"Dimensions of all lifetime models ({model.dims.letters}, shape "
+                    f"{model.dims.shape}) must match ({self.dims.letters}, shape {self.dims.shape})."
+                )
+            if model.time_letter != self.time_letter or model.dims[model.time_letter].items != (
+                time_items
+            ):
+                raise ValueError("Time dimension of all lifetime models must match.")
+        return self
+
+    def _check_prms_set(self):
+        for model in self.models:
+            model._check_prms_set()
+
+    def reset_cached_arrays(self):
+        super().reset_cached_arrays()
+        self._model_sfs = None
+
+    def _reset_if_models_changed(self):
+        """Resets the cached arrays if the survival factor of any model has changed since they
+        were computed, e.g. because its parameters were changed."""
+        model_sfs = tuple(model.sf for model in self.models)
+        if self._model_sfs is None or len(model_sfs) != len(self._model_sfs):
+            changed = True
+        else:
+            changed = any(new is not old for new, old in zip(model_sfs, self._model_sfs))
+        if changed:
+            self.reset_cached_arrays()
+            self._model_sfs = model_sfs
+
+    @property
+    def sf(self):
+        self._reset_if_models_changed()
+        if self._sf is None:
+            self._sf = self._model_sfs[0].copy()
+            for model_sf in self._model_sfs[1:]:
+                self._sf *= model_sf
+        return self._sf
+
+    @property
+    def pdf(self):
+        self._reset_if_models_changed()
+        return super().pdf
+
+    @property
+    def survival_rate(self):
+        self._reset_if_models_changed()
+        return super().survival_rate
+
+    def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
+        raise NotImplementedError(
+            "CompetingRisksLifetime computes its survival factor from the individual models."
+        )

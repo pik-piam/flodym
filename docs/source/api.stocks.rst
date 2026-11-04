@@ -43,4 +43,7 @@ Stocks and Lifetime Models
 .. autopydantic_model:: flodym::Leaching
    :inherited-members: BaseModel
 
+.. autopydantic_model:: flodym::CompetingRisksLifetime
+   :inherited-members: BaseModel
+
 .. autofunction:: flodym.make_empty_stocks
