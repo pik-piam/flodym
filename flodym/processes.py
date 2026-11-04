@@ -4,6 +4,8 @@ from pydantic import BaseModel as PydanticBaseModel, PrivateAttr, model_validato
 
 from ._checks import balance_failure, config_hint, report_balance_failures
 from ._process_compute import (
+    SPLITTER_SIDES,
+    Direction,
     ProcessSide,
     Side,
     UnderdeterminedError,
@@ -32,7 +34,7 @@ class Process(PydanticBaseModel):
     When an :py:class:`flodym.MFASystem` is set up, the process is linked to its inflows,
     outflows and stock (see :py:attr:`inflows`, :py:attr:`outflows`, :py:attr:`stock`).
 
-    Optionally, shares of in- and outflows and a dimension splitter can be given (see
+    Optionally, shares of in- and outflows and dimension splitters can be given (see
     :py:meth:`set_inflow_share`, :py:meth:`set_outflow_share` and
     :py:meth:`set_dimension_splitter`, or :py:class:`flodym.ProcessDefinition`), which allow to
     compute unknown flows of the process with :py:meth:`compute`.
@@ -47,7 +49,7 @@ class Process(PydanticBaseModel):
     _stock: Optional["Stock"] = PrivateAttr(default=None)
     _inflow_shares: Dict[str, "FlodymArray"] = PrivateAttr(default_factory=dict)
     _outflow_shares: Dict[str, "FlodymArray"] = PrivateAttr(default_factory=dict)
-    _dimension_splitter: Optional["FlodymArray"] = PrivateAttr(default=None)
+    _dimension_splitters: Dict[Direction, "FlodymArray"] = PrivateAttr(default_factory=dict)
 
     @model_validator(mode="after")
     def check_id0(self):
@@ -70,8 +72,8 @@ class Process(PydanticBaseModel):
             yield "inflow_shares", {k: v.name for k, v in self._inflow_shares.items()}
         if self._outflow_shares:
             yield "outflow_shares", {k: v.name for k, v in self._outflow_shares.items()}
-        if self._dimension_splitter is not None:
-            yield "dimension_splitter", self._dimension_splitter.name
+        for direction, splitter in self._dimension_splitters.items():
+            yield f"{direction}_dimension_splitter", splitter.name
 
     @property
     def inflows(self) -> Dict[str, "Flow"]:
@@ -232,7 +234,7 @@ class Process(PydanticBaseModel):
 
 
     # ------------------------------------------------------------------------------------------
-    # Shares and dimension splitter
+    # Shares and dimension splitters
 
     @property
     def inflow_shares(self) -> Dict[str, "FlodymArray"]:
@@ -247,11 +249,20 @@ class Process(PydanticBaseModel):
         return dict(self._outflow_shares)
 
     @property
-    def dimension_splitter(self) -> Optional["FlodymArray"]:
+    def forward_dimension_splitter(self) -> Optional["FlodymArray"]:
         """Array by which the total throughput of the process is multiplied in
-        :py:meth:`compute`, to add dimensions which it does not have, but the flows to compute do.
-        Set it with :py:meth:`set_dimension_splitter`."""
-        return self._dimension_splitter
+        :py:meth:`compute` before computing the outflows, to add dimensions which the total does
+        not have, but the outflows to compute do. Set it with :py:meth:`set_dimension_splitter`.
+        """
+        return self._dimension_splitters.get("forward")
+
+    @property
+    def backward_dimension_splitter(self) -> Optional["FlodymArray"]:
+        """Array by which the total throughput of the process is multiplied in
+        :py:meth:`compute` before computing the inflows, to add dimensions which the total does
+        not have, but the inflows to compute do. Set it with :py:meth:`set_dimension_splitter`.
+        """
+        return self._dimension_splitters.get("backward")
 
     def set_inflow_share(self, flow: str, share: "FlodymArray") -> None:
         """Set the share of an inflow in the total throughput of the process, used by
@@ -282,13 +293,25 @@ class Process(PydanticBaseModel):
         to."""
         self._remove_share("out", flow)
 
-    def set_dimension_splitter(self, splitter: Optional["FlodymArray"]) -> None:
-        """Set the dimension splitter of the process (see :py:attr:`dimension_splitter`), or
-        remove it by passing None. It must sum to one over the dimensions it adds to the total
-        throughput of the process."""
-        if splitter is not None:
-            check_share_values(self, splitter, "Dimension splitter")
-        self._dimension_splitter = splitter
+    def set_dimension_splitter(
+        self, direction: Direction, splitter: Optional["FlodymArray"]
+    ) -> None:
+        """Set a dimension splitter of the process, or remove it by passing None. The array is
+        stored by reference, so later changes of its values are taken into account.
+
+        Args:
+            direction: ``"forward"`` for the splitter used to compute outflows (see
+                :py:attr:`forward_dimension_splitter`), ``"backward"`` for the one used to compute
+                inflows (see :py:attr:`backward_dimension_splitter`).
+            splitter: The splitter. It must sum to one over the dimensions it adds to the total.
+        """
+        if direction not in SPLITTER_SIDES:
+            raise ValueError(f"Direction must be 'forward' or 'backward', not '{direction}'.")
+        if splitter is None:
+            self._dimension_splitters.pop(direction, None)
+            return
+        check_share_values(self, splitter, f"The {direction} dimension splitter")
+        self._dimension_splitters[direction] = splitter
 
     def _resolve_flow_name(self, side: Side, flow: str) -> str:
         """Get the name of an in- or outflow, given by flow name or by the name of the process
@@ -362,15 +385,14 @@ class Process(PydanticBaseModel):
         compute_neighbors: bool = False,
     ) -> bool:
         """Compute the unknown in- and outflows of the process (and its stock, if any), from the
-        known ones, the shares and the dimension splitter.
+        known ones, the shares and the dimension splitters.
 
         Flows are known if they are set (see :py:attr:`flodym.FlodymArray.is_set`). This covers
         many, but not all MFA processes; others have to be computed manually, for example if two
         processes depend on each other and form an equation system.
 
         The computation assumes the following structure of a process without stock: The inflows
-        sum to a total throughput, which may be multiplied with the dimension splitter, and which
-        is split into the outflows. It proceeds as follows:
+        sum to a total throughput, which is split into the outflows. It proceeds as follows:
 
         - The total is computed from the inflows or from the outflows (whichever is possible) as
 
@@ -380,12 +402,16 @@ class Process(PydanticBaseModel):
             unknown flows of that side are given.
 
           This means that the shares of a side refer to the total of that side.
-        - If unknown flows have dimensions the total does not have, the total is multiplied
-          with the dimension splitter, which must sum to one over these dimensions.
+        - If unknown outflows have dimensions the total does not have, the total is multiplied
+          with the forward dimension splitter before computing them. If unknown inflows have
+          dimensions the total does not have, it is multiplied with the backward dimension
+          splitter before computing them. Splitters must sum to one over the dimensions they
+          add. Two splitters are needed if inflows and outflows each have dimensions the other
+          side does not have, e.g. inflows by region and outflows by good.
         - Each unknown flow with a share is computed as total times share.
           One unknown flow per side may have no share; it is the total minus all other flows.
 
-        Dimensions of flows are thus only added by the dimension splitter. To add dimensions to
+        Dimensions of flows are thus only added by the dimension splitters. To add dimensions to
         single flows, insert a process with a dimension splitter.
 
         For a process with stock, the inflows and the outflows each have their own total: the
@@ -502,5 +528,10 @@ def set_process_parameters(
             process.set_inflow_share(flow, get_parameter(parameter_name))
         for flow, parameter_name in definition.outflow_shares.items():
             process.set_outflow_share(flow, get_parameter(parameter_name))
-        if definition.dimension_splitter is not None:
-            process.set_dimension_splitter(get_parameter(definition.dimension_splitter))
+        splitters = {
+            "forward": definition.forward_dimension_splitter,
+            "backward": definition.backward_dimension_splitter,
+        }
+        for direction, parameter_name in splitters.items():
+            if parameter_name is not None:
+                process.set_dimension_splitter(direction, get_parameter(parameter_name))

@@ -230,48 +230,98 @@ def test_overdetermined_inconsistent_raises():
             mfa.processes["a"].compute()
 
 
-def test_dimension_splitter():
-    mfa = make_mfa(
-        processes=["sysenv", ProcessDefinition(name="a", dimension_splitter="split"), "b"],
+def splitter_mfa(split_values, **process_kwargs) -> MFASystem:
+    """sysenv -> a -> b, with the outflow by region and the inflow not."""
+    return make_mfa(
+        processes=["sysenv", ProcessDefinition(name="a", **process_kwargs), "b"],
         flows=[flow("sysenv", "a", parameter="input"), flow("a", "b", dims=("t", "r"))],
-        parameter_values={"input": np.array([1.0, 2.0, 3.0, 4.0]), "split": np.array([0.2, 0.8])},
+        parameter_values={"input": np.array([1.0, 2.0, 3.0, 4.0]), "split": split_values},
         parameter_dims={"input": ("t",), "split": ("r",)},
     )
+
+
+def test_forward_dimension_splitter():
+    mfa = splitter_mfa(np.array([0.2, 0.8]), forward_dimension_splitter="split")
+    assert mfa.processes["a"].forward_dimension_splitter is mfa.parameters["split"]
     mfa.processes["a"].compute()
     np.testing.assert_allclose(
         mfa.flows["a => b"].values, np.outer([1.0, 2.0, 3.0, 4.0], [0.2, 0.8])
     )
 
-    # backward: no splitter needed, unused splitter is reported
+    # backward: the inflow has fewer dimensions than the outflow, so no splitter is needed,
+    # and the forward splitter is irrelevant
     mfa.mark_all_unset()
     mfa.flows["a => b"][...] = 1.0
     with config.override(error_behaviors={"unused_dimension_splitter": "error"}):
-        with pytest.raises(ValueError, match="not used"):
-            mfa.processes["a"].compute()
+        mfa.processes["a"].compute()
     np.testing.assert_allclose(mfa.flows["sysenv => a"].values, 2.0)
 
 
-def test_dimension_splitter_not_summing_to_one(caplog):
+def test_unused_dimension_splitter():
     mfa = make_mfa(
-        processes=["sysenv", ProcessDefinition(name="a", dimension_splitter="split"), "b"],
-        flows=[flow("sysenv", "a", parameter="input"), flow("a", "b", dims=("t", "r"))],
-        parameter_values={"input": 1.0, "split": np.array([0.2, 0.7])},
-        parameter_dims={"input": ("t",), "split": ("r",)},
+        processes=["sysenv", ProcessDefinition(name="a", forward_dimension_splitter="split"), "b"],
+        flows=[flow("sysenv", "a", dims=("t", "r"), parameter="input"), flow("a", "b")],
+        parameter_values={"input": 1.0, "split": np.array([0.2, 0.8])},
+        parameter_dims={"input": ("t", "r"), "split": ("r",)},
     )
+    with config.override(error_behaviors={"unused_dimension_splitter": "error"}):
+        with pytest.raises(ValueError, match="forward dimension splitter is set, but was not used"):
+            mfa.processes["a"].compute()
+
+
+def test_forward_and_backward_dimension_splitters():
+    """Inflows by region, outflows by good: each direction needs its own splitter."""
+    dims = {"Time": TIME, "Region": REGIONS, "Good": ["cars", "houses", "tools"]}
+    region_by_good = np.array([[1.0, 2.0, 3.0], [3.0, 2.0, 1.0]])
+    forward = region_by_good / region_by_good.sum(axis=1, keepdims=True)  # sums to 1 over goods
+    backward = region_by_good / region_by_good.sum(axis=0, keepdims=True)  # ... over regions
+    definition = MFADefinition(
+        dimensions=DIM_DEFINITIONS + [DimensionDefinition(name="Good", letter="g", dtype=str)],
+        processes=[
+            "sysenv",
+            ProcessDefinition(
+                name="a", forward_dimension_splitter="fwd", backward_dimension_splitter="bwd"
+            ),
+        ],
+        flows=[flow("sysenv", "a", dims=("t", "r")), flow("a", "sysenv", dims=("t", "g"))],
+        parameters=[
+            ParameterDefinition(name="fwd", dim_letters=("r", "g")),
+            ParameterDefinition(name="bwd", dim_letters=("r", "g")),
+        ],
+    )
+
+    class Reader(DictReader):
+        def read_dimension(self, definition):
+            return Dimension(name=definition.name, letter=definition.letter, items=dims[definition.name])
+
+    mfa = MFASystem.from_data_reader(definition, Reader({"fwd": forward, "bwd": backward}))
+    a = mfa.processes["a"]
+    inflow, outflow = mfa.flows["sysenv => a"], mfa.flows["a => sysenv"]
+
+    inflow[...] = np.array([[1.0, 2.0]] * 4)
+    a.compute()
+    np.testing.assert_allclose(outflow.values[0], forward.T @ [1.0, 2.0])
+
+    mfa.mark_all_unset()
+    outflow[...] = np.array([[1.0, 2.0, 3.0]] * 4)
+    a.compute()
+    np.testing.assert_allclose(inflow.values[0], backward @ [1.0, 2.0, 3.0])
+    assert mfa.check_mass_balance()
+
+
+def test_dimension_splitter_not_summing_to_one(caplog):
+    mfa = splitter_mfa(np.array([0.2, 0.7]), forward_dimension_splitter="split")
     with caplog.at_level(logging.WARNING):
         mfa.processes["a"].compute()
-    assert "does not sum to one" in caplog.text
+    assert "forward dimension splitter does not sum to one" in caplog.text
 
 
 def test_missing_dimension_splitter():
-    mfa = make_mfa(
-        processes=["sysenv", "a", "b"],
-        flows=[flow("sysenv", "a", parameter="input"), flow("a", "b", dims=("t", "r"))],
-        parameter_values={"input": 1.0},
-        parameter_dims={"input": ("t",)},
-    )
-    with pytest.raises(ValueError, match="Set a dimension splitter"):
+    mfa = splitter_mfa(np.array([0.2, 0.8]), backward_dimension_splitter="split")
+    with pytest.raises(ValueError, match="Set a forward dimension splitter"):
         mfa.processes["a"].compute()
+    with pytest.raises(ValueError, match="'forward' or 'backward'"):
+        mfa.processes["a"].set_dimension_splitter("sideways", mfa.parameters["split"])
 
 
 def test_flow_parameters_reset_after_mark_all_unset():

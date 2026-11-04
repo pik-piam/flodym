@@ -7,7 +7,7 @@ The computation is split into two classes:
   throughput from the flows, and computing the unknown flows from a total.
 - :py:class:`ProcessComputation` represents one computation of a process. It checks beforehand
   that the process can be computed, combines the two sides (and the stock, if any), applies the
-  dimension splitter, and performs the checks after the computation.
+  dimension splitters, and performs the checks after the computation.
 
 Processes with a stock are computed by the stock (``Stock._compute_process``), which uses the
 methods of :py:class:`ProcessComputation`.
@@ -33,6 +33,13 @@ if TYPE_CHECKING:
 Side = Literal["in", "out"]
 """Side of a process: ``"in"`` for its inflows, ``"out"`` for its outflows."""
 SIDES: tuple[Side, Side] = ("in", "out")
+
+Direction = Literal["forward", "backward"]
+"""Direction of a dimension splitter: ``"forward"`` splitters are used to compute outflows,
+``"backward"`` splitters to compute inflows."""
+SPLITTER_SIDES: Dict[Direction, Side] = {"forward": "out", "backward": "in"}
+"""The side whose flows a dimension splitter of each direction is used for."""
+SPLITTER_DIRECTIONS: Dict[Side, Direction] = {side: d for d, side in SPLITTER_SIDES.items()}
 
 TotalMethod = Literal["sum", "share", "remainder"]
 """Ways to compute the total throughput of a process from the flows of one side, in order of
@@ -358,8 +365,9 @@ class ProcessComputation:
     def __init__(self, process: "Process"):
         self.process = process
         self.sides: Dict[Side, ProcessSide] = {side: ProcessSide(process, side) for side in SIDES}
-        self.splitter_used = False
-        """Whether the dimension splitter was applied in this computation."""
+        self.unused_splitters: List[Direction] = []
+        """Directions of dimension splitters which were not applied when computing the flows of
+        their side, since no dimensions had to be added."""
 
     # Checks before the computation --------------------------------------------------------------
 
@@ -395,16 +403,18 @@ class ProcessComputation:
         if stock is not None:
             stock._compute_process(self)
             return
-        # Process without stock: inflows -> total (-> dimension splitter) -> outflows
+        # Process without stock: inflows -> total -> outflows. The total of each side is the
+        # common total, extended by the dimension splitter of the side if needed.
         total_side = self.require_total()
         self.require_flows()
         total = self.compute_total(total_side)
-        total = self.apply_dimension_splitter(total, SIDES)
-        for side in self.sides.values():
-            side.check_flow_dims(total.dims)
-        for side in self.sides.values():
-            side.compute_flows(total)
-            side.check_shares_fulfilled(total)
+        side_totals = {}
+        for side in SIDES:
+            side_totals[side] = self.apply_dimension_splitter(total, side)
+            self.sides[side].check_flow_dims(side_totals[side].dims)
+        for side in SIDES:
+            self.sides[side].compute_flows(side_totals[side])
+            self.sides[side].check_shares_fulfilled(side_totals[side])
 
     def compute_total(self, side: Side) -> "FlodymArray":
         """Total of one side, computed from its flows."""
@@ -412,41 +422,45 @@ class ProcessComputation:
 
     def compute_side(self, total: "FlodymArray", side: Side) -> None:
         """Compute the unknown flows of one side from the total of this side, which is extended
-        by the dimension splitter if needed. Used for processes with stock."""
-        total = self.apply_dimension_splitter(total, (side,))
+        by the dimension splitter of the side if needed. Used for processes with stock."""
+        total = self.apply_dimension_splitter(total, side)
         self.sides[side].check_flow_dims(total.dims)
         self.sides[side].compute_flows(total)
         self.sides[side].check_shares_fulfilled(total)
 
-    def apply_dimension_splitter(
-        self, total: "FlodymArray", sides: Sequence[Side]
-    ) -> "FlodymArray":
-        """Multiply the total with the dimension splitter, if unknown flows of the given sides
+    def apply_dimension_splitter(self, total: "FlodymArray", side: Side) -> "FlodymArray":
+        """Multiply the total with the dimension splitter of the given side (the forward splitter
+        for the outflows, the backward splitter for the inflows), if unknown flows of the side
         have dimensions which the total does not have. Otherwise, return it unchanged."""
-        unknown_flows = [f for side in sides for f in self.sides[side].unknown.values()]
+        direction = SPLITTER_DIRECTIONS[side]
+        splitter = self.process._dimension_splitters.get(direction)
+        unknown_flows = self.sides[side].unknown.values()
         missing_dims = union_of_dims(unknown_flows) - total.dims
         if not missing_dims:
+            if splitter is not None and unknown_flows:
+                self.unused_splitters.append(direction)
             return total
 
         name = self.process.name
-        splitter = self.process.dimension_splitter
+        label = self.sides[side].label
         if splitter is None:
             raise ValueError(
-                f"In process '{name}': Unknown flows have the dimensions {missing_dims.names}, "
-                "which the total throughput of the process does not have. Set a dimension "
-                "splitter to add them."
+                f"In process '{name}': Unknown {label}s have the dimensions "
+                f"{missing_dims.names}, which their total does not have. Set a {direction} "
+                "dimension splitter to add them."
             )
         if missing_dims - splitter.dims:
             raise ValueError(
-                f"In process '{name}': The dimension splitter does not have the dimensions "
-                f"{(missing_dims - splitter.dims).names}, which unknown flows have, but the total "
-                "throughput of the process does not have."
+                f"In process '{name}': The {direction} dimension splitter does not have the "
+                f"dimensions {(missing_dims - splitter.dims).names}, which unknown {label}s "
+                "have, but their total does not have."
             )
-        self._check_splitter_sum(splitter, total.dims)
-        self.splitter_used = True
+        self._check_splitter_sum(splitter, total.dims, direction)
         return total * splitter
 
-    def _check_splitter_sum(self, splitter: "FlodymArray", total_dims: DimensionSet) -> None:
+    def _check_splitter_sum(
+        self, splitter: "FlodymArray", total_dims: DimensionSet, direction: Direction
+    ) -> None:
         """Check that the dimension splitter sums to one over the dimensions it adds."""
         if config.error_behaviors.process_shares == ErrorBehavior.IGNORE:
             return
@@ -458,7 +472,8 @@ class ProcessComputation:
             handle_error(
                 behavior=config.error_behaviors.process_shares,
                 message=(
-                    f"In process '{self.process.name}': The dimension splitter does not sum to "
+                    f"In process '{self.process.name}': The {direction} dimension splitter does "
+                    "not sum to "
                     f"one over the dimensions it adds ({', '.join(added_dims.names)}), with a "
                     f"maximum error of {max_error}." + config_hint("process_shares")
                 ),
@@ -476,13 +491,15 @@ class ProcessComputation:
             )
         for side in self.sides.values():
             side.check_share_sums()
-        if process.dimension_splitter is not None and not self.splitter_used:
+        for direction in self.unused_splitters:
+            label = self.sides[SPLITTER_SIDES[direction]].label
             handle_error(
                 behavior=config.error_behaviors.unused_dimension_splitter,
                 message=(
-                    f"In process '{process.name}': The dimension splitter is set, but was not "
-                    "used, since no dimensions had to be added. The split it gives may not be "
-                    "fulfilled." + config_hint("unused_dimension_splitter")
+                    f"In process '{process.name}': The {direction} dimension splitter is set, but "
+                    f"was not used to compute the {label}s, since no dimensions had to be added. "
+                    "The split it gives may not be fulfilled."
+                    + config_hint("unused_dimension_splitter")
                 ),
             )
         if was_overdetermined or config.checks.mass_balance_after_compute:

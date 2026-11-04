@@ -75,14 +75,15 @@ class ErrorBehaviors(BaseModel, validate_assignment=True):
     :py:meth:`flodym.MFASystem.compute_all_possible`, where underdetermined processes are skipped.
     """
     process_shares: ErrorBehavior = ErrorBehavior.WARN
-    """What to do if the shares or the dimension splitter of a process are inconsistent:
+    """What to do if the shares or the dimension splitters of a process are inconsistent:
     If shares are not between zero and one or sum to more than one, if a dimension splitter does
     not sum to one over the dimensions it adds, or if a share is not fulfilled after
     :py:meth:`flodym.Process.compute` (which can happen if the process is overdetermined).
     If ``"ignore"``, the checks are skipped."""
     unused_dimension_splitter: ErrorBehavior = ErrorBehavior.WARN
-    """What to do if a process has a dimension splitter, but it is not used in
-    :py:meth:`flodym.Process.compute`, since no dimensions have to be added."""
+    """What to do if a process has a dimension splitter, but it is not used when computing the
+    flows of its side in :py:meth:`flodym.Process.compute`, since no dimensions have to be
+    added."""
 
 
 class Config(BaseModel, validate_assignment=True):

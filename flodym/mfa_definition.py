@@ -153,10 +153,14 @@ class ProcessDefinition(PydanticBaseModel):
     outflow_shares: Dict[str, str] = {}
     """Names of the parameters giving the share of an outflow in the total throughput of the
     process, keyed by flow name or by the name of the process the outflow goes to."""
-    dimension_splitter: Optional[str] = None
-    """Name of the parameter by which the total throughput of the process is multiplied to add
-    dimensions it does not have, but the flows to compute do (see
-    :py:meth:`flodym.Process.compute`). It must sum to one over these added dimensions."""
+    forward_dimension_splitter: Optional[str] = None
+    """Name of the parameter by which the total throughput of the process is multiplied before
+    computing outflows, to add dimensions which the total does not have, but the outflows do
+    (see :py:meth:`flodym.Process.compute`). It must sum to one over the added dimensions."""
+    backward_dimension_splitter: Optional[str] = None
+    """Name of the parameter by which the total throughput of the process is multiplied before
+    computing inflows, to add dimensions which the total does not have, but the inflows do
+    (see :py:meth:`flodym.Process.compute`). It must sum to one over the added dimensions."""
 
 
 class MFADefinition(PydanticBaseModel):
@@ -198,8 +202,8 @@ class MFADefinition(PydanticBaseModel):
                 continue
             used_by = f"definition of process '{process.name}'"
             names = list(process.inflow_shares.values()) + list(process.outflow_shares.values())
-            if process.dimension_splitter is not None:
-                names.append(process.dimension_splitter)
+            splitters = [process.forward_dimension_splitter, process.backward_dimension_splitter]
+            names += [splitter for splitter in splitters if splitter is not None]
             used_parameters += [(name, used_by) for name in names]
         for name, used_by in used_parameters:
             if name not in defined_parameters:

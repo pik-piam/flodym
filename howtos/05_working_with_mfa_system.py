@@ -204,14 +204,14 @@ my_mfa_system.check_flows(error_behavior="info")
 # %% [markdown]
 # ## Compute processes automatically
 #
-# Instead of writing all system equations in `compute()`, many processes can be computed automatically from the known flows, the shares of flows in the process throughput, and a dimension splitter, which adds dimensions to the process throughput.
+# Instead of writing all system equations in `compute()`, many processes can be computed automatically from the known flows, the shares of flows in the process throughput, and dimension splitters, which add dimensions to the process throughput.
 #
-# In our system, `process_a` splits its inflow (dimensions r, t) by product with the dimension splitter `product_shares`, and sends the share `process_a_yield` to `process_b`. The outflow without share, to `sysenv`, receives the remainder.
+# In our system, `process_a` splits its inflow (dimensions r, t) by product with `product_shares`. This is a forward dimension splitter, since it is used to compute outflows from the inflow. `process_a` then sends the share `process_a_yield` to `process_b`. The outflow without share, to `sysenv`, receives the remainder.
 # `process_b` passes everything on.
 
 # %%
 process_a = my_mfa_system.processes["process_a"]
-process_a.set_dimension_splitter(my_mfa_system.parameters["product_shares"])
+process_a.set_dimension_splitter("forward", my_mfa_system.parameters["product_shares"])
 process_a.set_outflow_share("process_b", my_mfa_system.parameters["process_a_yield"])
 
 manual_results = {name: f.values.copy() for name, f in my_mfa_system.flows.items()}
@@ -229,7 +229,7 @@ for name, f in my_mfa_system.flows.items():
 # The rules for a process without stock are:
 # - The inflows sum to a total throughput, which is split into the outflows. The shares of flows refer to this total.
 # - The total is computed from the inflows or from the outflows: as the sum of the flows of that side if all are known, as a known flow divided by its share, or from the known flows if all unknown flows of the side have shares.
-# - If the flows to compute have dimensions which the total does not have, the total is multiplied with the dimension splitter. It must sum to one over these dimensions.
+# - If the outflows to compute have dimensions which the total does not have, the total is multiplied with the forward dimension splitter. Likewise, the backward dimension splitter is used to compute inflows. Splitters must sum to one over the dimensions they add.
 # - Each unknown flow with a share is the total times its share. One unknown flow per side may have no share; it receives the remainder.
 #
 # This also works backwards, from known outflows to unknown inflows.
