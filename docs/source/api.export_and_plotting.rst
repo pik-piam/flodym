@@ -10,6 +10,12 @@ Export and plotting classes and functions
 .. autopydantic_model:: flodym.export::PlotlySankeyPlotter
    :inherited-members: BaseModel
 
+.. autopydantic_model:: flodym.export::PlotlyProcessGraphPlotter
+   :inherited-members: BaseModel
+
+.. autopydantic_model:: flodym.export::GraphvizProcessGraphPlotter
+   :inherited-members: BaseModel
+
 .. autofunction:: flodym.export.export_mfa_flows_to_csv
 
 .. autofunction:: flodym.export.export_mfa_stocks_to_csv

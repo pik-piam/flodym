@@ -1,10 +1,13 @@
 """Home to various lifetime models, for use in dynamic stock modelling."""
 
 from abc import abstractmethod
+from types import MappingProxyType
 import numpy as np
 import scipy.stats
-from pydantic import BaseModel as PydanticBaseModel, model_validator
-from typing import Any
+from pydantic import BaseModel as PydanticBaseModel, ConfigDict, PrivateAttr, model_validator
+from typing import ClassVar, TypeAlias, Literal, SupportsFloat
+from numbers import Number
+import warnings
 
 # from scipy.special import gammaln, logsumexp
 # from scipy.optimize import root_scalar
@@ -13,9 +16,10 @@ from .dimensions import DimensionSet, Dimension
 from .flodym_arrays import FlodymArray
 from .gauss_lobatto import gl_nodes, gl_weights
 
+LifetimeArrayType: TypeAlias = FlodymArray | np.ndarray | SupportsFloat
+
 
 class UnevenTimeDim(PydanticBaseModel):
-
     dim: Dimension
     _bounds: np.ndarray = None
 
@@ -44,9 +48,13 @@ class UnevenTimeDim(PydanticBaseModel):
 class LifetimeModel(PydanticBaseModel):
     """Contains shared functionality across the various lifetime models."""
 
+    model_config = ConfigDict(
+        validate_assignment=True, arbitrary_types_allowed=True, extra="forbid"
+    )
+
     dims: DimensionSet
     time_letter: str = "t"
-    inflow_at: str = "middle"
+    inflow_at: Literal["start", "middle", "end"] = "middle"
     """If no quadrature is used, all inflow happens at one point in time, either at the beginning
     of the time period (start), in the middle (middle) or at the end (end).
     """
@@ -63,37 +71,83 @@ class LifetimeModel(PydanticBaseModel):
     Higher point numbers are only needed for short life times, e.g. < 1 year.
     Default is 1, meaning that the inflow is evaluated only once per time period.
     """
-    _sf: np.ndarray = None
-    _pdf: np.ndarray = None
-    _t: UnevenTimeDim = None
+    lt_factor_by_year: LifetimeArrayType | None = None
+    """Extend the lifetime (multiply mean and standard deviation by this factor)
+    by year, not by age-cohort, so it also takes effect for surviving previous age-cohorts.
+    This is the "nurture" approach in Krych et al. 2024 (https://doi.org/10.1111/jiec.13586)
+    representing e.g. product care or maintenance.
+    Dimensions must be a subset of the lifetime model dimensions.
+    """
+    lt_factor_by_cohort: LifetimeArrayType | None = None
+    """Extend the lifetime (multiply mean and standard deviation by this factor)
+    by age-cohort, not by year, so it only takes effect for new age-cohorts.
+    This is the "nature" approach in Krych et al. 2024 (https://doi.org/10.1111/jiec.13586)
+    representing e.g. product design or material choice.
+    Dimensions must be a subset of the lifetime model dimensions.
+    """
+    _sf: np.ndarray | None = PrivateAttr(default=None)
+    _pdf: np.ndarray | None = PrivateAttr(default=None)
+    _survival_rate: np.ndarray | None = PrivateAttr(default=None)
+    _t: UnevenTimeDim | None = PrivateAttr(default=None)
+    _quad_points: list[float] | None = PrivateAttr(default=None)
+    """Intra-time step quadrature points for numerical integration of survival factors."""
+    _quad_weights: list[float] | None = PrivateAttr(default=None)
+    """Intra-time step quadrature weights for numerical integration of survival factors."""
+    _scaled_prms: dict[str, np.ndarray] = PrivateAttr(default={})
+
+    _prm_names: ClassVar[list[str]] = []
+    _prm_names_to_scale: ClassVar[list[str]] = []
 
     @model_validator(mode="after")
-    def check_inflow_at(self):
-        if self.inflow_at not in ["start", "middle", "end"]:
-            raise ValueError("inflow_at must be one of 'start', 'middle', or 'end'.")
-        return self
-
-    @model_validator(mode="after")
-    def cast_prms(self):
-        for prm_name, prm in self.prms.items():
-            if prm is not None:
-                setattr(self, prm_name, self.cast_any_to_np_array(prm))
-        return self
-
-    @model_validator(mode="after")
-    def init_t(self):
+    def _init_t(self):
+        if self.dims.letters[0] != self.time_letter:
+            raise ValueError(
+                f"Lifetime model expects time dimension to be the first dimension. "
+                f"Lifetime model uses time_letter '{self.time_letter}', but first dimension is {self.dims.letters[0]}. "
+                f"If the time dimension uses a different letter, set time_letter explicitly."
+            )
         self._t = UnevenTimeDim(dim=self.dims[self.time_letter])
         return self
 
-    @property
-    @abstractmethod
-    def prms(self) -> dict[str, np.ndarray | None]:
-        raise NotImplementedError
+    @model_validator(mode="after")
+    def _cast_all(self):
+        lt_factors = ["lt_factor_by_year", "lt_factor_by_cohort"]
+        for prm_name in self._prm_names + lt_factors:
+            prm_value = getattr(self, prm_name)
+            if prm_value is not None:
+                casted = self._any_to_np(prm_value, name=prm_name)
+                object.__setattr__(self, prm_name, casted)
+        self.reset_cached_arrays()
+        return self
+
+    def _any_to_np(self, prm_in: LifetimeArrayType, name: str):
+        if isinstance(prm_in, FlodymArray):
+            if not all(dim in self.dims for dim in prm_in.dims):
+                raise ValueError(
+                    f"Dimensions of parameter {name} (now {prm_in.dims.letters}) must be a subset of lifetime model dims {self.dims.letters}."
+                )
+            prm_out = prm_in.cast_to(target_dims=self.dims).values
+        elif isinstance(prm_in, np.ndarray):
+            prm_out = np.ndarray(self.shape)
+            try:
+                prm_out[...] = prm_in
+            except ValueError:
+                raise ValueError(
+                    f"Parameter {name} (shape {prm_in.shape}) has incompatible dimensions with lifetime model shape ({self._shape})"
+                )
+        elif isinstance(prm_in, Number):
+            prm_out = np.ndarray(self.shape)
+            prm_out[...] = prm_in
+        else:
+            raise ValueError(
+                f"Parameter {name} must be a FlodymArray, np.ndarray, or number, but is {type(prm_in)}"
+            )
+        return prm_out
 
     def _check_prms_set(self):
-        for prm_name, prm in self.prms.items():
-            if prm is None:
-                raise ValueError(f"Lifetime {prm_name} must be set before use.")
+        unset_prms = [prm_name for prm_name in self._prm_names if getattr(self, prm_name) is None]
+        if unset_prms:
+            raise ValueError(f"Lifetime parameters {unset_prms} must be set before use.")
 
     @property
     def shape(self):
@@ -112,18 +166,55 @@ class LifetimeModel(PydanticBaseModel):
         return tuple(list(self.shape)[1:])
 
     @property
+    def prms(self) -> dict[str, np.ndarray]:
+        """Dictionary of lifetime parameters, with parameter names as keys and parameter values as
+        numpy arrays. Do NOT modify the values in this dictionary (lifetime_model.prms["mean"] = 10)
+        to update the lifetime model parameters. Use direct assignment instead, e.g.
+        lifetime_model.mean = 10.
+        """
+        return MappingProxyType({prm_name: getattr(self, prm_name) for prm_name in self._prm_names})
+
+    def _scale_prms(self):
+        if self.lt_factor_by_cohort is None:
+            self._scaled_prms = dict(self.prms)
+            return
+        for prm_name in self._prm_names:
+            if prm_name in self._prm_names_to_scale:
+                self._scaled_prms[prm_name] = getattr(self, prm_name) * self.lt_factor_by_cohort
+            else:
+                self._scaled_prms[prm_name] = getattr(self, prm_name)
+
+    @property
     def sf(self):
         if self._sf is None:
             self._sf = np.zeros(self._shape_cohort)
-            self.compute_survival_factor()
+            self._check_prms_set()
+            self._scale_prms()
+            self._quad_points, self._quad_weights = self._get_quad_points_and_weights()
+            if self.lt_factor_by_year is not None:
+                self._compute_survival_factor_with_nurture()
+            else:
+                self._compute_survival_factor()
         return self._sf
 
     @property
     def pdf(self):
         if self._pdf is None:
             self._pdf = np.zeros(self._shape_cohort)
-            self.compute_outflow_pdf()
+            self._compute_outflow_pdf()
         return self._pdf
+
+    @property
+    def survival_rate(self):
+        """One-step survival rate by year and age-cohort: survival_rate(t,c) is the share of
+        cohort c present at the end of year t-1, or entering the stock during year t, which is
+        still present at the end of year t.
+        It equals sf(t,c) / sf(t-1,c) for c < t, sf(t,t) for c = t, and zero for c > t.
+        """
+        if self._survival_rate is None:
+            self._survival_rate = np.zeros(self._shape_cohort)
+            self._compute_survival_rate()
+        return self._survival_rate
 
     def _tile(self, a: np.ndarray) -> np.ndarray:
         """tiles the input array a to the shape of the lifetime model, by adding non-time dimensions
@@ -139,11 +230,14 @@ class LifetimeModel(PydanticBaseModel):
         out = a[index]
         return np.tile(out, self._shape_no_t)
 
-    def _remaining_ages(self, m, eta):
-        t = eta * self._t.bounds[m + 1] + (1 - eta) * self._t.bounds[m]
-        return self._tile(self._t.bounds[m + 1 :] - t)
+    def _quad_point_time(self, m, quad_point):
+        """Returns the time point within the inflow time period m, given the quadrature point eta."""
+        return quad_point * self._t.bounds[m + 1] + (1 - quad_point) * self._t.bounds[m]
 
-    def compute_survival_factor(self):
+    def _remaining_ages(self, i_t, quad_point):
+        return self._tile(self._t.bounds[i_t + 1 :] - self._quad_point_time(i_t, quad_point))
+
+    def _compute_survival_factor(self):
         """Survival table self.sf(m,n) denotes the share of an inflow in year n (age-cohort) still
         present at the end of year m (after m-n years).
         The computation is self.sf(m,n) = ProbDist.sf(m-n), where ProbDist is the appropriate
@@ -161,21 +255,19 @@ class LifetimeModel(PydanticBaseModel):
         For example, sf could be assigned to the dynamic stock model from an exogenous computation
         to save time.
         """
-        self._check_prms_set()
-        quad_eta, quad_weights = self.get_quad_points_and_weights()
-        for m in range(0, self._n_t):  # cohort index
-            for eta, weight in zip(list(quad_eta), list(quad_weights)):
-                t = self._remaining_ages(m, eta)
-                self._sf[m::, m, ...] += weight * self._survival_by_year_id(t, m)
+        for i_c in range(0, self._n_t):  # cohort index
+            for quad_point, quad_weight in zip(self._quad_points, self._quad_weights):
+                ages = self._remaining_ages(i_c, quad_point)
+                self._sf[i_c::, i_c, ...] += quad_weight * self._survival_by_cohort(ages, i_c)
 
-    def get_quad_points_and_weights(self):
+    def _get_quad_points_and_weights(self):
         """Returns the quadrature points and weights for the inflow time periods."""
         if self.n_pts_per_interval > 10:
             raise ValueError("quad_order must be between 0 and 9.")
         if self.n_pts_per_interval > 1:
-            nodes = [(x + 1) / 2 for x in gl_nodes[self.n_pts_per_interval]]
+            points = [(x + 1) / 2 for x in gl_nodes[self.n_pts_per_interval]]
             weights = [w / 2 for w in gl_weights[self.n_pts_per_interval]]
-            return nodes, weights
+            return points, weights
         else:
             if self.inflow_at == "start":
                 return [0], [1]
@@ -185,61 +277,144 @@ class LifetimeModel(PydanticBaseModel):
                 return [1], [1]
 
     @abstractmethod
-    def _survival_by_year_id(m, **kwargs):
+    def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
+        """Survival function
+
+        Args:
+            ages: array of ages, i.e. difference of a time vector to the inflow time of cohort i_c.
+                  If i_c is a slice, ages must have a cohort axis that
+                  lines up with the parameters indexed by i_c, so implementations must broadcast
+                  against it rather than assume a single cohort.
+            i_c: cohort index or a slice of cohorts.
+        """
         pass
 
-    @abstractmethod
-    def set_prms(self):
-        pass
+    def set_prms(self, *args, **kwargs):
+        """Set parameters of the lifetime distribution, like mean and standard deviation.
+        Parameters can be set either by positional arguments or by keyword arguments, but not both.
 
-    def cast_any_to_np_array(self, prm_in):
-        if isinstance(prm_in, FlodymArray):
-            prm_out = prm_in.cast_to(target_dims=self.dims).values
-        else:
-            prm_out = np.ndarray(self.shape)
-            prm_out[...] = prm_in
-        return prm_out
+        Deprecated. Use direct assignment instead, e.g. lifetime_model.mean = 10.
 
-    def compute_outflow_pdf(self):
+        Args:
+            *args: Positional arguments for parameters, in the order of self.prms.
+            **kwargs: Keyword arguments for parameters, with parameter names as keys.
+        """
+        warnings.warn(
+            "set_prms is deprecated since v1.1.0. It will be removed in v2.0.0. "
+            "Use direct assignment instead, e.g. lifetime_model.mean = 10.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
+        if len(args) > 0 and len(kwargs) > 0:
+            raise ValueError("Cannot set parameters with both positional and keyword arguments.")
+        if len(args) > 0:
+            if len(args) != len(self._prm_names):
+                raise ValueError(
+                    f"Expected {len(self._prm_names)} parameters, but got {len(args)}."
+                )
+            for prm_name, prm_value in zip(self._prm_names, args):
+                setattr(self, prm_name, prm_value)
+        elif len(kwargs) > 0:
+            for prm_name, prm_value in kwargs.items():
+                if prm_name not in self._prm_names:
+                    raise ValueError(f"Unknown parameter: {prm_name}")
+                setattr(self, prm_name, prm_value)
+        self.reset_cached_arrays()
+
+    def reset_cached_arrays(self):
+        self._sf = None
+        self._pdf = None
+        self._survival_rate = None
+
+    def _compute_outflow_pdf(self):
         """Returns an array year-by-cohort of the probability that an item
         added to stock in year m (aka cohort m) leaves in in year n. This value equals pdf(n,m).
         """
         t_diag_indices = np.diag_indices(self._n_t) + (slice(None),) * len(self._shape_no_t)
         self._pdf[t_diag_indices] = 1.0 - np.moveaxis(self.sf.diagonal(0, 0, 1), -1, 0)
-        for m in range(0, self._n_t):
-            self._pdf[m + 1 :, m, ...] = -1 * np.diff(self.sf[m:, m, ...], axis=0)
+        for i_c in range(0, self._n_t):
+            self._pdf[i_c + 1 :, i_c, ...] = -1 * np.diff(self.sf[i_c:, i_c, ...], axis=0)
+
+    def _compute_survival_rate(self):
+        # The share of cohort c present at the end of year t-1 which survives year t is
+        # sf(t,c) / sf(t-1,c). If sf(t-1,c) is zero, nothing is left to survive.
+        sf_prev = self.sf[:-1, ...]
+        np.divide(self.sf[1:, ...], sf_prev, out=self._survival_rate[1:, ...], where=sf_prev > 0)
+        # The newest cohort enters during year t, so its survival rate is sf(t,t)
+        t_diag_indices = np.diag_indices(self._n_t) + (slice(None),) * len(self._shape_no_t)
+        self._survival_rate[t_diag_indices] = self.sf[t_diag_indices]
+
+    def _compute_survival_factor_with_nurture(self):
+        """
+        Compute the survival factor in presence of lifetime extension by year, i.e. the "nurture"
+        approach in Krych et al. 2024.
+        Math:
+        sf_e = plain survival function with extended lifetime
+        sf = resulting combined survival function based on previous survival
+        current_survival_rate = 1 - hazard_function = sf_e(t)/sf_e(t-1)
+        sf(t) = sf(t-1) * current_survival_rate(t)
+        sf(t) = sf(t-1) * sf_e(t)/sf_e(t-1)
+        """
+        factor = self.lt_factor_by_year
+
+        scaled_prms_orig = dict(self._scaled_prms)
+        for i_t in range(self._n_t):
+            # scale such that mean and stddev are increased by lifetime extension factor
+            for name in self._prm_names_to_scale:
+                # apply factor per time step - broadcast to all age cohorts
+                # (The arrays in _scaled_prms can be the parameter arrays themselves, so
+                # assign new arrays instead of writing into them)
+                self._scaled_prms[name] = scaled_prms_orig[name] * factor[i_t]
+            # curr_survival calculates sf_e(t-1) ans sf_e(t) in one array
+            # max(i_t, 1) omits prev time step for i_t = 0
+            curr_time = self._t.bounds[max(i_t, 1) : i_t + 2]
+            cohort_ids = np.arange(i_t + 1)
+            curr_survival = np.zeros((len(curr_time), i_t + 1) + self._shape_no_t)
+            for quad_point, quad_weight in zip(self._quad_points, self._quad_weights):
+                cohort_time = self._quad_point_time(cohort_ids, quad_point)
+                curr_ages = self._tile(curr_time[:, np.newaxis] - cohort_time[np.newaxis, :])
+                curr_survival += quad_weight * self._survival_by_cohort(
+                    curr_ages, slice(0, i_t + 1)
+                )
+            # main diagonal: sf(t) = sf_e(t)
+            self._sf[i_t, i_t, ...] = curr_survival[-1, i_t, ...]
+            if i_t > 0:
+                sf_e_prev = curr_survival[0, :i_t, ...]
+                sf_e = curr_survival[1, :i_t, ...]
+                sf_prev = self._sf[i_t - 1, :i_t, ...]
+                # for small lifetimes, sf_e_prev can be zero, which means that nothing has survived
+                ratio = np.divide(sf_e, sf_e_prev, out=np.zeros_like(sf_e), where=sf_e_prev > 0)
+                self._sf[i_t, :i_t, ...] = sf_prev * ratio
 
 
 class FixedLifetime(LifetimeModel):
     """Fixed lifetime, age-cohort leaves the stock in the model year when a certain age,
     specified as 'Mean', is reached."""
 
-    mean: Any = None
+    mean: LifetimeArrayType | None = None
+    """The fixed lifetime, i.e. the age at which the age-cohort leaves the stock.
+    """
 
-    @property
-    def prms(self):
-        return {"mean": self.mean}
+    _prm_names: ClassVar[list[str]] = ["mean"]
+    _prm_names_to_scale: ClassVar[list[str]] = ["mean"]
 
-    def set_prms(self, mean: FlodymArray):
-        self.mean = self.cast_any_to_np_array(mean)
-
-    def _survival_by_year_id(self, t, m):
+    def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
+        mean = self._scaled_prms["mean"]
         # Example: if lt is 3.5 years fixed, product will still be there after 0, 1, 2, and 3 years,
         # gone after 4 years.
-        return (t < self.mean[m, ...]).astype(int)
+        return (ages < mean[i_c, ...]).astype(int)
 
 
 class StandardDeviationLifetimeModel(LifetimeModel):
-    mean: Any = None
-    std: Any = None
-
-    @property
-    def prms(self):
-        return {"mean": self.mean, "std": self.std}
-
-    def set_prms(self, mean: FlodymArray, std: FlodymArray):
-        self.mean = self.cast_any_to_np_array(mean)
-        self.std = self.cast_any_to_np_array(std)
+    mean: LifetimeArrayType | None = None
+    """Mean lifetime.
+    """
+    std: LifetimeArrayType | None = None
+    """Standard deviation of lifetime.
+    """
+    _prm_names: ClassVar[list[str]] = ["mean", "std"]
+    _prm_names_to_scale: ClassVar[list[str]] = ["mean", "std"]
 
 
 class NormalLifetime(StandardDeviationLifetimeModel):
@@ -252,14 +427,15 @@ class NormalLifetime(StandardDeviationLifetimeModel):
     As alternative, use lognormal or folded normal distribution options.
     """
 
-    def _survival_by_year_id(self, t, m):
-        if np.min(self.mean) < 0:
+    def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
+        mean, std = self._scaled_prms["mean"], self._scaled_prms["std"]
+        if np.min(mean) < 0:
             raise ValueError("mean must be greater than zero.")
 
         return scipy.stats.norm.sf(
-            t,
-            loc=self.mean[m, ...],
-            scale=self.std[m, ...],
+            ages,
+            loc=mean[i_c, ...],
+            scale=std[i_c, ...],
         )
 
 
@@ -269,15 +445,16 @@ class FoldedNormalLifetime(StandardDeviationLifetimeModel):
     BEFORE folding, curve after folding will have different mu and sigma.
     """
 
-    def _survival_by_year_id(self, t, m):
-        if np.min(self.mean) < 0:
+    def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
+        mean, std = self._scaled_prms["mean"], self._scaled_prms["std"]
+        if np.min(mean) < 0:
             raise ValueError("mean must be greater than zero.")
 
         return scipy.stats.foldnorm.sf(
-            t,
-            self.mean[m, ...] / self.std[m, ...],
+            ages,
+            mean[i_c, ...] / std[i_c, ...],
             0,
-            scale=self.std[m, ...],
+            scale=std[i_c, ...],
         )
 
 
@@ -290,39 +467,40 @@ class LogNormalLifetime(StandardDeviationLifetimeModel):
     Same result as EXCEL function "=LOGNORM.VERT(x;LT_LN;SG_LN;TRUE)"
     """
 
-    def _survival_by_year_id(self, t, m):
-        mean_square = self.mean[m, ...] * self.mean[m, ...]
-        std_square = self.std[m, ...] * self.std[m, ...]
+    def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
+        mean, std = self._scaled_prms["mean"], self._scaled_prms["std"]
+        mean_square = mean[i_c, ...] * mean[i_c, ...]
+        std_square = std[i_c, ...] * std[i_c, ...]
         new_mean = np.log(mean_square / np.sqrt(mean_square + std_square))
         new_std = np.sqrt(np.log(1 + std_square / mean_square))
         # compute survival function
-        sf_m = scipy.stats.lognorm.sf(t, s=new_std, loc=0, scale=np.exp(new_mean))
+        sf_m = scipy.stats.lognorm.sf(ages, s=new_std, loc=0, scale=np.exp(new_mean))
         return sf_m
 
 
 class WeibullLifetime(LifetimeModel):
     """Weibull distribution with standard definition of scale and shape parameters."""
 
-    weibull_shape: Any = None
-    weibull_scale: Any = None
+    weibull_scale: LifetimeArrayType | None = None
+    """Scale parameter of the Weibull distribution.
+    """
+    weibull_shape: LifetimeArrayType | None = None
+    """Shape parameter of the Weibull distribution.
+    """
 
-    @property
-    def prms(self):
-        return {"weibull_shape": self.weibull_shape, "weibull_scale": self.weibull_scale}
+    _prm_names: ClassVar[list[str]] = ["weibull_scale", "weibull_shape"]
+    _prm_names_to_scale: ClassVar[list[str]] = ["weibull_scale"]
 
-    def set_prms(self, weibull_shape: FlodymArray, weibull_scale: FlodymArray):
-        self.weibull_shape = self.cast_any_to_np_array(weibull_shape)
-        self.weibull_scale = self.cast_any_to_np_array(weibull_scale)
-
-    def _survival_by_year_id(self, t, m):
-        if np.min(self.weibull_shape) < 0:
+    def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
+        scale, shape = self._scaled_prms["weibull_scale"], self._scaled_prms["weibull_shape"]
+        if np.min(shape) < 0:
             raise ValueError("Lifetime weibull_shape must be positive for Weibull distribution.")
 
         return scipy.stats.weibull_min.sf(
-            t,
-            c=self.weibull_shape[m, ...],
+            ages,
+            c=shape[i_c, ...],
             loc=0,
-            scale=self.weibull_scale[m, ...],
+            scale=scale[i_c, ...],
         )
 
     # @staticmethod

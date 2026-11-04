@@ -71,3 +71,25 @@ print(f"Size 1 subset | type: {type(subset_size_1_tuple)}, names: {subset_size_1
 # %% [markdown]
 # DimensionSet objects have several attributes (like `names` or `letters`) and a range of methods to modify or combine them.
 # For a full list and documentation, refer to the API Reference.
+# Here we list the few most important ones.
+
+# %%
+
+# Transform single Dimension to DimensionSet
+dim_as_set = dims["r"].as_dimset()
+print(f"Dimension as DimensionSet | type: {type(dim_as_set)}, names: {dim_as_set.names}")
+
+# Set union of two DimensionSets
+combined_dims = dims["r", "p"] | dims["p", "t"]
+print(f"Combined DimensionSet | type: {type(combined_dims)}, names: {combined_dims.names}")
+
+# Set intersection of two DimensionSets
+intersected_dims = dims["r", "p"] & dims["p", "t"]
+print(f"Intersected DimensionSet | type: {type(intersected_dims)}, names: {intersected_dims.names}")
+
+# Remove dimensions from DimensionSet
+reduced_dims = dims - dims["t"]
+print(f"Reduced DimensionSet | type: {type(reduced_dims)}, names: {reduced_dims.names}")
+
+
+# %%

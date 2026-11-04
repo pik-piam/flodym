@@ -67,7 +67,6 @@ except AttributeError as e:
 
 # %%
 class Person(BaseModel):
-
     initials: str
 
     @classmethod

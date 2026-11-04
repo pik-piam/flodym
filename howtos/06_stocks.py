@@ -45,7 +45,15 @@ print(f"Array names: {my_stock.stock.name}, {my_stock.inflow.name}, {my_stock.ou
 #
 # As mentioned above, for `SimpleFlowDrivenStock`, the stock is calculated as the cumulative sum over time of inflow minus outflow.
 #
-# There's a `check_mass_balance()` method, which checks whether inflow, outflow and stock are consistent:
+# After `compute()`, the stock, inflow and outflow arrays are marked as set (see the HOWTO on arrays).
+# Before the computation, flodym checks the arrays the computation is based on: a warning is logged if they are zero.
+# What happens if they are not set is controlled by `flodym.config.error_behaviors.unset_array_used`.
+# The check and the marking are added automatically to the `compute()` method of every `Stock` subclass, including your own.
+#
+# After each computation, flodym also checks whether inflow, outflow and stock are consistent, i.e. whether the stock change in each time step equals the net inflow over the time step.
+# This mass balance check can also be called explicitly with `check_mass_balance()`.
+# The mass balance error itself is returned by `get_mass_balance()`.
+# Whether the check is performed automatically, what happens if it fails, and the tolerance it uses are controlled by `flodym.config` (see the HOWTO on working with the MFA system):
 
 # %%
 my_stock.inflow.values[...] = 0.1
@@ -130,10 +138,148 @@ print("Stock values for Vehicles:", stocks["in-use"].stock["Vehicles"].values)
 # For an example of how to use stock definitions in the `MFASystem.from_data_reader()` method, see Example 5.
 
 # %% [markdown]
+# ## Computation modes
+#
+# `InflowDrivenDSM` and `StockDrivenDSM` fix whether `compute()` starts from the inflow or from the stock.
+# The general `DynamicStockModel` instead has one method for each mode:
+# `compute_inflow_driven()`, `compute_stock_driven()` and `compute_inflow_by_cohort_driven()`.
+# The latter starts from `inflow_by_cohort`, an inflow by year and age-cohort, for which a `cohort_dim` must be given.
+#
+# These methods can be called repeatedly and in any order on the same object.
+# For example, a stock-driven computation yields negative inflows if the stock decreases faster than items reach the end of their lifetime.
+# These inflows can be set to zero, and the stock recomputed inflow-driven:
+
+# %%
+from flodym import DynamicStockModel
+
+stock_values = np.array([1, 2, 3, 4, 5, 6, 6, 3, 2, 2, 2], dtype=float)[:, np.newaxis]
+my_dsm = DynamicStockModel(
+    dims=dims,
+    name="in-use-dsm",
+    lifetime_model=NormalLifetime(dims=dims, mean=lifetime_mean, std=0.3 * lifetime_mean),
+    stock=StockArray(dims=dims, values=stock_values * np.ones(dims.shape)),
+)
+my_dsm.compute_stock_driven()
+print("Smallest inflow, stock-driven:", my_dsm.inflow.values.min())
+
+my_dsm.inflow[...] = np.maximum(my_dsm.inflow.values, 0.0)
+my_dsm.compute_inflow_driven()
+print("Smallest inflow, corrected:", my_dsm.inflow.values.min())
+print("Stock values for Vehicles:", my_dsm.stock["Vehicles"].values)
+
+# %% [markdown]
+# `DynamicStockModel.compute()` chooses the mode itself: it uses whichever of stock, inflow and `inflow_by_cohort` is set (see `is_set` in the how-to on arrays).
+# After a computation, stock, inflow and outflow are all set, so a second call to `compute()` raises an error.
+# To recompute, use the explicit methods above.
+
+# %% [markdown]
+# ## Lifetime extension
+#
+# Lifetime extension can by modeled. To this end, a time-dependent extension factor can be specified.
+# The lifetime distribution will then be scaled such that mean and standard deviation are scaled
+# by this factor. The factor can be specified in the lifetime model class. There are two parameters
+# for different kinds of lifetime extensions, which are also distinguished in
+# Krych et al., 2024 - https://doi.org/10.1111/jiec.13586:
+# - `lt_factor_by_cohort`: Applies the extension to all items of a cohort (which can be roughly
+#   translated to one production year). Use this factor to model lifetime extension trough product
+#   design, dubbed as "nature" lifetime extension in Krych et al.
+# - `lt_factor_by_year`: Applies the extension in a given year to all items which are present in
+#   the stock in that year. Use this factor to model lifetime extension trough repair and extended
+#   use, dubbed as "nurture" lifetime extension in Krych et al.
+# The following example illustrates the effect of both. For details, refer to the referenced
+# publication.
+
+# %%
+import numpy as np
+
+from flodym import Dimension, DimensionSet, StockArray, FlodymArray, WeibullLifetime, StockDrivenDSM
+
+YEARS = list(range(2025, 2071))
+
+# Initialize dimensions
+# The "extension type" dimension is used to handle different types of extension in one stock object.
+dim_list = [
+    Dimension(
+        name="time",
+        letter="t",
+        items=YEARS,
+    ),
+    Dimension(
+        name="extension type",
+        letter="p",
+        items=["base", "extension by year", "extension by cohort"],
+    ),
+]
+dims = DimensionSet(dim_list=dim_list)
+
+# Initialize the prescribed stock
+stock_over_time = 1 - np.exp(-0.1 * (np.array(YEARS) - 2025))
+stock_values = np.ndarray((len(YEARS), 3))
+stock_values[...] = stock_over_time[:, np.newaxis]
+stock = StockArray(dims=dims, values=stock_values)
+
+# Initialize prescribed extension factors
+# linear increase from 1 to 2 between 2030 and 2040, then constant at 2
+factor_np = 1 + np.clip((np.array(YEARS) - 2030) / 10, 0, 1)
+
+factor = FlodymArray(dims=dims)
+factor[...] = 1.0
+
+factor_by_year = factor.copy()
+factor_by_year["extension by year"] = factor_np
+
+factor_by_cohort = factor.copy()
+factor_by_cohort["extension by cohort"] = factor_np
+
+lifetime_model = WeibullLifetime(
+    dims=dims,
+    time_letter="t",
+    weibull_scale=10,
+    weibull_shape=2,
+    lt_factor_by_year=factor_by_year,
+    lt_factor_by_cohort=factor_by_cohort,
+)
+
+dsm = StockDrivenDSM(
+    dims=dims,
+    stock=stock,
+    lifetime_model=lifetime_model,
+    time_letter="t",
+)
+dsm.compute()
+
+# %% [markdown]
+# The visualization shows how the extension by cohort immediately reduces the outflow,
+# While for the extension by year, the outflow is only reduced after newly produced cohorts with
+# the extended lifetimes have reached the end of their lifetime.
+
+# %%
+import plotly.express as px
+
+outflow = dsm.outflow.to_df().reset_index()
+
+fig = px.line(
+    y=factor_np,
+    x=np.array(YEARS),
+    title="Extension factor",
+)
+fig.show(renderer="notebook")
+
+fig = px.line(
+    outflow,
+    y="value",
+    x="time",
+    color="extension type",
+    title="Stock Outflow by Extension Type",
+)
+fig.show(renderer="notebook")
+
+
+# %% [markdown]
 #
 # ## Lifetime model inflow time
 # The DSMs consist of discrete time steps (the items of the time dimension), leading to
-# numerical errors.
+# numerical errors (cf. Cencic and Frühwirth, 2025 - https://doi.org/10.1111/jiec.70102).
 # The standard implementation assumes all inflow of a time step to occur at one point in time.
 # The inflow can be set with the `inflow_at` attribute of the lifetime model to occur at the
 # beginning, end, or middle of the time step.
@@ -145,7 +291,7 @@ print("Stock values for Vehicles:", stocks["in-use"].stock["Vehicles"].values)
 # It is more accurate than a single point, but also slower. The number can be set with the
 # `n_pts_per_interval` attribute of the lifetime model. Up to 10 points can be used.
 #
-# # Uneven time spacing
+# ## Uneven time spacing
 # The items of the time dimension can be non-contiguous and even unevenly spaced.
 # For example, only select years can be used.
 # If the time steps are not contiguous, the flows are assumed to be annual flows.

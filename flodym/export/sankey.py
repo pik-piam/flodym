@@ -1,8 +1,6 @@
-from pydantic import BaseModel as PydanticBaseModel, model_validator, ConfigDict, computed_field
-from typing import Optional, Any
-import numpy as np
+from pydantic import BaseModel as PydanticBaseModel, model_validator, ConfigDict
+from typing import Optional
 import plotly.graph_objects as go
-import plotly as pl
 
 from ..mfa_system import MFASystem
 from ..flodym_arrays import Flow
@@ -10,7 +8,6 @@ from .helper import CustomNameDisplayer
 
 
 class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
-
     model_config = ConfigDict(arbitrary_types_allowed=True, protected_namespaces=())
 
     mfa: MFASystem
@@ -52,7 +49,7 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
         for f in self.shown_flows.values():
             if "default" not in self.flow_color_dict:
                 raise ValueError(
-                    f"flow_color_dict must have a 'default' key to resort to if a flow is not in the dictionary"
+                    "flow_color_dict must have a 'default' key to resort to if a flow is not in the dictionary"
                 )
             if f.name not in self.flow_color_dict:
                 self.flow_color_dict[f.name] = self.flow_color_dict["default"]
@@ -67,7 +64,7 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
         for p in self.shown_processes:
             if "default" not in self.node_color_dict:
                 raise ValueError(
-                    f"node_color_dict must have a 'default' key to resort to if a process is not in the dictionary"
+                    "node_color_dict must have a 'default' key to resort to if a process is not in the dictionary"
                 )
             if p.name not in self.node_color_dict:
                 self.node_color_dict[p.name] = self.node_color_dict["default"]
@@ -151,15 +148,15 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
         if isinstance(color, tuple):
             split_flows_by = color[0]
             colors = color[1]
-            splitting_letter_tuple = (self.mfa.dims[split_flows_by].letter,)
-            values = f_slice.sum_values_to(splitting_letter_tuple)
-            for v, c in zip(values, colors):
-                links.append(label=label, source=source, target=target, color=c, value=v)
+            labels = self.mfa.dims[split_flows_by].items
+            values = f_slice.sum_values_to((self.mfa.dims[split_flows_by].letter,))
+            for l, c, v in zip(labels, colors, values):
+                links.append(source=source, target=target, label=l, color=c, value=v)
         else:
             links.append(
-                label=label,
                 source=source,
                 target=target,
+                label=label,
                 color=color,
                 value=f_slice.sum_values(),
             )
@@ -183,7 +180,6 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
 
 
 class DictOfLists:
-
     def __init__(self, list_names: list[str]):
         self.dict = {l: [] for l in list_names}
 

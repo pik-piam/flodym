@@ -14,6 +14,7 @@ from flodym.flodym_arrays import (
     StockArray as StockArray,
     Flow as Flow,
 )
+from flodym.flodym_array_helper import flodym_array_stack as flodym_array_stack
 from flodym.processes import Process as Process, make_processes as make_processes
 from flodym.stocks import (
     Stock as Stock,
@@ -21,7 +22,6 @@ from flodym.stocks import (
     DynamicStockModel as DynamicStockModel,
     InflowDrivenDSM as InflowDrivenDSM,
     StockDrivenDSM as StockDrivenDSM,
-    FlexibleDSM as FlexibleDSM,
 )
 from flodym.lifetime_models import (
     LifetimeModel as LifetimeModel,
@@ -44,11 +44,3 @@ from flodym.data_reader import (
     CompoundDataReader as CompoundDataReader,
 )
 from flodym.config import config as config
-
-Flow.model_rebuild()
-Stock.model_rebuild()
-SimpleFlowDrivenStock.model_rebuild()
-DynamicStockModel.model_rebuild()
-InflowDrivenDSM.model_rebuild()
-StockDrivenDSM.model_rebuild()
-FlexibleDSM.model_rebuild()

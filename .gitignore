@@ -8,7 +8,6 @@ docs/source/_autosummary
 docs/source/pictures
 howtos/output_data
 poetry.lock
-uv.lock
 flodym.egg-info
 build
 .pytest_cache

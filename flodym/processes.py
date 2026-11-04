@@ -1,35 +1,38 @@
-from typing import List, Dict, Optional
-from pydantic import BaseModel as PydanticBaseModel, model_validator
 import logging
-from functools import reduce
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
+
 import numpy as np
+from pydantic import BaseModel as PydanticBaseModel, PrivateAttr, model_validator
 
-from .flodym_arrays import Flow, FlodymArray, Parameter
-from .stocks import Stock
+from .config import ErrorBehavior, config, handle_error
 from .mfa_definition import ProcessDefinition
-from .dimensions import DimensionSet
-from .config import config, handle_error, ErrorBehavior
+
+if TYPE_CHECKING:
+    from .flodym_arrays import FlodymArray, Flow
+    from .stocks import Stock
 
 
-class Process(PydanticBaseModel, arbitrary_types_allowed=True):
+class Process(PydanticBaseModel):
     """Processes serve as nodes for the MFA system layout definition.
     Flows are defined between two processes. Stocks are connected to a process.
     Processes do not contain values themselves.
 
-    Processes get an ID by the order they are defined in the :py:attribute::`MFASystem.definition`.
+    Processes get an ID by the order they are defined in the :py:attribute::`MFASystem.definition`,
+    or explicitly by a :py:class:`flodym.ProcessDefinition`.
     The process with ID 0 necessarily contains everything outside the system boundary.
     It has to be named 'sysenv'.
+
+    When an :py:class:`flodym.MFASystem` is set up, the process is linked to its inflows,
+    outflows and stock (see :py:attr:`inflows`, :py:attr:`outflows`, :py:attr:`stock`).
     """
 
     name: str
     """Name of the process."""
     id: int
     """ID of the process."""
-    _inflows: Dict[str, Flow] = {}
-    """Inflows to the process, keyed by linked process name."""
-    _outflows: Dict[str, Flow] = {}
-    """Outflows from the process, keyed by linked process name."""
-    stock: Optional[Stock] = None
+    _inflows: Dict[str, "Flow"] = PrivateAttr(default_factory=dict)
+    _outflows: Dict[str, "Flow"] = PrivateAttr(default_factory=dict)
+    _stock: Optional["Stock"] = PrivateAttr(default=None)
 
     @model_validator(mode="after")
     def check_id0(self):
@@ -40,201 +43,197 @@ class Process(PydanticBaseModel, arbitrary_types_allowed=True):
             )
         return self
 
-    def __repr__(self):
-        return ""  # TODO
+    def __repr_args__(self):
+        """Arguments shown by ``repr()`` and ``str()``. Linked flows and the stock are shown by
+        name only, since they link back to the process."""
+        yield "name", self.name
+        yield "id", self.id
+        yield "inflows", list(self._inflows)
+        yield "outflows", list(self._outflows)
+        yield "stock", None if self._stock is None else self._stock.name
 
     @property
-    def inflows(self) -> Dict[str, Flow]:
-        """Inflows to the process."""
+    def inflows(self) -> Dict[str, "Flow"]:
+        """Inflows to the process, keyed by flow name."""
         return self._inflows
 
     @property
-    def outflows(self) -> Dict[str, Flow]:
-        """Outflows from the process."""
+    def outflows(self) -> Dict[str, "Flow"]:
+        """Outflows from the process, keyed by flow name."""
         return self._outflows
 
-    def add_inflow(self, flow: Flow) -> None:
-        """Add an inflow flow to the process."""
-        self._inflows[flow.from_process.name] = flow
-
-    def add_outflow(self, flow: Flow) -> None:
-        """Add an outflow flow from the process."""
-        self._outflows[flow.to_process.name] = flow
-
-    def remove_inflow(self, from_process: str) -> None:
-        """Remove an inflow from the process."""
-        if from_process in self._inflows:
-            del self._inflows[from_process]
-        else:
-            raise ValueError(
-                f"In process {self.name}: No inflow from process '{from_process}' found."
-            )
-
-    def remove_outflow(self, to_process: str) -> None:
-        """Remove an outflow from the process."""
-        if to_process in self._outflows:
-            del self._outflows[to_process]
-        else:
-            raise ValueError(f"In process {self.name}: No outflow to process '{to_process}' found.")
-
     @property
-    def is_computed(self) -> bool:
-        """Check if the process has been computed."""
-        if self.unknown_flows("in") or self.unknown_flows("out"):
-            return False
-        if self.stock is not None and not self.stock.is_computed:
-            return False
-        return True
+    def stock(self) -> Optional["Stock"]:
+        """Stock connected to the process, if any."""
+        return self._stock
 
-    def flows(self, direction: str):
-        if direction == "in":
-            return self._inflows
-        elif direction == "out":
-            return self._outflows
-        else:
-            raise ValueError("Direction must be 'in' or 'out'.")
+    def add_inflow(self, flow: "Flow") -> None:
+        """Link a flow as inflow to the process."""
+        if flow.to_process is not self:
+            raise ValueError(f"Flow '{flow.name}' does not go to process '{self.name}'.")
+        self._inflows[flow.name] = flow
 
-    def known_flows(self, side: str) -> Dict[str, Flow]:
-        return {name: flow for name, flow in self.flows(side).items() if flow.is_set}
+    def add_outflow(self, flow: "Flow") -> None:
+        """Link a flow as outflow from the process."""
+        if flow.from_process is not self:
+            raise ValueError(f"Flow '{flow.name}' does not come from process '{self.name}'.")
+        self._outflows[flow.name] = flow
 
-    def unknown_flows(self, side: str) -> Dict[str, Flow]:
-        return {name: flow for name, flow in self.flows(side).items() if not flow.is_set}
-
-    def get_sum_inflows(self) -> FlodymArray:
-        """Sum of all inflows to the process."""
-        if not self.is_computed:
+    def set_stock(self, stock: "Stock") -> None:
+        """Link a stock to the process. A process can have only one stock."""
+        if stock.process is not self:
+            raise ValueError(f"Stock '{stock.name}' is not connected to process '{self.name}'.")
+        if self._stock is not None and self._stock is not stock:
             raise ValueError(
-                f"Cannot compute sum_inflows for process {self.name} before it is computed."
+                f"Process '{self.name}' already has the stock '{self._stock.name}'; "
+                f"it cannot also have the stock '{stock.name}'."
             )
-        if not self.inflows:
-            return 0.0
-        return sum(self.inflows.values())
+        self._stock = stock
 
-    def get_sum_outflows(self) -> FlodymArray:
-        """Sum of all outflows from the process."""
-        if not self.is_computed:
-            raise ValueError(
-                f"Cannot compute sum_outflows for process {self.name} before it is computed."
-            )
-        if not self.outflows:
-            return 0.0
-        return sum(self.outflows.values())
+    def remove_inflow(self, flow_name: str) -> None:
+        """Remove the link to an inflow, given by its name."""
+        if flow_name not in self._inflows:
+            raise ValueError(f"In process {self.name}: No inflow '{flow_name}' found.")
+        del self._inflows[flow_name]
 
-    def get_net_inflow(self):
+    def remove_outflow(self, flow_name: str) -> None:
+        """Remove the link to an outflow, given by its name."""
+        if flow_name not in self._outflows:
+            raise ValueError(f"In process {self.name}: No outflow '{flow_name}' found.")
+        del self._outflows[flow_name]
+
+    def remove_stock(self) -> None:
+        """Remove the link to the stock."""
+        self._stock = None
+
+    def clear_links(self) -> None:
+        """Remove the links to all inflows, outflows and the stock."""
+        self._inflows = {}
+        self._outflows = {}
+        self._stock = None
+
+    def get_sum_inflows(self) -> Union["FlodymArray", float]:
+        """Sum of all inflows to the process, reduced to the dimensions common to all inflows.
+        Zero if the process has no inflows."""
+        return sum(self._inflows.values(), 0.0)
+
+    def get_sum_outflows(self) -> Union["FlodymArray", float]:
+        """Sum of all outflows from the process, reduced to the dimensions common to all outflows.
+        Zero if the process has no outflows."""
+        return sum(self._outflows.values(), 0.0)
+
+    def get_net_inflow(self) -> Union["FlodymArray", float]:
+        """Sum of all inflows minus sum of all outflows of the process.
+        Unless the process is 'sysenv', this equals the net inflow of its stock (or zero), if the
+        mass balance is satisfied."""
         return self.get_sum_inflows() - self.get_sum_outflows()
+
+    def get_mass_balance(
+        self, mass_change: Union["FlodymArray", float, None] = None
+    ) -> Union["FlodymArray", float]:
+        """Mass balance error of the process: The net inflow of the process
+        (see :py:meth:`get_net_inflow`) minus its mass change.
+        Zero if the mass balance is satisfied.
+
+        Args:
+            mass_change: The mass change of the process per year. If None, it is the net inflow of
+                the stock of the process, or zero if the process has no stock.
+                For the 'sysenv' process, it must be given, as the negative mass change of the
+                whole system, see :py:meth:`flodym.MFASystem.check_mass_balance`.
+        """
+        if mass_change is None:
+            if self.id == 0:
+                raise ValueError(
+                    "The mass balance of the 'sysenv' process depends on the stock changes of the "
+                    "whole MFA system and can only be computed if mass_change is given. "
+                    "Use MFASystem.check_mass_balance() instead."
+                )
+            mass_change = 0.0 if self._stock is None else self._stock.net_inflow
+        return self.get_net_inflow() - mass_change
 
     @property
     def _absolute_float_precision(self) -> float:
-        """The numpy float precision, multiplied by the maximum absolute flow or stock value."""
-        if self.inflows:
-            max_inflow = max([f._absolute_float_precision for f in self.inflows.values()])
-        else:
-            max_inflow = 0.0
-        if self.outflows:
-            max_outflow = max([f._absolute_float_precision for f in self.outflows.values()])
-        else:
-            max_outflow = 0.0
-        return max(max_inflow, max_outflow)
+        """Machine epsilon times the largest absolute value of the in- and outflows of the process
+        and of the in- and outflow of its stock."""
+        arrays = list(self._inflows.values()) + list(self._outflows.values())
+        if self._stock is not None:
+            arrays += [self._stock.inflow, self._stock.outflow]
+        return max((a._absolute_float_precision for a in arrays), default=0.0)
 
     @property
     def tolerance(self) -> float:
-        """The tolerance for checks like mass balance"""
-        if config.absolute_tolerance is not None:
-            return config.absolute_tolerance
-        return config.relative_tolerance * self._absolute_float_precision
+        """Absolute tolerance for the mass balance check of the process, see
+        :py:attr:`flodym.config.Config.relative_tolerance`."""
+        return config.get_tolerance(self._absolute_float_precision)
 
     def check_mass_balance(
         self,
-        tolerance: float = None,
-        error_behavior: ErrorBehavior = None,
-        mass_change_target: FlodymArray = None,
-    ):
-        """Compute mass balance, and check whether it is within a certain tolerance.
-        Throw an error if it isn't.
+        tolerance: Optional[float] = None,
+        error_behavior: Optional[ErrorBehavior | str] = None,
+        mass_change: Union["FlodymArray", float, None] = None,
+    ) -> bool:
+        """Check whether the mass balance of the process (see :py:meth:`get_mass_balance`) is
+        satisfied within a tolerance.
 
         Args:
-            tolerance (float, optional): A tolerance override for the mass balance check.
-                If None, takes the  processes's own tolerance
-            error_behavior (ErrorBehavior): What to do if the mass balance check fails.
-                If None, takes the global config setting, which defaults to raising an error
+            tolerance: Absolute tolerance. If None, :py:attr:`tolerance` is used.
+            error_behavior: What to do if the check fails. If None,
+                ``flodym.config.error_behaviors.mass_balance`` is used (default: raise an error).
+            mass_change: See :py:meth:`get_mass_balance`.
+
+        Returns:
+            Whether the check passed.
         """
-
-        if self.id == 0 and mass_change_target is None:
-            logging.info(
-                f"mass_change_target not given. Skip mass balance check for system environment."
-            )
-            return
-
-        logging.info(f"Checking mass balance of {self.__class__.__name__} object...")
-
-        if mass_change_target is None:
-            mass_change_target = 0.0 if self.stock is None else self.stock.net_inflow
-        # net_inflow = mass_change, so the difference should be zero
-        mass_balance = self.get_net_inflow() - mass_change_target
-        max_error = np.max(np.abs(mass_balance.values))
+        max_error = _max_abs(self.get_mass_balance(mass_change=mass_change))
         if tolerance is None:
             tolerance = self.tolerance
         if max_error > tolerance:
-            message = f"In process {self.name}: Mass balance check failed (error = {max_error})"
             if error_behavior is None:
                 error_behavior = config.error_behaviors.mass_balance
-            handle_error(behavior=error_behavior, message=message)
-        else:
-            logging.info(f"In process {self.name}: Success - Mass balance is consistent!")
+            handle_error(
+                behavior=error_behavior,
+                message=f"Mass balance check failed for process '{self.name}' "
+                f"(max error: {max_error}, tolerance: {tolerance}).",
+            )
+            return False
+        logging.info(f"Mass balance of process '{self.name}' is consistent.")
+        return True
+
+
+def _max_abs(array: Union["FlodymArray", float]) -> float:
+    """Largest absolute value of a FlodymArray or scalar."""
+    values = np.asarray(getattr(array, "values", array))
+    if values.size == 0:
+        return 0.0
+    return float(np.max(np.abs(values)))
 
 
 def make_processes(definitions: List[str | ProcessDefinition]) -> dict[str, Process]:
-    """Create a dictionary of processes from a list of process names."""
+    """Create a dictionary of processes from a list of process names or process definitions.
+
+    Processes given as :py:class:`flodym.ProcessDefinition` get the ID of the definition. IDs need
+    not be contiguous, but must be unique and non-negative. Processes given as names get the
+    smallest IDs not used by any definition, in the order they are listed. If all processes are
+    given as names, their IDs are thus their positions in the list.
+    The process with ID 0 must be named 'sysenv'.
+    """
+    explicit_ids = [d.id for d in definitions if isinstance(d, ProcessDefinition)]
+    if any(i < 0 for i in explicit_ids):
+        raise ValueError(f"Process IDs must be non-negative, but got {sorted(explicit_ids)}.")
+    if len(set(explicit_ids)) != len(explicit_ids):
+        raise ValueError(f"Process IDs must be unique, but got {sorted(explicit_ids)}.")
+    used_ids = set(explicit_ids)
+    next_free_id = 0
     processes = {}
     for definition in definitions:
-        if isinstance(definition, str):
-            name = definition
-            id = len(processes)
-        elif isinstance(definition, ProcessDefinition):
-            if definition.id != len(processes):
-                raise ValueError(
-                    f"Processes must be defined with consecutive IDs starting from 0, but found {definition.id} in {len(processes)}'th definition."
-                )
-            name = definition.name
-            id = definition.id
+        if isinstance(definition, ProcessDefinition):
+            name, id = definition.name, definition.id
+        else:
+            while next_free_id in used_ids:
+                next_free_id += 1
+            name, id = definition, next_free_id
+            used_ids.add(id)
+        if name in processes:
+            raise ValueError(f"Process name '{name}' is defined more than once.")
         processes[name] = Process(name=name, id=id)
     return processes
-
-
-def set_process_parameters(
-    processes: Dict[str, Process],
-    definitions: List[ProcessDefinition],
-    parameters: Dict[str, Parameter],
-):
-    for definition in definitions:
-        if isinstance(definition, str):
-            continue
-
-        if definition.name not in processes:
-            raise ValueError(
-                f"Process {definition.name} is not defined in the processes dictionary."
-            )
-        process = processes[definition.name]
-
-        if definition.inflow_shares:
-            for from_process, parameter_name in definition.inflow_shares.items():
-                if parameter_name not in parameters:
-                    raise ValueError(
-                        f"Parameter {parameter_name} given in definition of process {definition.name} is not defined."
-                    )
-                process.add_inflow_share(from_process, parameters[parameter_name])
-
-        if definition.outflow_shares:
-            for to_process, parameter_name in definition.outflow_shares.items():
-                if parameter_name not in parameters:
-                    raise ValueError(
-                        f"Parameter {parameter_name} given in definition of process {definition.name} is not defined."
-                    )
-                process.add_outflow_share(to_process, parameters[parameter_name])
-
-        if definition.dimension_splitter:
-            if definition.dimension_splitter not in parameters:
-                raise ValueError(
-                    f"Dimension splitter {definition.dimension_splitter} given in definition of process {definition.name} is not defined."
-                )
-            process.dimension_splitter = parameters[definition.dimension_splitter]

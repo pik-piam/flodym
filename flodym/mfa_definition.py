@@ -4,17 +4,20 @@ These are used when defining the MFA system, and can be used to check the input 
 and put it into ojects with the desired properties.
 """
 
+from typing import Dict, List, Optional
+
 import numpy as np
 import pandas as pd
 from pydantic import (
-    BaseModel as PydanticBaseModel,
     AliasChoices,
+    ConfigDict,
     Field,
     field_validator,
     model_validator,
-    ConfigDict,
 )
-from typing import List, Optional, Dict
+from pydantic import (
+    BaseModel as PydanticBaseModel,
+)
 
 
 class DimensionDefinition(PydanticBaseModel):
@@ -41,8 +44,8 @@ class DefinitionWithDimLetters(PydanticBaseModel):
 
     model_config = ConfigDict(protected_namespaces=())
 
-    dim_letters: tuple
-    """letters of the dimensions that the object is defined on"""
+    dim_letters: tuple[str, ...]
+    """Letters of the dimensions that the object is defined on."""
 
     @field_validator("dim_letters", mode="before")
     def check_dimensions(cls, v):
@@ -92,12 +95,7 @@ class StockDefinition(DefinitionWithDimLetters):
     Available lifetime models can be found in :py:data:`flodym.lifetime_models`.
     """
     solver: Optional[str] = "manual"
-    """Algorithm to use for solving the equation system in the stock-driven DSM.
-    Options are: "manual" (default), which uses
-    an own python implementation, and "lapack", which calls the lapack trtrs routine via scipy.
-    The lapack implementation is more precise. Speed depends on the dimensionality,
-    but the manual implementation is usually faster.
-    """
+    """Deprecated and ignored. The stock-driven DSM always uses the former "manual" algorithm."""
 
     @model_validator(mode="after")
     def init_solver(self):
@@ -127,6 +125,9 @@ class ParameterDefinition(DefinitionWithDimLetters):
 
 
 class ProcessDefinition(PydanticBaseModel):
+    """Define a process with an explicit ID. In :py:attr:`MFADefinition.processes`, it can be
+    used instead of a process name, see :py:func:`flodym.make_processes`."""
+
     id: int
     """ID of the process."""
     name: str
@@ -141,12 +142,12 @@ class MFADefinition(PydanticBaseModel):
     dimensions: List[DimensionDefinition]
     """List of definitions of dimensions used in the model."""
     processes: List[str | ProcessDefinition]
-    """List of process names used in the model."""
+    """List of the processes used in the model, given as names or process definitions."""
     flows: List[FlowDefinition]
     """List of definitions of flows used in the model."""
-    stocks: List[StockDefinition]
+    stocks: List[StockDefinition] = []
     """List of definitions of stocks used in the model."""
-    parameters: List[ParameterDefinition]
+    parameters: List[ParameterDefinition] = []
     """List of definitions of parameters used in the model."""
 
     @model_validator(mode="after")
@@ -169,6 +170,8 @@ class MFADefinition(PydanticBaseModel):
         """
         all_dfs = {}
         for field_name, def_list in self.model_dump().items():
+            if not def_list:
+                continue
             def_dfs = []
             for definition in def_list:
                 if isinstance(definition, str):

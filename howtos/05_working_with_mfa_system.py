@@ -23,7 +23,6 @@ from flodym import MFASystem
 
 
 class MyMFASystem(MFASystem):
-
     def compute(self):
 
         self.flows["sysenv => process_a"][...] = self.parameters["extraction"]
@@ -172,6 +171,32 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 my_mfa_system.check_mass_balance()
+
+# %% [markdown]
+# The check covers
+# - each process: the sum of its inflows minus the sum of its outflows must equal the net inflow of its stock (or zero if it has no stock). For `sysenv`, it must equal the negative mass change of all stocks in the system.
+# - each stock: the stock change in each time step must equal its net inflow over the time step.
+#
+# The checks of single processes and stocks are also available as `check_mass_balance()` methods of `Process` and `Stock`, and the errors themselves as `get_mass_balance()`.
+# Stocks are checked automatically after each computation.
+#
+# There is also a `check_flows()` method, which checks for negative or NaN flow values.
+#
+# What happens if a check fails, and the tolerance of the checks, is controlled by the global configuration `flodym.config`.
+# By default, a failed mass balance check raises an error, while a failed automatic check after a stock computation and a failed flow check log a warning.
+# The tolerance is a multiple (`relative_tolerance`, default 100) of the float precision of the largest value in the system. Alternatively, an `absolute_tolerance` can be set.
+# Options can be changed permanently by assignment, or temporarily with `override`.
+# The `error_behavior` and `tolerance` arguments of the check methods override the configuration for a single call.
+
+# %%
+import flodym
+
+flodym.config.error_behaviors.check_flows = "error"
+
+with flodym.config.override(relative_tolerance=1000.0, error_behaviors={"mass_balance": "warn"}):
+    my_mfa_system.check_mass_balance()
+
+my_mfa_system.check_flows(error_behavior="info")
 
 # %% [markdown]
 # ## Generate attributes from Definition objects
