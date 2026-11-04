@@ -315,6 +315,59 @@ fig = px.line(
 )
 fig.show(renderer="notebook")
 
+# %% [markdown]
+# ## Period effects
+#
+# Period effects change the outflow in a given year for all age-cohorts present in that year.
+# Two kinds are available as attributes of all lifetime models:
+# - `hazard_factor_by_year`: multiplies the hazard, i.e. the intensity of leaving the stock.
+#   The survival rate s in that year becomes s ** factor. A factor of 1 has no effect, 0 means
+#   no outflow (e.g. a demolition moratorium), and values greater than 1 increase the outflow
+#   (e.g. a scrappage scheme). For Weibull distributions, this is equivalent to
+#   `lt_factor_by_year` with hazard factor = lt_factor ** (-weibull_shape).
+# - `removal_share_by_year`: a share of the stock removed in a time step in addition to the
+#   regular outflow, independent of age, e.g. by a disaster, or by a phase-out policy (share 1).
+#
+# Both are applied to the one-step survival rates, from which the survival factor is computed.
+
+# %%
+dims = DimensionSet(
+    dim_list=[
+        Dimension(name="time", letter="t", items=YEARS),
+        Dimension(name="scenario", letter="s", items=["base", "scrappage scheme", "disaster"]),
+    ]
+)
+stock = StockArray(dims=dims, values=stock_over_time[:, np.newaxis] * np.ones(dims.shape))
+
+# triple exit intensity in 2035 and 2036
+hazard_factor = FlodymArray(dims=dims)
+hazard_factor[...] = 1.0
+hazard_factor[{"s": "scrappage scheme", "t": [2035, 2036]}] = 3.0
+
+# a fifth of the stock is destroyed in 2040
+removal_share = FlodymArray(dims=dims)
+removal_share[{"s": "disaster", "t": 2040}] = 0.2
+
+lifetime_model = LogNormalLifetime(
+    dims=dims,
+    mean=10,
+    std=0.3,
+    relative_std=True,
+    hazard_factor_by_year=hazard_factor,
+    removal_share_by_year=removal_share,
+)
+dsm = StockDrivenDSM(dims=dims, stock=stock, lifetime_model=lifetime_model)
+dsm.compute()
+
+fig = px.line(
+    dsm.outflow.to_df().reset_index(),
+    y="value",
+    x="time",
+    color="scenario",
+    title="Stock outflow with period effects",
+)
+fig.show(renderer="notebook")
+
 
 # %% [markdown]
 #

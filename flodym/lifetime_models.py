@@ -83,6 +83,27 @@ class LifetimeModel(PydanticBaseModel):
     representing e.g. product design or material choice.
     Dimensions must be a subset of the lifetime model dimensions.
     """
+    hazard_factor_by_year: LifetimeArrayType | None = None
+    """Period effect: multiply the hazard, i.e. the intensity of leaving the stock, in a year by
+    this factor, for all age-cohorts present in that year. The survival rate s in that year
+    becomes s ** factor. A factor of 1 has no effect, 0 means that nothing leaves the stock,
+    and values greater than 1 increase the outflow, e.g. through scrappage schemes.
+    The effect does not depend on the length of the time step.
+    It has no effect on lifetime models with survival rates of only 0 and 1, like
+    :py:class:`FixedLifetime`.
+    For Weibull distributions, it is equivalent to ``lt_factor_by_year`` with
+    hazard factor = lt_factor ** (-weibull_shape); for other distributions, it is not.
+    Dimensions must be a subset of the lifetime model dimensions.
+    """
+    removal_share_by_year: LifetimeArrayType | None = None
+    """Period effect: share of the stock removed in a time step in addition to the regular
+    outflow, independent of age, e.g. by a disaster or a phase-out policy (share 1).
+    The survival rate s in that time step becomes s * (1 - share). The share refers to the whole
+    time step, not to a unit of time. Of the age-cohort entering during the time step, only the
+    part entering before the removal is affected, assuming the removal is evenly distributed over
+    the time step and the inflow occurs as given by ``inflow_at`` and ``n_pts_per_interval``.
+    Dimensions must be a subset of the lifetime model dimensions.
+    """
     _sf: np.ndarray | None = PrivateAttr(default=None)
     _pdf: np.ndarray | None = PrivateAttr(default=None)
     _survival_rate: np.ndarray | None = PrivateAttr(default=None)
@@ -109,8 +130,13 @@ class LifetimeModel(PydanticBaseModel):
 
     @model_validator(mode="after")
     def _cast_all(self):
-        lt_factors = ["lt_factor_by_year", "lt_factor_by_cohort"]
-        for prm_name in self._prm_names + lt_factors:
+        array_fields = [
+            "lt_factor_by_year",
+            "lt_factor_by_cohort",
+            "hazard_factor_by_year",
+            "removal_share_by_year",
+        ]
+        for prm_name in self._prm_names + array_fields:
             prm_value = getattr(self, prm_name)
             if prm_value is not None:
                 casted = self._any_to_np(prm_value, name=prm_name)
@@ -192,17 +218,30 @@ class LifetimeModel(PydanticBaseModel):
             self._scaled_prms[prm_name] = value
 
     @property
+    def _has_period_effects(self) -> bool:
+        return self.hazard_factor_by_year is not None or self.removal_share_by_year is not None
+
+    @property
     def sf(self):
         if self._sf is None:
-            self._sf = np.zeros(self._shape_cohort)
-            self._check_prms_set()
-            self._scale_prms()
-            self._quad_points, self._quad_weights = self._get_quad_points_and_weights()
-            if self.lt_factor_by_year is not None:
-                self._compute_survival_factor_with_nurture()
+            if self._has_period_effects:
+                self._sf = self._sf_from_survival_rate(self.survival_rate)
             else:
-                self._compute_survival_factor()
+                self._sf = self._compute_base_sf()
         return self._sf
+
+    def _compute_base_sf(self) -> np.ndarray:
+        """Survival factor of the lifetime distribution, including lifetime factors, but without
+        period effects."""
+        sf = np.zeros(self._shape_cohort)
+        self._check_prms_set()
+        self._scale_prms()
+        self._quad_points, self._quad_weights = self._get_quad_points_and_weights()
+        if self.lt_factor_by_year is not None:
+            self._compute_survival_factor_with_nurture(sf)
+        else:
+            self._compute_survival_factor(sf)
+        return sf
 
     @property
     def pdf(self):
@@ -217,11 +256,62 @@ class LifetimeModel(PydanticBaseModel):
         cohort c present at the end of year t-1, or entering the stock during year t, which is
         still present at the end of year t.
         It equals sf(t,c) / sf(t-1,c) for c < t, sf(t,t) for c = t, and zero for c > t.
+        Period effects are applied to it, and sf is then computed from it.
         """
         if self._survival_rate is None:
-            self._survival_rate = np.zeros(self._shape_cohort)
-            self._compute_survival_rate()
+            if self._has_period_effects:
+                survival_rate = self._survival_rate_from_sf(self._compute_base_sf())
+                self._apply_period_effects(survival_rate)
+                self._survival_rate = survival_rate
+            else:
+                self._survival_rate = self._survival_rate_from_sf(self.sf)
         return self._survival_rate
+
+    def _survival_rate_from_sf(self, sf: np.ndarray) -> np.ndarray:
+        survival_rate = np.zeros(self._shape_cohort)
+        # The share of cohort c present at the end of year t-1 which survives year t is
+        # sf(t,c) / sf(t-1,c). If sf(t-1,c) is zero, nothing is left to survive.
+        sf_prev = sf[:-1, ...]
+        np.divide(sf[1:, ...], sf_prev, out=survival_rate[1:, ...], where=sf_prev > 0)
+        # The newest cohort enters during year t, so its survival rate is sf(t,t)
+        t_diag_indices = self._t_diag_indices
+        survival_rate[t_diag_indices] = sf[t_diag_indices]
+        return survival_rate
+
+    def _sf_from_survival_rate(self, survival_rate: np.ndarray) -> np.ndarray:
+        """sf(t,c) is the product of survival_rate(t',c) over t' = c...t, and zero for c > t."""
+        upper_triangle = np.triu(np.ones((self._n_t, self._n_t), dtype=bool), k=1)
+        upper_triangle = upper_triangle[(...,) + (np.newaxis,) * len(self._shape_no_t)]
+        sf = np.cumprod(np.where(upper_triangle, 1.0, survival_rate), axis=0)
+        sf[np.broadcast_to(upper_triangle, sf.shape)] = 0.0
+        return sf
+
+    def _apply_period_effects(self, survival_rate: np.ndarray):
+        """Applies hazard_factor_by_year and removal_share_by_year to survival_rate in place.
+        Row t of survival_rate contains the survival rates of all age-cohorts in year t."""
+        if self.hazard_factor_by_year is not None:
+            hazard_factor = self.hazard_factor_by_year[:, np.newaxis, ...]
+            if np.min(hazard_factor) < 0:
+                raise ValueError("hazard_factor_by_year must not be negative.")
+            # zero rates stay zero, also for a hazard factor of zero
+            np.power(survival_rate, hazard_factor, out=survival_rate, where=survival_rate > 0)
+        if self.removal_share_by_year is not None:
+            share = self.removal_share_by_year
+            if np.min(share) < 0 or np.max(share) > 1:
+                raise ValueError("removal_share_by_year must be between 0 and 1.")
+            t_diag_indices = self._t_diag_indices
+            newest_cohort_rate = survival_rate[t_diag_indices].copy()
+            survival_rate *= 1.0 - share[:, np.newaxis, ...]
+            # The newest cohort is only affected if it enters before the removal, which is
+            # assumed to be evenly distributed over the time step.
+            quad_points, quad_weights = self._get_quad_points_and_weights()
+            exposed_fraction = sum(w * (1.0 - p) for p, w in zip(quad_points, quad_weights))
+            survival_rate[t_diag_indices] = newest_cohort_rate * (1.0 - exposed_fraction * share)
+
+    @property
+    def _t_diag_indices(self) -> tuple:
+        """Indices of the main diagonal of the time and cohort axes of a (t, c, ...) array."""
+        return np.diag_indices(self._n_t) + (slice(None),) * len(self._shape_no_t)
 
     def _tile(self, a: np.ndarray) -> np.ndarray:
         """tiles the input array a to the shape of the lifetime model, by adding non-time dimensions
@@ -244,7 +334,7 @@ class LifetimeModel(PydanticBaseModel):
     def _remaining_ages(self, i_t, quad_point):
         return self._tile(self._t.bounds[i_t + 1 :] - self._quad_point_time(i_t, quad_point))
 
-    def _compute_survival_factor(self):
+    def _compute_survival_factor(self, sf: np.ndarray):
         """Survival table self.sf(m,n) denotes the share of an inflow in year n (age-cohort) still
         present at the end of year m (after m-n years).
         The computation is self.sf(m,n) = ProbDist.sf(m-n), where ProbDist is the appropriate
@@ -258,14 +348,12 @@ class LifetimeModel(PydanticBaseModel):
         All other stock variables are determined by mass balance.
         The shape of the output sf array is NoofYears * NoofYears,
         and the meaning is years by age-cohorts.
-        The method does nothing if the sf alreay exists.
-        For example, sf could be assigned to the dynamic stock model from an exogenous computation
-        to save time.
+        The result is written into sf.
         """
         for i_c in range(0, self._n_t):  # cohort index
             for quad_point, quad_weight in zip(self._quad_points, self._quad_weights):
                 ages = self._remaining_ages(i_c, quad_point)
-                self._sf[i_c::, i_c, ...] += quad_weight * self._survival_by_cohort(ages, i_c)
+                sf[i_c::, i_c, ...] += quad_weight * self._survival_by_cohort(ages, i_c)
 
     def _get_quad_points_and_weights(self):
         """Returns the quadrature points and weights for the inflow time periods."""
@@ -344,17 +432,7 @@ class LifetimeModel(PydanticBaseModel):
         for i_c in range(0, self._n_t):
             self._pdf[i_c + 1 :, i_c, ...] = -1 * np.diff(sf[i_c:, i_c, ...], axis=0)
 
-    def _compute_survival_rate(self):
-        # The share of cohort c present at the end of year t-1 which survives year t is
-        # sf(t,c) / sf(t-1,c). If sf(t-1,c) is zero, nothing is left to survive.
-        sf = self.sf
-        sf_prev = sf[:-1, ...]
-        np.divide(sf[1:, ...], sf_prev, out=self._survival_rate[1:, ...], where=sf_prev > 0)
-        # The newest cohort enters during year t, so its survival rate is sf(t,t)
-        t_diag_indices = np.diag_indices(self._n_t) + (slice(None),) * len(self._shape_no_t)
-        self._survival_rate[t_diag_indices] = sf[t_diag_indices]
-
-    def _compute_survival_factor_with_nurture(self):
+    def _compute_survival_factor_with_nurture(self, sf: np.ndarray):
         """
         Compute the survival factor in presence of lifetime extension by year, i.e. the "nurture"
         approach in Krych et al. 2024.
@@ -388,14 +466,14 @@ class LifetimeModel(PydanticBaseModel):
                     curr_ages, slice(0, i_t + 1)
                 )
             # main diagonal: sf(t) = sf_e(t)
-            self._sf[i_t, i_t, ...] = curr_survival[-1, i_t, ...]
+            sf[i_t, i_t, ...] = curr_survival[-1, i_t, ...]
             if i_t > 0:
                 sf_e_prev = curr_survival[0, :i_t, ...]
                 sf_e = curr_survival[1, :i_t, ...]
-                sf_prev = self._sf[i_t - 1, :i_t, ...]
+                sf_prev = sf[i_t - 1, :i_t, ...]
                 # for small lifetimes, sf_e_prev can be zero, which means that nothing has survived
                 ratio = np.divide(sf_e, sf_e_prev, out=np.zeros_like(sf_e), where=sf_e_prev > 0)
-                self._sf[i_t, :i_t, ...] = sf_prev * ratio
+                sf[i_t, :i_t, ...] = sf_prev * ratio
 
 
 class FixedLifetime(LifetimeModel):
@@ -635,7 +713,8 @@ class CompetingRisksLifetime(LifetimeModel):
 
     dims and time_letter are taken from the first model if not given.
     Lifetime factors, inflow_at and n_pts_per_interval cannot be set here; set them in the
-    individual models instead.
+    individual models instead. Period effects (hazard_factor_by_year, removal_share_by_year)
+    can be set here, and then apply to all causes together, or in the individual models.
     Changes to the parameters of the individual models are taken into account in the next
     access of sf, pdf or survival_rate.
     """
@@ -705,14 +784,21 @@ class CompetingRisksLifetime(LifetimeModel):
             self.reset_cached_arrays()
             self._model_sfs = model_sfs
 
+    def _compute_base_sf(self) -> np.ndarray:
+        sf = self._model_sfs[0].copy()
+        for model_sf in self._model_sfs[1:]:
+            sf *= model_sf
+        return sf
+
+    def _get_quad_points_and_weights(self):
+        """Inflow time within the time step, used for removal_share_by_year. Taken from the first
+        model, as it cannot be set in CompetingRisksLifetime."""
+        return self.models[0]._get_quad_points_and_weights()
+
     @property
     def sf(self):
         self._reset_if_models_changed()
-        if self._sf is None:
-            self._sf = self._model_sfs[0].copy()
-            for model_sf in self._model_sfs[1:]:
-                self._sf *= model_sf
-        return self._sf
+        return super().sf
 
     @property
     def pdf(self):
