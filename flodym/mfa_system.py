@@ -301,9 +301,7 @@ class MFASystem(PydanticBaseModel):
 
         if failed:
             message = (
-                f"Mass balance check failed (tolerance: {tolerance}) for "
-                + ", ".join(failed)
-                + "."
+                f"Mass balance check failed (tolerance: {tolerance}) for " + ", ".join(failed) + "."
             )
             handle_error(behavior=error_behavior, message=message)
             return False

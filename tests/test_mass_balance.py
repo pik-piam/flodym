@@ -94,13 +94,9 @@ def test_stock_mass_balance_after_compute():
     stock.compute()
     np.testing.assert_allclose(stock.get_mass_balance().values, 0.0, atol=1e-12)
     assert stock.get_mass_balance().dims.letters == stock.dims.letters
-    np.testing.assert_allclose(
-        stock.net_inflow.values, stock.inflow.values - stock.outflow.values
-    )
+    np.testing.assert_allclose(stock.net_inflow.values, stock.inflow.values - stock.outflow.values)
     np.testing.assert_allclose(stock.stock_change.values[0], stock.stock.values[0])
-    np.testing.assert_allclose(
-        stock.stock_change.values[1:], np.diff(stock.stock.values, axis=0)
-    )
+    np.testing.assert_allclose(stock.stock_change.values[1:], np.diff(stock.stock.values, axis=0))
     assert stock.check_mass_balance() is True
 
 
@@ -159,21 +155,27 @@ class _InconsistentStock(SimpleFlowDrivenStock):
 
 
 def test_automatic_stock_check_warns_by_default(caplog):
-    stock = _InconsistentStock(dims=_dims(), inflow=StockArray(dims=_dims(), values=np.ones(_dims().shape)))
+    stock = _InconsistentStock(
+        dims=_dims(), inflow=StockArray(dims=_dims(), values=np.ones(_dims().shape))
+    )
     with caplog.at_level(logging.WARNING):
         stock.compute()
     assert any("Mass balance check failed for stock" in r.getMessage() for r in caplog.records)
 
 
 def test_automatic_stock_check_error_behavior():
-    stock = _InconsistentStock(dims=_dims(), inflow=StockArray(dims=_dims(), values=np.ones(_dims().shape)))
+    stock = _InconsistentStock(
+        dims=_dims(), inflow=StockArray(dims=_dims(), values=np.ones(_dims().shape))
+    )
     with config.override(error_behaviors={"mass_balance_stocks": "error"}):
         with pytest.raises(ValueError, match="Mass balance check failed for stock"):
             stock.compute()
 
 
 def test_automatic_stock_check_can_be_disabled(caplog):
-    stock = _InconsistentStock(dims=_dims(), inflow=StockArray(dims=_dims(), values=np.ones(_dims().shape)))
+    stock = _InconsistentStock(
+        dims=_dims(), inflow=StockArray(dims=_dims(), values=np.ones(_dims().shape))
+    )
     with config.override(checks={"mass_balance_stocks": False}):
         with caplog.at_level(logging.WARNING):
             stock.compute()
@@ -326,7 +328,9 @@ def test_check_flows(caplog):
     with caplog.at_level(logging.WARNING):
         assert mfa.check_flows(verbose=True) is False
     messages = [r.getMessage() for r in caplog.records]
-    assert any("Negative value in flow shredder => sysenv" in m and "1980, Fe" in m for m in messages)
+    assert any(
+        "Negative value in flow shredder => sysenv" in m and "1980, Fe" in m for m in messages
+    )
     assert any("NaN values found in flow demolition => landfills" in m for m in messages)
 
     with pytest.raises(ValueError, match="NaN values"):
