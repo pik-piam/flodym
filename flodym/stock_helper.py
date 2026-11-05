@@ -49,6 +49,8 @@ def make_empty_stocks(
             name=stock_definition.name,
             process=process,
         )
+        if stock_definition.cohort_letter is not None:
+            init_args["cohort_dim"] = dims[stock_definition.cohort_letter]
         if stock_definition.lifetime_model_class is not None:
             lifetime_model = stock_definition.lifetime_model_class(
                 dims=dim_subset, time_letter=stock_definition.time_letter

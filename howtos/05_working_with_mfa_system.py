@@ -268,7 +268,7 @@ print("Not computed:", my_mfa_system.compute_all_possible())
 # - `mass_balance`: mass balance violated
 # - `unused_dimension_splitter`: a dimension splitter set but not needed
 #
-# With definition objects (see below), shares and dimension splitters are given in a `ProcessDefinition`, and flows can be set from a parameter with the `parameter` argument of `FlowDefinition`. Example 2 shows this.
+# With definition objects (see below), shares and dimension splitters are given in a `ProcessDefinition`. Flows can be set from a parameter with the `parameter` argument of `FlowDefinition`, and the arrays of stocks with the arguments `stock_parameter`, `inflow_parameter`, `outflow_parameter` and `inflow_by_cohort_parameter` of `StockDefinition`. These arrays are set when the system is created, and again by `compute_all_possible()` if they are not set (e.g. after `mark_all_unset()`). Example 2 shows the use of definitions.
 
 # %% [markdown]
 # ## Generate attributes from Definition objects

@@ -29,7 +29,7 @@ from flodym import (
 
 TIME = [2000, 2001, 2002, 2003]
 REGIONS = ["north", "south"]
-DIM_ITEMS = {"Time": TIME, "Region": REGIONS}
+DIM_ITEMS = {"Time": TIME, "Region": REGIONS, "Cohort": TIME}
 DIM_DEFINITIONS = [
     DimensionDefinition(name="Time", letter="t", dtype=int),
     DimensionDefinition(name="Region", letter="r", dtype=str),
@@ -58,9 +58,10 @@ def make_mfa(
     parameter_values: dict[str, np.ndarray],
     parameter_dims: dict[str, tuple[str, ...]],
     stocks: list[StockDefinition] = [],
+    dimensions: list[DimensionDefinition] = DIM_DEFINITIONS,
 ) -> MFASystem:
     definition = MFADefinition(
-        dimensions=DIM_DEFINITIONS,
+        dimensions=dimensions,
         processes=processes,
         flows=flows,
         stocks=stocks,
@@ -338,14 +339,22 @@ def test_flow_parameters_reset_after_mark_all_unset():
     np.testing.assert_allclose(mfa.flows["a => b"].values, 3.0)
 
 
-def stock_mfa(subclass: type, lifetime: bool = True) -> MFASystem:
+def stock_mfa(
+    subclass: type,
+    lifetime: bool = True,
+    parameter_values: dict = {},
+    parameter_dims: dict = {},
+    **stock_kwargs,
+) -> MFASystem:
     """sysenv -> use (with stock) -> (eol, sysenv), with a share of use -> eol of 0.6."""
-    stock_kwargs = {"lifetime_model_class": FixedLifetime} if lifetime else {}
+    if lifetime:
+        stock_kwargs["lifetime_model_class"] = FixedLifetime
     mfa = make_mfa(
         processes=["sysenv", ProcessDefinition(name="use", outflow_shares={"eol": "share"}), "eol"],
         flows=[flow("sysenv", "use"), flow("use", "eol"), flow("use", "sysenv"), flow("eol", "sysenv")],
-        parameter_values={"share": 0.6},
-        parameter_dims={"share": ()},
+        parameter_values={"share": 0.6, **parameter_values},
+        parameter_dims={"share": (), **parameter_dims},
+        dimensions=DIM_DEFINITIONS + [DimensionDefinition(name="Cohort", letter="c", dtype=int)],
         stocks=[
             StockDefinition(
                 name="use", process="use", dim_letters=("t",), subclass=subclass, **stock_kwargs
@@ -598,10 +607,71 @@ def test_unsupported_stock_type_is_skipped():
 
 
 def test_flow_parameter_without_flow_dims():
-    with pytest.raises(ValueError, match="does not have the dimensions"):
+    with pytest.raises(ValueError, match="does not have its dimensions"):
         make_mfa(
             ["sysenv", "a"],
             [flow("sysenv", "a", dims=("t", "r"), parameter="p")],
             {"p": 1.0},
             {"p": ("t",)},
         )
+
+
+def test_stock_inflow_from_parameter():
+    mfa = stock_mfa(
+        InflowDrivenDSM, parameter_values={"inflow": 2.0}, parameter_dims={"inflow": ("t",)},
+        inflow_parameter="inflow",
+    )
+    assert mfa.stocks["use"].inflow.is_set
+    assert mfa.compute_all_possible() == []
+    np.testing.assert_allclose(mfa.flows["sysenv => use"].values, 2.0)
+    np.testing.assert_allclose(mfa.flows["use => eol"].values, [0.0, 1.2, 1.2, 1.2])
+    # set again after mark_all_unset, with changed parameter values
+    mfa.parameters["inflow"][...] = 1.0
+    mfa.mark_all_unset()
+    assert mfa.compute_all_possible() == []
+    np.testing.assert_allclose(mfa.flows["sysenv => use"].values, 1.0)
+
+
+def test_stock_from_parameter():
+    mfa = stock_mfa(
+        DynamicStockModel, parameter_values={"stock": 1.0}, parameter_dims={"stock": ("t",)},
+        stock_parameter="stock",
+    )
+    assert mfa.compute_all_possible() == []
+    np.testing.assert_allclose(mfa.flows["sysenv => use"].values, 1.0)
+    assert mfa.check_mass_balance()
+
+
+def test_inflow_by_cohort_from_parameter():
+    inflow_by_cohort = np.diag([1.0, 2.0, 3.0, 4.0])
+    mfa = stock_mfa(
+        DynamicStockModel,
+        parameter_values={"ibc": inflow_by_cohort},
+        parameter_dims={"ibc": ("t", "c")},
+        cohort_letter="c",
+        inflow_by_cohort_parameter="ibc",
+    )
+    assert mfa.compute_all_possible() == []
+    np.testing.assert_allclose(mfa.flows["sysenv => use"].values, [1.0, 2.0, 3.0, 4.0])
+    assert mfa.check_mass_balance()
+
+
+@pytest.mark.parametrize(
+    "kwargs, match",
+    [
+        ({"stock_parameter": "p", "inflow_parameter": "p"}, "at most one"),
+        ({"inflow_by_cohort_parameter": "p"}, "requires cohort_letter"),
+        ({"subclass": SimpleFlowDrivenStock, "cohort_letter": "c"}, "no cohort dimension"),
+    ],
+)
+def test_invalid_stock_parameters(kwargs, match):
+    kwargs = {"subclass": DynamicStockModel, "lifetime_model_class": FixedLifetime, **kwargs}
+    if kwargs["subclass"] is SimpleFlowDrivenStock:
+        del kwargs["lifetime_model_class"]
+    with pytest.raises(ValueError, match=match):
+        StockDefinition(name="s", process="use", dim_letters=("t",), **kwargs)
+
+
+def test_undefined_stock_parameter():
+    with pytest.raises(ValueError, match="'missing' used in definition of stock 'use'"):
+        stock_mfa(InflowDrivenDSM, inflow_parameter="missing")

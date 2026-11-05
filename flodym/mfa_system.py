@@ -71,8 +71,13 @@ class MFASystem(PydanticBaseModel):
     """
     flow_parameters: Dict[str, str] = {}
     """Names of parameters whose values flows are set to, keyed by flow name,
-    see :py:meth:`set_flows_from_parameters`. Taken from
+    see :py:meth:`set_arrays_from_parameters`. Taken from
     :py:attr:`flodym.FlowDefinition.parameter` when set up from a definition."""
+    stock_parameters: Dict[str, Dict[str, str]] = {}
+    """Names of parameters whose values stock arrays are set to, keyed by stock name and array
+    name (``"stock"``, ``"inflow"``, ``"outflow"`` or ``"inflow_by_cohort"``), see
+    :py:meth:`set_arrays_from_parameters`. Taken from the parameter fields of
+    :py:class:`flodym.StockDefinition` when set up from a definition."""
 
     @model_validator(mode="after")
     def link_processes(self):
@@ -126,8 +131,9 @@ class MFASystem(PydanticBaseModel):
     @classmethod
     def from_data_reader(cls, definition: MFADefinition, data_reader: DataReader) -> Self:
         """Define and set up the MFA system and load all required data.
-        Initialises stocks and flows with all zero values, except for flows with a parameter
-        (see :py:attr:`flodym.FlowDefinition.parameter`), which are set to its values.
+        Initialises stocks and flows with all zero values, except for flows and stock arrays
+        with a parameter (see :py:attr:`flodym.FlowDefinition.parameter` and
+        :py:class:`flodym.StockDefinition`), which are set to its values.
         Shares and dimension splitters of process definitions are set to the processes.
         """
         dims = data_reader.read_dimensions(definition.dimensions)
@@ -143,6 +149,11 @@ class MFASystem(PydanticBaseModel):
         for flow_definition, flow_name in zip(definition.flows, flows):
             if flow_definition.parameter is not None:
                 flow_parameters[flow_name] = flow_definition.parameter
+        stock_parameters = {
+            stock_definition.name: stock_definition.array_parameters
+            for stock_definition in definition.stocks
+            if stock_definition.array_parameters
+        }
         mfa = cls(
             dims=dims,
             parameters=parameters,
@@ -150,9 +161,10 @@ class MFASystem(PydanticBaseModel):
             flows=flows,
             stocks=stocks,
             flow_parameters=flow_parameters,
+            stock_parameters=stock_parameters,
         )
         set_process_parameters(mfa.processes, definition.processes, mfa.parameters)
-        mfa.set_flows_from_parameters()
+        mfa.set_arrays_from_parameters()
         return mfa
 
     @classmethod
@@ -415,37 +427,70 @@ class MFASystem(PydanticBaseModel):
         for stock in self.stocks.values():
             stock.mark_all_unset()
 
-    def set_flows_from_parameters(self, overwrite: bool = False):
-        """Set the flows in :py:attr:`flow_parameters` to the values of their parameters.
+    def set_arrays_from_parameters(self, overwrite: bool = False):
+        """Set the flows in :py:attr:`flow_parameters` and the stock arrays in
+        :py:attr:`stock_parameters` to the values of their parameters.
+
+        Dimensions of a parameter which the array does not have are summed over.
+        Called by :py:meth:`from_data_reader` and :py:meth:`compute_all_possible`.
 
         Args:
-            overwrite: If False, only flows which are not set (see
+            overwrite: If False, only arrays which are not set (see
                 :py:attr:`flodym.FlodymArray.is_set`) are set.
         """
+        for label, array, parameter_name in self._arrays_with_parameters():
+            if parameter_name not in self.parameters:
+                raise KeyError(
+                    f"Parameter '{parameter_name}' given for {label} is not a parameter of the "
+                    "system."
+                )
+            parameter = self.parameters[parameter_name]
+            missing_dims = array.dims - parameter.dims
+            if missing_dims:
+                raise ValueError(
+                    f"Parameter '{parameter_name}' given for {label} does not have its "
+                    f"dimensions {missing_dims.names}."
+                )
+            if overwrite or not array.is_set:
+                array[...] = parameter
+
+    def _arrays_with_parameters(self) -> list[tuple[str, FlodymArray, str]]:
+        """Flows and stock arrays to be set from parameters, as tuples of a label for messages,
+        the array, and the parameter name."""
+        arrays = []
         for flow_name, parameter_name in self.flow_parameters.items():
             if flow_name not in self.flows:
                 raise KeyError(f"Flow '{flow_name}' of flow_parameters is not a flow of the system.")
-            if parameter_name not in self.parameters:
+            arrays.append((f"flow '{flow_name}'", self.flows[flow_name], parameter_name))
+        for stock_name, array_parameters in self.stock_parameters.items():
+            if stock_name not in self.stocks:
                 raise KeyError(
-                    f"Parameter '{parameter_name}' given for flow '{flow_name}' is not a parameter "
-                    "of the system."
+                    f"Stock '{stock_name}' of stock_parameters is not a stock of the system."
                 )
-            flow, parameter = self.flows[flow_name], self.parameters[parameter_name]
-            missing_dims = flow.dims - parameter.dims
-            if missing_dims:
-                raise ValueError(
-                    f"Parameter '{parameter_name}' given for flow '{flow_name}' does not have the "
-                    f"dimensions {missing_dims.names} of the flow."
-                )
-            if overwrite or not flow.is_set:
-                # dimensions of the parameter which the flow does not have are summed over
-                flow[...] = parameter
+            stock = self.stocks[stock_name]
+            for array_name, parameter_name in array_parameters.items():
+                if array_name not in ("stock", "inflow", "outflow", "inflow_by_cohort"):
+                    raise KeyError(
+                        f"'{array_name}' given in stock_parameters for stock '{stock_name}' is not "
+                        "a stock array. Use 'stock', 'inflow', 'outflow' or 'inflow_by_cohort'."
+                    )
+                array = getattr(stock, array_name, None)
+                if array is None:
+                    raise ValueError(
+                        f"Stock '{stock_name}' has no array '{array_name}'. inflow_by_cohort "
+                        "requires a dynamic stock model with a cohort dimension."
+                    )
+                label = f"{array_name} of stock '{stock_name}'"
+                arrays.append((label, array, parameter_name))
+        return arrays
 
     def compute_all_possible(self) -> list[str]:
         """Compute all processes which can be computed from the known flows, shares and stock
         values, see :py:meth:`flodym.Process.compute`.
 
-        Unset flows with a parameter (see :py:attr:`flow_parameters`) are set first. Then, all
+        Unset flows and stock arrays with a parameter (see :py:attr:`flow_parameters` and
+        :py:attr:`stock_parameters`) are set first (see :py:meth:`set_arrays_from_parameters`).
+        Then, all
         processes are tried, and each computed process triggers a new try of its neighbors, until
         no further process can be computed (see :py:func:`flodym.compute_processes`).
         Underdetermined processes are skipped.
@@ -453,7 +498,7 @@ class MFASystem(PydanticBaseModel):
         Returns:
             The names of the processes (except 'sysenv') which could not be computed.
         """
-        self.set_flows_from_parameters()
+        self.set_arrays_from_parameters()
         compute_processes(self.processes.values())
         not_computed = [p.name for p in self.processes.values() if p.id != 0 and not p.is_computed]
         if not_computed:

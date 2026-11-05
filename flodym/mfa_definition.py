@@ -77,11 +77,17 @@ class FlowDefinition(DefinitionWithDimLetters):
     """Optional name for the flow. Will be generated from the connecting process names if not provided."""
     parameter: Optional[str] = None
     """Optional name of a parameter whose values the flow is set to, see
-    :py:meth:`flodym.MFASystem.set_flows_from_parameters`."""
+    :py:meth:`flodym.MFASystem.set_arrays_from_parameters`."""
 
 
 class StockDefinition(DefinitionWithDimLetters):
-    """Define the model stocks."""
+    """Define the model stocks.
+
+    The arrays of the stock (stock, inflow, outflow, and inflow by cohort) can be set from
+    parameters, see :py:meth:`flodym.MFASystem.set_arrays_from_parameters`. For a dynamic stock
+    model, at most one of stock, inflow and inflow by cohort can be given, as it determines the
+    computation mode (see :py:meth:`flodym.DynamicStockModel.compute`).
+    """
 
     name: str = "undefined stock"
     """Name of the stock."""
@@ -99,6 +105,51 @@ class StockDefinition(DefinitionWithDimLetters):
     """
     solver: Optional[str] = "manual"
     """Deprecated and ignored. The stock-driven DSM always uses the former "manual" algorithm."""
+    cohort_letter: Optional[str] = None
+    """Letter of the cohort dimension of a dynamic stock model (see
+    :py:attr:`flodym.DynamicStockModel.cohort_dim`). It must be a defined dimension with the same
+    items as the time dimension, but not one of ``dim_letters``."""
+    stock_parameter: Optional[str] = None
+    """Optional name of a parameter whose values the stock is set to."""
+    inflow_parameter: Optional[str] = None
+    """Optional name of a parameter whose values the stock inflow is set to."""
+    outflow_parameter: Optional[str] = None
+    """Optional name of a parameter whose values the stock outflow is set to."""
+    inflow_by_cohort_parameter: Optional[str] = None
+    """Optional name of a parameter whose values the inflow by cohort of a dynamic stock model is
+    set to. Requires ``cohort_letter``."""
+
+    @property
+    def array_parameters(self) -> Dict[str, str]:
+        """Names of the parameters which stock arrays are set to, keyed by array name
+        (``"stock"``, ``"inflow"``, ``"outflow"``, ``"inflow_by_cohort"``)."""
+        parameters = {
+            "stock": self.stock_parameter,
+            "inflow": self.inflow_parameter,
+            "outflow": self.outflow_parameter,
+            "inflow_by_cohort": self.inflow_by_cohort_parameter,
+        }
+        return {name: p for name, p in parameters.items() if p is not None}
+
+    @model_validator(mode="after")
+    def check_array_parameters(self):
+        is_dynamic = "cohort_dim" in self.subclass.model_fields
+        if self.cohort_letter is not None and not is_dynamic:
+            raise ValueError(
+                f"Stock '{self.name}': cohort_letter is given, but subclass {self.subclass} has "
+                "no cohort dimension."
+            )
+        if self.inflow_by_cohort_parameter is not None and self.cohort_letter is None:
+            raise ValueError(
+                f"Stock '{self.name}': inflow_by_cohort_parameter requires cohort_letter."
+            )
+        driving = [n for n in ("stock", "inflow", "inflow_by_cohort") if n in self.array_parameters]
+        if is_dynamic and len(driving) > 1:
+            raise ValueError(
+                f"Stock '{self.name}': For a dynamic stock model, at most one of the stock, "
+                f"inflow and inflow by cohort can be set from a parameter, but got {driving}."
+            )
+        return self
 
     @model_validator(mode="after")
     def init_solver(self):
@@ -187,6 +238,9 @@ class MFADefinition(PydanticBaseModel):
             correct_dims = [letter in defined_dim_letters for letter in item.dim_letters]
             if not np.all(correct_dims):
                 raise ValueError(f"Undefined dimension in {item}")
+        for stock in self.stocks:
+            if stock.cohort_letter is not None and stock.cohort_letter not in defined_dim_letters:
+                raise ValueError(f"Undefined cohort dimension in {stock}")
         return self
 
     @model_validator(mode="after")
@@ -197,6 +251,9 @@ class MFADefinition(PydanticBaseModel):
         for flow in self.flows:
             if flow.parameter is not None:
                 used_parameters.append((flow.parameter, f"flow definition {flow}"))
+        for stock in self.stocks:
+            for name in stock.array_parameters.values():
+                used_parameters.append((name, f"definition of stock '{stock.name}'"))
         for process in self.processes:
             if isinstance(process, str):
                 continue
