@@ -430,9 +430,16 @@ class MFASystem(PydanticBaseModel):
                     f"Parameter '{parameter_name}' given for flow '{flow_name}' is not a parameter "
                     "of the system."
                 )
-            flow = self.flows[flow_name]
+            flow, parameter = self.flows[flow_name], self.parameters[parameter_name]
+            missing_dims = flow.dims - parameter.dims
+            if missing_dims:
+                raise ValueError(
+                    f"Parameter '{parameter_name}' given for flow '{flow_name}' does not have the "
+                    f"dimensions {missing_dims.names} of the flow."
+                )
             if overwrite or not flow.is_set:
-                flow[...] = self.parameters[parameter_name]
+                # dimensions of the parameter which the flow does not have are summed over
+                flow[...] = parameter
 
     def compute_all_possible(self) -> list[str]:
         """Compute all processes which can be computed from the known flows, shares and stock

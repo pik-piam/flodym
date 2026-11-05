@@ -20,6 +20,7 @@ from flodym import (
     ParameterDefinition,
     ProcessDefinition,
     SimpleFlowDrivenStock,
+    Stock,
     StockDefinition,
     StockDrivenDSM,
     UnderdeterminedError,
@@ -231,10 +232,14 @@ def test_overdetermined_inconsistent_raises():
 
 
 def splitter_mfa(split_values, **process_kwargs) -> MFASystem:
-    """sysenv -> a -> b, with the outflow by region and the inflow not."""
+    """sysenv -> a -> b -> sysenv, with the outflow of a by region and the inflow not."""
     return make_mfa(
         processes=["sysenv", ProcessDefinition(name="a", **process_kwargs), "b"],
-        flows=[flow("sysenv", "a", parameter="input"), flow("a", "b", dims=("t", "r"))],
+        flows=[
+            flow("sysenv", "a", parameter="input"),
+            flow("a", "b", dims=("t", "r")),
+            flow("b", "sysenv", dims=("t", "r")),
+        ],
         parameter_values={"input": np.array([1.0, 2.0, 3.0, 4.0]), "split": split_values},
         parameter_dims={"input": ("t",), "split": ("r",)},
     )
@@ -424,3 +429,179 @@ def test_compute_neighbors():
     assert not mfa.processes["p1"].is_computed
     assert mfa.processes["p1"].compute(compute_neighbors=True)
     assert all(p.is_computed for name, p in mfa.processes.items() if name != "sysenv")
+
+
+# Regression tests for reviewed edge cases
+
+
+def test_total_falls_back_to_other_side_if_shares_are_zero():
+    mfa = make_mfa(
+        processes=[
+            "sysenv",
+            ProcessDefinition(
+                name="a", inflow_shares={"s1": "z1", "s2": "z2"}, outflow_shares={"b": "sb"}
+            ),
+            "s1",
+            "s2",
+            "b",
+            "c",
+        ],
+        flows=[
+            flow("sysenv", "s1"),
+            flow("sysenv", "s2"),
+            flow("s1", "a"),
+            flow("s2", "a"),
+            flow("a", "b"),
+            flow("a", "c"),
+            flow("b", "sysenv"),
+            flow("c", "sysenv"),
+        ],
+        parameter_values={
+            "z1": np.array([0.0, 0.5, 0.5, 0.5]),
+            "z2": np.array([1.0, 0.5, 0.5, 0.5]),
+            "sb": 0.3,
+        },
+        parameter_dims={"z1": ("t",), "z2": ("t",), "sb": ()},
+    )
+    # the share of s1 is zero in the first year, so the total cannot be computed from it there
+    mfa.flows["s1 => a"][...] = np.array([0.0, 5.0, 5.0, 5.0])
+    mfa.flows["a => c"][...] = 7.0
+    mfa.processes["a"].compute()
+    np.testing.assert_allclose(mfa.flows["a => b"].values, 3.0)
+    np.testing.assert_allclose(mfa.flows["s2 => a"].values, [10.0, 5.0, 5.0, 5.0])
+
+
+def test_failed_computation_changes_nothing():
+    mfa = make_mfa(
+        processes=["sysenv", ProcessDefinition(name="a", outflow_shares={"b": "s"}), "b", "c"],
+        flows=[
+            flow("sysenv", "a", parameter="input"),
+            flow("a", "b", dims=("t", "r")),
+            flow("a", "c", dims=("t", "r")),
+        ],
+        parameter_values={"input": 1.0, "s": np.array([0.2, 0.3])},
+        parameter_dims={"input": ("t",), "s": ("r",)},
+    )
+    with pytest.raises(ValueError, match="forward dimension splitter"):
+        mfa.processes["a"].compute()
+    assert not mfa.flows["a => b"].is_set and not mfa.flows["a => c"].is_set
+
+
+def test_failed_stock_computation_changes_nothing():
+    mfa = stock_mfa(InflowDrivenDSM)
+    mfa.stocks["use"].lifetime_model.mean = None
+    mfa.flows["sysenv => use"][...] = 1.0
+    with pytest.raises(Exception):
+        mfa.processes["use"].compute()
+    stock = mfa.stocks["use"]
+    assert not any(a.is_set for a in (stock.inflow, stock.outflow, stock.stock))
+    # retry with corrected input uses the new values
+    stock.lifetime_model.mean = 1
+    mfa.flows["sysenv => use"][...] = 5.0
+    mfa.processes["use"].compute()
+    np.testing.assert_allclose(mfa.flows["use => eol"].values, [0.0, 3.0, 3.0, 3.0])
+
+
+def test_computed_stock_is_distributed_to_flows():
+    mfa = stock_mfa(DynamicStockModel)
+    stock = mfa.stocks["use"]
+    stock.inflow[...] = 1.0
+    stock.compute()
+    mfa.processes["use"].compute()
+    np.testing.assert_allclose(mfa.flows["sysenv => use"].values, 1.0)
+    np.testing.assert_allclose(mfa.flows["use => eol"].values, 0.6 * stock.outflow.values)
+
+
+def test_inconsistent_set_stock_raises():
+    mfa = stock_mfa(SimpleFlowDrivenStock, lifetime=False)
+    mfa.flows["sysenv => use"][...] = 2.0
+    mfa.flows["use => sysenv"][...] = 0.4
+    mfa.stocks["use"].stock[...] = 100.0
+    with pytest.raises(ValueError, match="changed the values of the stock arrays"):
+        mfa.processes["use"].compute()
+    np.testing.assert_allclose(mfa.stocks["use"].stock.values, 100.0)
+
+
+def test_shares_of_all_flows_are_not_overdetermined():
+    mfa = make_mfa(
+        processes=[
+            "sysenv",
+            ProcessDefinition(name="a", outflow_shares={"b": "s", "c": "s"}),
+            "b",
+            "c",
+        ],
+        flows=[flow("sysenv", "a"), flow("a", "b"), flow("a", "c")],
+        parameter_values={"s": 0.5},
+        parameter_dims={"s": ()},
+    )
+    mfa.flows["sysenv => a"][...] = 1.0
+    assert not mfa.processes["a"].is_overdetermined
+
+
+def test_side_without_flows_has_zero_total():
+    mfa = make_mfa(
+        processes=["sysenv", "landfill"],
+        flows=[flow("sysenv", "landfill")],
+        parameter_values={},
+        parameter_dims={},
+        stocks=[
+            StockDefinition(
+                name="landfill",
+                process="landfill",
+                dim_letters=("t",),
+                subclass=SimpleFlowDrivenStock,
+            )
+        ],
+    )
+    mfa.stocks["landfill"].outflow.values[...] = 0.5  # stale values, not set
+    mfa.flows["sysenv => landfill"][...] = 1.0
+    mfa.processes["landfill"].compute()
+    np.testing.assert_allclose(mfa.stocks["landfill"].outflow.values, 0.0)
+    assert mfa.check_mass_balance()
+
+
+@pytest.mark.parametrize("order", [["sysenv", "p", "q"], ["sysenv", "q", "p"]])
+def test_inconsistency_found_regardless_of_order(order):
+    processes = [ProcessDefinition(name="p", outflow_shares={"sysenv": "share"}) if n == "p" else n for n in order]
+    mfa = make_mfa(
+        processes=processes,
+        flows=[
+            flow("sysenv", "p", parameter="a"),
+            flow("p", "sysenv"),
+            flow("p", "q"),
+            flow("q", "sysenv", parameter="d"),
+        ],
+        parameter_values={"a": 10.0, "share": 0.3, "d": 5.0},
+        parameter_dims={"a": ("t",), "share": (), "d": ("t",)},
+    )
+    with pytest.raises(ValueError, match="Mass balance check failed"):
+        mfa.compute_all_possible()
+
+
+def test_sysenv_must_have_id_zero():
+    with pytest.raises(ValueError, match="must be named 'sysenv'"):
+        make_mfa(
+            [ProcessDefinition(name="sysenv", id=3), ProcessDefinition(name="a", id=1)], [], {}, {}
+        )
+
+
+def test_unsupported_stock_type_is_skipped():
+    class CustomStock(SimpleFlowDrivenStock):
+        def _compute_process(self, computation):
+            return Stock._compute_process(self, computation)
+
+    mfa = stock_mfa(CustomStock, lifetime=False)
+    mfa.flows["sysenv => use"][...] = 1.0
+    assert mfa.compute_all_possible() == ["use", "eol"]
+    with pytest.raises(UnderdeterminedError, match="does not support"):
+        mfa.processes["use"].compute()
+
+
+def test_flow_parameter_without_flow_dims():
+    with pytest.raises(ValueError, match="does not have the dimensions"):
+        make_mfa(
+            ["sysenv", "a"],
+            [flow("sysenv", "a", dims=("t", "r"), parameter="p")],
+            {"p": 1.0},
+            {"p": ("t",)},
+        )

@@ -258,7 +258,15 @@ my_mfa_system.flows["sysenv => process_a"][...] = my_mfa_system.parameters["extr
 print("Not computed:", my_mfa_system.compute_all_possible())
 
 # %% [markdown]
-# Inconsistent values are reported according to `flodym.config.error_behaviors`: shares outside [0, 1] or summing to more than one, dimension splitters not summing to one, and shares not fulfilled after the computation of an overdetermined process (option `process_shares`), unused dimension splitters (`unused_dimension_splitter`), and underdetermined processes in `Process.compute()` (`process_underdetermined`).
+# If more values are given than needed, the process is overdetermined, and the values are checked for consistency after the computation. This also applies to processes whose flows were all set by the computation of their neighbors.
+# If a computation raises an error, the process is restored to its state before.
+#
+# Problems are reported according to `flodym.config.error_behaviors`:
+# - `process_underdetermined`: not enough values given (only in `Process.compute()`; `compute_all_possible()` skips such processes)
+# - `process_shares`: shares outside [0, 1] or summing to more than one, dimension splitters not summing to one
+# - `process_overdetermined`: shares not fulfilled, or set stock arrays changed by the computation
+# - `mass_balance`: mass balance violated
+# - `unused_dimension_splitter`: a dimension splitter set but not needed
 #
 # With definition objects (see below), shares and dimension splitters are given in a `ProcessDefinition`, and flows can be set from a parameter with the `parameter` argument of `FlowDefinition`. Example 2 shows this.
 

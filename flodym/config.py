@@ -75,11 +75,18 @@ class ErrorBehaviors(BaseModel, validate_assignment=True):
     :py:meth:`flodym.MFASystem.compute_all_possible`, where underdetermined processes are skipped.
     """
     process_shares: ErrorBehavior = ErrorBehavior.WARN
-    """What to do if the shares or the dimension splitters of a process are inconsistent:
-    If shares are not between zero and one or sum to more than one, if a dimension splitter does
-    not sum to one over the dimensions it adds, or if a share is not fulfilled after
-    :py:meth:`flodym.Process.compute` (which can happen if the process is overdetermined).
+    """What to do if the shares or the dimension splitters of a process are invalid in
+    :py:meth:`flodym.Process.compute`: If shares are not between zero and one, or sum to more
+    than one (or not to exactly one, if all flows of a side have shares), or if a dimension
+    splitter does not sum to one over the dimensions it adds.
     If ``"ignore"``, the checks are skipped."""
+    process_overdetermined: ErrorBehavior = ErrorBehavior.ERROR
+    """What to do if more values are given for a process than needed by
+    :py:meth:`flodym.Process.compute` (see :py:attr:`flodym.Process.is_overdetermined`), and they
+    are inconsistent: If shares are not fulfilled after the computation, or if stock arrays which
+    were set are changed by the computation. Also applies to processes whose flows were all set
+    by the computation of neighboring processes. Inconsistent mass balances are handled by
+    :py:attr:`mass_balance`. If ``"ignore"``, the checks are skipped."""
     unused_dimension_splitter: ErrorBehavior = ErrorBehavior.WARN
     """What to do if a process has a dimension splitter, but it is not used when computing the
     flows of its side in :py:meth:`flodym.Process.compute`, since no dimensions have to be

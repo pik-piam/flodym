@@ -144,13 +144,14 @@ class Stock(PydanticBaseModel):
         of :py:meth:`flodym.Process.compute`. The inflows of the process sum to the stock
         inflow, the outflows to the stock outflow.
 
-        Implemented by the subclasses, using the methods of ``computation``. Before any array is
-        changed, they check that the process is determined, and raise a
-        :py:class:`flodym.UnderdeterminedError` otherwise.
+        Implemented by the subclasses, using the methods of ``computation``. They raise a
+        :py:class:`flodym.UnderdeterminedError` if the process cannot be computed. If they raise
+        any error, :py:meth:`flodym.Process.compute` restores all arrays of the process.
         """
-        raise NotImplementedError(
-            f"Stock type {self.__class__.__name__} of stock '{self.name}' does not support "
-            "automatic computation of its process with Process.compute()."
+        raise UnderdeterminedError(
+            self.process,
+            f"Stock type {self.__class__.__name__} of stock '{self.name}' does not support the "
+            "automatic computation of its process.",
         )
 
     def _set_from_total(self, array: StockArray, total: FlodymArray, label: str) -> None:
@@ -377,32 +378,29 @@ class SimpleFlowDrivenStock(Stock):
     def _compute_process(self, computation: "ProcessComputation"):
         """Compute the stock and the unknown in- and outflows of its process.
 
-        Each side of the process (inflows and outflows) is treated separately: Its total is
-        computed from its flows as described in :py:meth:`flodym.Process.compute` and assigned to
-        the stock inflow (or outflow). If this is not possible, but the stock inflow (or outflow)
-        is set, the unknown flows are computed from it instead. A side without flows has a total
-        of zero. The stock is then computed from its inflow and outflow.
+        If the stock is already computed, its inflow and outflow are the totals of the in- and
+        outflows of the process. Otherwise, each side of the process (inflows and outflows) is
+        treated separately: Its total is computed from its flows as described in
+        :py:meth:`flodym.Process.compute`, and assigned to the stock inflow (or outflow). If this
+        is not possible, but the stock inflow (or outflow) is set, it is used as total instead.
+        A side without flows has a total of zero. The stock is then computed from its inflow and
+        outflow. Finally, the unknown flows of each side are computed from its total.
         """
-        stock_arrays = {"in": self.inflow, "out": self.outflow}
-        # which sides take their total from the stock array instead of from the flows
-        from_stock_array = {
-            side: computation.sides[side].total_method() is None
-            and (array.is_set or not computation.sides[side].flows)
-            for side, array in stock_arrays.items()
-        }
-        for side, use_stock_array in from_stock_array.items():
-            if not use_stock_array:
-                computation.require_total((side,))
         computation.require_flows()
-
-        for side, array in stock_arrays.items():
-            if from_stock_array[side]:
-                total = array.mark_set()
-            else:
-                total = computation.compute_total(side)
-                self._set_from_total(array, total, f"{side}flow")
+        stock_arrays = {"in": self.inflow, "out": self.outflow}
+        totals = dict(stock_arrays)
+        if not self.is_computed:
+            for side, array in stock_arrays.items():
+                process_side = computation.sides[side]
+                if not process_side.flows:
+                    array[...] = 0.0
+                elif process_side.total_method() is not None or not array.is_set:
+                    # keep the total, which may have more dimensions than the stock array
+                    totals[side] = computation.compute_total((side,))
+                    self._set_from_total(array, totals[side], f"{side}flow")
+            self.compute()
+        for side, total in totals.items():
             computation.compute_side(total, side)
-        self.compute()
 
 class DynamicStockModel(Stock):
     """Dynamic stock model, based on stocks having a specified lifetime (distribution).
@@ -673,29 +671,26 @@ class DynamicStockModel(Stock):
     def _compute_process(self, computation: "ProcessComputation"):
         """Compute the stock and the unknown in- and outflows of its process.
 
-        The computation mode is given by :py:meth:`_process_compute_mode`. In inflow-driven mode,
-        if the stock inflow is not set, it is the total of the process inflows (see
-        :py:meth:`flodym.Process.compute`). After computing the stock, the unknown in- and
-        outflows of the process are computed from the stock inflow and outflow, respectively.
+        If the stock is already computed, it is not computed again. Otherwise, the computation
+        mode is given by :py:meth:`_process_compute_mode`. In inflow-driven mode, if the stock
+        inflow is not set, it is the total of the process inflows (see
+        :py:meth:`flodym.Process.compute`). The unknown in- and outflows of the process are then
+        computed from the stock inflow and outflow, respectively.
         """
-        mode = self._process_compute_mode()
-        inflow_from_process = mode == "inflow" and not self.inflow.is_set
-        if inflow_from_process:
-            computation.require_total(("in",))
         computation.require_flows()
-
-        if inflow_from_process:
-            # keep the total, which may have more dimensions than the stock inflow
-            inflow_total = computation.compute_total("in")
-            self._set_from_total(self.inflow, inflow_total, "inflow")
-        if mode == "stock":
-            self.compute_stock_driven()
-        elif mode == "inflow":
-            self.compute_inflow_driven()
-        else:
-            self.compute_inflow_by_cohort_driven()
-        if not inflow_from_process:
-            inflow_total = self.inflow
+        inflow_total = self.inflow
+        if not self.is_computed:
+            mode = self._process_compute_mode()
+            if mode == "inflow" and not self.inflow.is_set:
+                # keep the total, which may have more dimensions than the stock inflow
+                inflow_total = computation.compute_total(("in",))
+                self._set_from_total(self.inflow, inflow_total, "inflow")
+            if mode == "stock":
+                self.compute_stock_driven()
+            elif mode == "inflow":
+                self.compute_inflow_driven()
+            else:
+                self.compute_inflow_by_cohort_driven()
         computation.compute_side(inflow_total, "in")
         computation.compute_side(self.outflow, "out")
 

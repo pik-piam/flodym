@@ -53,10 +53,12 @@ class Process(PydanticBaseModel):
 
     @model_validator(mode="after")
     def check_id0(self):
-        """Ensure that the process with ID 0 is named 'sysenv'."""
-        if self.id == 0 and self.name != "sysenv":
+        """Ensure that the process with ID 0 is named 'sysenv', and vice versa."""
+        if (self.id == 0) != (self.name == "sysenv"):
             raise ValueError(
-                "The process with ID 0 must be named 'sysenv', as it contains everything outside the system boundary."
+                "The process with ID 0 must be named 'sysenv', as it contains everything outside "
+                f"the system boundary, and no other process may have this name (got process "
+                f"'{self.name}' with ID {self.id})."
             )
         return self
 
@@ -429,9 +431,14 @@ class Process(PydanticBaseModel):
 
         Other stock types are not supported.
 
-        Before any value is changed, it is checked whether the process is determined. If not,
-        it stays unchanged. Errors due to inconsistent dimensions can however occur after some
-        values have been computed.
+        If the process is overdetermined (see :py:attr:`is_overdetermined`), the given values are
+        checked for consistency afterwards: its mass balance, its shares, and whether stock
+        arrays which were set kept their values. Neighboring processes whose flows were all set
+        by this computation are checked in the same way.
+
+        If the computation or one of the checks raises an error (also if the process is
+        underdetermined), the flows of the process and the arrays of its stock are restored to
+        their state before the computation.
 
         Args:
             on_underdetermined: What to do if the process cannot be computed from the given
