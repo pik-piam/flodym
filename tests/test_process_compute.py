@@ -66,7 +66,8 @@ def make_mfa(
         flows=flows,
         stocks=stocks,
         parameters=[
-            ParameterDefinition(name=name, dim_letters=dims) for name, dims in parameter_dims.items()
+            ParameterDefinition(name=name, dim_letters=dims)
+            for name, dims in parameter_dims.items()
         ],
     )
     return MFASystem.from_data_reader(definition, DictReader(parameter_values))
@@ -298,7 +299,9 @@ def test_forward_and_backward_dimension_splitters():
 
     class Reader(DictReader):
         def read_dimension(self, definition):
-            return Dimension(name=definition.name, letter=definition.letter, items=dims[definition.name])
+            return Dimension(
+                name=definition.name, letter=definition.letter, items=dims[definition.name]
+            )
 
     mfa = MFASystem.from_data_reader(definition, Reader({"fwd": forward, "bwd": backward}))
     a = mfa.processes["a"]
@@ -351,7 +354,12 @@ def stock_mfa(
         stock_kwargs["lifetime_model_class"] = FixedLifetime
     mfa = make_mfa(
         processes=["sysenv", ProcessDefinition(name="use", outflow_shares={"eol": "share"}), "eol"],
-        flows=[flow("sysenv", "use"), flow("use", "eol"), flow("use", "sysenv"), flow("eol", "sysenv")],
+        flows=[
+            flow("sysenv", "use"),
+            flow("use", "eol"),
+            flow("use", "sysenv"),
+            flow("eol", "sysenv"),
+        ],
         parameter_values={"share": 0.6, **parameter_values},
         parameter_dims={"share": (), **parameter_dims},
         dimensions=DIM_DEFINITIONS + [DimensionDefinition(name="Cohort", letter="c", dtype=int)],
@@ -571,7 +579,10 @@ def test_side_without_flows_has_zero_total():
 
 @pytest.mark.parametrize("order", [["sysenv", "p", "q"], ["sysenv", "q", "p"]])
 def test_inconsistency_found_regardless_of_order(order):
-    processes = [ProcessDefinition(name="p", outflow_shares={"sysenv": "share"}) if n == "p" else n for n in order]
+    processes = [
+        ProcessDefinition(name="p", outflow_shares={"sysenv": "share"}) if n == "p" else n
+        for n in order
+    ]
     mfa = make_mfa(
         processes=processes,
         flows=[
@@ -618,7 +629,9 @@ def test_flow_parameter_without_flow_dims():
 
 def test_stock_inflow_from_parameter():
     mfa = stock_mfa(
-        InflowDrivenDSM, parameter_values={"inflow": 2.0}, parameter_dims={"inflow": ("t",)},
+        InflowDrivenDSM,
+        parameter_values={"inflow": 2.0},
+        parameter_dims={"inflow": ("t",)},
         inflow_parameter="inflow",
     )
     assert mfa.stocks["use"].inflow.is_set
@@ -634,7 +647,9 @@ def test_stock_inflow_from_parameter():
 
 def test_stock_from_parameter():
     mfa = stock_mfa(
-        DynamicStockModel, parameter_values={"stock": 1.0}, parameter_dims={"stock": ("t",)},
+        DynamicStockModel,
+        parameter_values={"stock": 1.0},
+        parameter_dims={"stock": ("t",)},
         stock_parameter="stock",
     )
     assert mfa.compute_all_possible() == []

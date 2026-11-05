@@ -365,7 +365,8 @@ class ProcessSide:
                     f"In process '{self.process.name}': The shares of the {self.label}s "
                     f"{', '.join(failures)} are not fulfilled. This happens if the process is "
                     "overdetermined, i.e. more flow values or shares are given than needed, and "
-                    "these are inconsistent." + config_hint("process_overdetermined", tolerance=True)
+                    "these are inconsistent."
+                    + config_hint("process_overdetermined", tolerance=True)
                 ),
             )
 
@@ -540,7 +541,8 @@ class ProcessComputation:
                     f"In process '{self.process.name}': The computation changed the values of the "
                     f"stock arrays {', '.join(changed)}, which were set before. This happens if "
                     "the process is overdetermined, i.e. more values are given than needed, and "
-                    "these are inconsistent." + config_hint("process_overdetermined", tolerance=True)
+                    "these are inconsistent."
+                    + config_hint("process_overdetermined", tolerance=True)
                 ),
             )
 
@@ -616,7 +618,9 @@ class _Snapshot:
         """Stock arrays which were set, with their values."""
         # cohort arrays of dynamic stock models are replaced, not modified, so references suffice
         self.stock_private = {
-            name: getattr(stock, name) for name in self._STOCK_PRIVATE_ARRAYS if hasattr(stock, name)
+            name: getattr(stock, name)
+            for name in self._STOCK_PRIVATE_ARRAYS
+            if hasattr(stock, name)
         }
 
     def restore(self) -> None:

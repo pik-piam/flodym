@@ -8,7 +8,6 @@ from ._process_compute import (
     Direction,
     ProcessSide,
     Side,
-    UnderdeterminedError,
     check_share_values,
     compute_process,
     compute_processes,
@@ -20,6 +19,7 @@ from .mfa_definition import ProcessDefinition
 if TYPE_CHECKING:
     from .flodym_arrays import FlodymArray, Flow, Parameter
     from .stocks import Stock
+
 
 class Process(PydanticBaseModel):
     """Processes serve as nodes for the MFA system layout definition.
@@ -233,7 +233,6 @@ class Process(PydanticBaseModel):
             tolerance = config.get_tolerance(precision)
         balance = self.get_mass_balance(mass_change=mass_change)
         return balance_failure(f"process '{self.name}'", balance, tolerance)
-
 
     # ------------------------------------------------------------------------------------------
     # Shares and dimension splitters

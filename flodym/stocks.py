@@ -404,6 +404,7 @@ class SimpleFlowDrivenStock(Stock):
         for side, total in totals.items():
             computation.compute_side(total, side)
 
+
 class DynamicStockModel(Stock):
     """Dynamic stock model, based on stocks having a specified lifetime (distribution).
 
