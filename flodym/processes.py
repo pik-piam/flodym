@@ -1,11 +1,13 @@
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 from pydantic import BaseModel as PydanticBaseModel, PrivateAttr, model_validator
 
+from ._checks import balance_failure, config_hint, report_balance_failures
+from .config import ErrorBehavior, config
 from .mfa_definition import ProcessDefinition
 
 if TYPE_CHECKING:
-    from .flodym_arrays import Flow
+    from .flodym_arrays import FlodymArray, Flow
     from .stocks import Stock
 
 
@@ -108,6 +110,103 @@ class Process(PydanticBaseModel):
         self._inflows = {}
         self._outflows = {}
         self._stock = None
+
+    def get_sum_inflows(self) -> Union["FlodymArray", float]:
+        """Sum of all inflows to the process, reduced to the dimensions common to all inflows.
+        Zero if the process has no inflows."""
+        return sum(self._inflows.values(), 0.0)
+
+    def get_sum_outflows(self) -> Union["FlodymArray", float]:
+        """Sum of all outflows from the process, reduced to the dimensions common to all outflows.
+        Zero if the process has no outflows."""
+        return sum(self._outflows.values(), 0.0)
+
+    def get_net_inflow(self) -> Union["FlodymArray", float]:
+        """Sum of all inflows minus sum of all outflows of the process.
+        Unless the process is 'sysenv', this equals the net inflow of its stock (or zero), if the
+        mass balance is satisfied."""
+        return self.get_sum_inflows() - self.get_sum_outflows()
+
+    def get_mass_balance(
+        self, mass_change: Union["FlodymArray", float, None] = None
+    ) -> Union["FlodymArray", float]:
+        """Mass balance error of the process: The net inflow of the process
+        (see :py:meth:`get_net_inflow`) minus its mass change.
+        Zero if the mass balance is satisfied.
+
+        Args:
+            mass_change: The mass change of the process per year. If None, it is the net inflow of
+                the stock of the process, or zero if the process has no stock.
+                For the 'sysenv' process, it must be given, as the negative mass change of the
+                whole system, see :py:meth:`flodym.MFASystem.check_mass_balance`.
+        """
+        if mass_change is None:
+            if self.id == 0:
+                raise ValueError(
+                    "The mass balance of the 'sysenv' process depends on the stock changes of the "
+                    "whole MFA system and can only be computed if mass_change is given. "
+                    "Use MFASystem.check_mass_balance() instead."
+                )
+            mass_change = 0.0 if self._stock is None else self._stock.net_inflow
+        return self.get_net_inflow() - mass_change
+
+    @property
+    def _absolute_float_precision(self) -> float:
+        """Machine epsilon times the largest absolute value of the in- and outflows of the process
+        and of the in- and outflow of its stock."""
+        arrays = list(self._inflows.values()) + list(self._outflows.values())
+        if self._stock is not None:
+            arrays += [self._stock.inflow, self._stock.outflow]
+        return max((a._absolute_float_precision for a in arrays), default=0.0)
+
+    @property
+    def tolerance(self) -> float:
+        """Absolute tolerance for the mass balance check of the process, see
+        :py:attr:`flodym.config.Config.relative_tolerance`."""
+        return config.get_tolerance(self._absolute_float_precision)
+
+    def check_mass_balance(
+        self,
+        tolerance: Optional[float] = None,
+        error_behavior: Optional[ErrorBehavior | str] = None,
+        mass_change: Union["FlodymArray", float, None] = None,
+    ) -> bool:
+        """Check whether the mass balance of the process (see :py:meth:`get_mass_balance`) is
+        satisfied within a tolerance.
+
+        Args:
+            tolerance: Absolute tolerance. If None, :py:attr:`tolerance` is used.
+            error_behavior: What to do if the check fails. If None,
+                ``flodym.config.error_behaviors.mass_balance`` is used (default: raise an error).
+            mass_change: See :py:meth:`get_mass_balance`.
+
+        Returns:
+            Whether the check passed.
+        """
+        if error_behavior is None:
+            error_behavior = config.error_behaviors.mass_balance
+        return report_balance_failures(
+            [self._mass_balance_failure(tolerance, mass_change)],
+            error_behavior,
+            hint=config_hint("mass_balance", tolerance=True),
+            success_message=f"Mass balance of process '{self.name}' is consistent.",
+        )
+
+    def _mass_balance_failure(
+        self,
+        tolerance: Optional[float] = None,
+        mass_change: Union["FlodymArray", float, None] = None,
+    ) -> Optional[str]:
+        """Description of the failed mass balance check for an error message, or None if it
+        passed. If no tolerance is given, :py:attr:`tolerance` is used, extended by the float
+        precision of ``mass_change`` if given."""
+        if tolerance is None:
+            precision = self._absolute_float_precision
+            if mass_change is not None and hasattr(mass_change, "_absolute_float_precision"):
+                precision = max(precision, mass_change._absolute_float_precision)
+            tolerance = config.get_tolerance(precision)
+        balance = self.get_mass_balance(mass_change=mass_change)
+        return balance_failure(f"process '{self.name}'", balance, tolerance)
 
 
 def make_processes(definitions: List[str | ProcessDefinition]) -> dict[str, Process]:

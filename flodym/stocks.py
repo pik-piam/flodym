@@ -8,18 +8,21 @@ import numpy as np
 from pydantic import BaseModel as PydanticBaseModel, ConfigDict, model_validator
 from typing import Callable, Optional, Union, TypeVar, Type
 import logging
+import warnings
 
 from .processes import Process
 from .flodym_arrays import StockArray, FlodymArray
 from .dimensions import Dimension, DimensionSet
 from .lifetime_models import LifetimeModel, UnevenTimeDim
-from .config import config, handle_error
+from ._checks import balance_failure, config_hint, report_balance_failures
+from .config import ErrorBehavior, config, handle_error
 
 StockSubtype = TypeVar("StockSubtype", bound="Stock")
 
 
 def _wrap_compute(compute: Callable) -> Callable:
-    """Adds checks before and marks the stock arrays as set after a stock compute routine.
+    """Adds checks before a stock compute routine, and marks the stock arrays as set and checks
+    the mass balance of the stock (if ``flodym.config.checks.mass_balance_after_compute``) after it.
     Nested calls (e.g. via ``super().compute()``) only run the outermost checks."""
 
     @functools.wraps(compute)
@@ -33,6 +36,14 @@ def _wrap_compute(compute: Callable) -> Callable:
         finally:
             self._in_compute = False
         self.mark_all_set()
+        if config.checks.mass_balance_after_compute:
+            self._check_mass_balance(
+                tolerance=None,
+                error_behavior=config.error_behaviors.mass_balance,
+                hint=config_hint(
+                    "mass_balance", tolerance=True, check="mass_balance_after_compute"
+                ),
+            )
         return result
 
     wrapper._is_wrapped_compute = True
@@ -183,22 +194,111 @@ class Stock(PydanticBaseModel):
             }
         )
 
-    def check_stock_balance(self):
-        balance = self.get_stock_balance()
-        balance = np.max(np.abs(balance).sum(axis=0))
-        if balance > 1:  # 1 tonne accuracy
-            raise RuntimeError("Stock balance for dynamic stock model is too high: " + str(balance))
-        elif balance > 0.001:
-            print("Stock balance for model dynamic stock model is noteworthy: " + str(balance))
+    @property
+    def net_inflow(self) -> FlodymArray:
+        """Inflow minus outflow of the stock, per year."""
+        return self.inflow - self.outflow
+
+    @property
+    def stock_change(self) -> FlodymArray:
+        """Change of the stock in each time step: stock(t) - stock(t-1), where the stock before the
+        first time step is zero."""
+        return FlodymArray(
+            dims=self.dims,
+            values=np.diff(self.stock.values, axis=0, prepend=0),
+            name=f"{self.name}_stock_change",
+        )
+
+    def get_mass_balance(self) -> FlodymArray:
+        """Mass balance error of the stock: The net inflow over each time step (see
+        :py:attr:`net_inflow`, multiplied by the length of the time step) minus the stock
+        change in the time step (see :py:attr:`stock_change`).
+        Zero if inflow, outflow and stock are consistent.
+        """
+        net_inflow_whole_period = self._to_whole_period(self.net_inflow.values)
+        return FlodymArray(
+            dims=self.dims,
+            values=net_inflow_whole_period - self.stock_change.values,
+            name=f"{self.name}_mass_balance",
+        )
+
+    @property
+    def _absolute_float_precision(self) -> float:
+        """Machine epsilon times the largest absolute value of inflow, outflow and stock."""
+        return max(
+            self.inflow._absolute_float_precision,
+            self.outflow._absolute_float_precision,
+            self.stock._absolute_float_precision,
+        )
+
+    @property
+    def tolerance(self) -> float:
+        """Absolute tolerance for the mass balance check of the stock, see
+        :py:attr:`flodym.config.Config.relative_tolerance`."""
+        return config.get_tolerance(self._absolute_float_precision)
+
+    def check_mass_balance(
+        self,
+        tolerance: Optional[float] = None,
+        error_behavior: Optional[ErrorBehavior | str] = None,
+    ) -> bool:
+        """Check whether inflow, outflow and stock are consistent within a tolerance
+        (see :py:meth:`get_mass_balance`).
+
+        This check is also performed automatically after each computation of the stock if
+        ``flodym.config.checks.mass_balance_after_compute`` is True (default: False).
+
+        Args:
+            tolerance: Absolute tolerance. If None, :py:attr:`tolerance` is used.
+            error_behavior: What to do if the check fails. If None,
+                ``flodym.config.error_behaviors.mass_balance`` is used (default: raise an error).
+
+        Returns:
+            Whether the check passed.
+        """
+        if error_behavior is None:
+            error_behavior = config.error_behaviors.mass_balance
+        return self._check_mass_balance(
+            tolerance, error_behavior, hint=config_hint("mass_balance", tolerance=True)
+        )
+
+    def _check_mass_balance(
+        self, tolerance: Optional[float], error_behavior: ErrorBehavior | str, hint: str
+    ) -> bool:
+        return report_balance_failures(
+            [self._mass_balance_failure(tolerance)],
+            error_behavior,
+            hint=hint,
+            success_message=f"Mass balance of stock '{self.name}' is consistent.",
+        )
+
+    def _mass_balance_failure(self, tolerance: Optional[float] = None) -> Optional[str]:
+        """Description of the failed mass balance check for an error message, or None if it
+        passed. If no tolerance is given, :py:attr:`tolerance` is used."""
+        if tolerance is None:
+            tolerance = self.tolerance
+        return balance_failure(f"stock '{self.name}'", self.get_mass_balance(), tolerance)
+
+    def check_stock_balance(self) -> bool:
+        """Deprecated. Use :py:meth:`check_mass_balance` instead."""
+        warnings.warn(
+            "check_stock_balance is deprecated since v2.0.0. It will be removed in v3.0.0. "
+            "Use check_mass_balance instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.check_mass_balance()
 
     def get_stock_balance(self) -> np.ndarray:
-        """Check whether inflow, outflow, and stock are balanced.
-        If possible, the method returns the vector 'Balance', where Balance = inflow - outflow - stock_change
-        """
-        dsdt = np.diff(
-            self.stock.values, axis=0, prepend=0
-        )  # stock_change(t) = stock(t) - stock(t-1)
-        return self.inflow.values - self.outflow.values - dsdt
+        """Deprecated. Use :py:meth:`get_mass_balance` instead, which returns a
+        :py:class:`flodym.FlodymArray`. This method returns its values."""
+        warnings.warn(
+            "get_stock_balance is deprecated since v2.0.0. It will be removed in v3.0.0. "
+            "Use get_mass_balance instead, which returns a FlodymArray.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.get_mass_balance().values
 
     @property
     def is_computed(self) -> bool:

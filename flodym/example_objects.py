@@ -48,7 +48,7 @@ class ExampleMFA(MFASystem):
         ) * (1 - self.parameters["remelting yield"])
         self.stocks["landfills"].inflow[...] = self.flows["demolition => landfills"]
         self.stocks["landfills"].compute()
-        self.stocks["slag piles"].inflow[...] = self.flows["shredder => remelting"]
+        self.stocks["slag piles"].inflow[...] = self.flows["remelting => slag piles"]
         self.stocks["slag piles"].compute()
 
 
