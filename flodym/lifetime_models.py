@@ -87,6 +87,7 @@ class LifetimeModel(PydanticBaseModel):
     """
     _sf: np.ndarray | None = PrivateAttr(default=None)
     _pdf: np.ndarray | None = PrivateAttr(default=None)
+    _survival_rate: np.ndarray | None = PrivateAttr(default=None)
     _t: UnevenTimeDim | None = PrivateAttr(default=None)
     _quad_points: list[float] | None = PrivateAttr(default=None)
     """Intra-time step quadrature points for numerical integration of survival factors."""
@@ -193,7 +194,7 @@ class LifetimeModel(PydanticBaseModel):
             if self.lt_factor_by_year is not None:
                 self._compute_survival_factor_with_nurture()
             else:
-                self.compute_survival_factor()
+                self._compute_survival_factor()
         return self._sf
 
     @property
@@ -202,6 +203,18 @@ class LifetimeModel(PydanticBaseModel):
             self._pdf = np.zeros(self._shape_cohort)
             self._compute_outflow_pdf()
         return self._pdf
+
+    @property
+    def survival_rate(self):
+        """One-step survival rate by year and age-cohort: survival_rate(t,c) is the share of
+        cohort c present at the end of year t-1, or entering the stock during year t, which is
+        still present at the end of year t.
+        It equals sf(t,c) / sf(t-1,c) for c < t, sf(t,t) for c = t, and zero for c > t.
+        """
+        if self._survival_rate is None:
+            self._survival_rate = np.zeros(self._shape_cohort)
+            self._compute_survival_rate()
+        return self._survival_rate
 
     def _tile(self, a: np.ndarray) -> np.ndarray:
         """tiles the input array a to the shape of the lifetime model, by adding non-time dimensions
@@ -224,7 +237,7 @@ class LifetimeModel(PydanticBaseModel):
     def _remaining_ages(self, i_t, quad_point):
         return self._tile(self._t.bounds[i_t + 1 :] - self._quad_point_time(i_t, quad_point))
 
-    def compute_survival_factor(self):
+    def _compute_survival_factor(self):
         """Survival table self.sf(m,n) denotes the share of an inflow in year n (age-cohort) still
         present at the end of year m (after m-n years).
         The computation is self.sf(m,n) = ProbDist.sf(m-n), where ProbDist is the appropriate
@@ -312,6 +325,7 @@ class LifetimeModel(PydanticBaseModel):
     def reset_cached_arrays(self):
         self._sf = None
         self._pdf = None
+        self._survival_rate = None
 
     def _compute_outflow_pdf(self):
         """Returns an array year-by-cohort of the probability that an item
@@ -321,6 +335,15 @@ class LifetimeModel(PydanticBaseModel):
         self._pdf[t_diag_indices] = 1.0 - np.moveaxis(self.sf.diagonal(0, 0, 1), -1, 0)
         for i_c in range(0, self._n_t):
             self._pdf[i_c + 1 :, i_c, ...] = -1 * np.diff(self.sf[i_c:, i_c, ...], axis=0)
+
+    def _compute_survival_rate(self):
+        # The share of cohort c present at the end of year t-1 which survives year t is
+        # sf(t,c) / sf(t-1,c). If sf(t-1,c) is zero, nothing is left to survive.
+        sf_prev = self.sf[:-1, ...]
+        np.divide(self.sf[1:, ...], sf_prev, out=self._survival_rate[1:, ...], where=sf_prev > 0)
+        # The newest cohort enters during year t, so its survival rate is sf(t,t)
+        t_diag_indices = np.diag_indices(self._n_t) + (slice(None),) * len(self._shape_no_t)
+        self._survival_rate[t_diag_indices] = self.sf[t_diag_indices]
 
     def _compute_survival_factor_with_nurture(self):
         """

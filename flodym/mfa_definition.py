@@ -95,12 +95,7 @@ class StockDefinition(DefinitionWithDimLetters):
     Available lifetime models can be found in :py:data:`flodym.lifetime_models`.
     """
     solver: Optional[str] = "manual"
-    """Algorithm to use for solving the equation system in the stock-driven DSM.
-    Options are: "manual" (default), which uses
-    an own python implementation, and "lapack", which calls the lapack trtrs routine via scipy.
-    The lapack implementation is more precise. Speed depends on the dimensionality,
-    but the manual implementation is usually faster.
-    """
+    """Deprecated and ignored. The stock-driven DSM always uses the former "manual" algorithm."""
 
     @model_validator(mode="after")
     def init_solver(self):
