@@ -4,6 +4,8 @@
     ".": {}
   },
   "release-type": "python",
+  "release-as": "2.0.0-rc.1",
+  "prerelease": true,
   "pull-request-title-pattern": "chore: release${component} ${version}",
   "include-component-in-tag": false,
   "changelog-sections": [
