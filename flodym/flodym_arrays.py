@@ -1039,7 +1039,7 @@ class _PrescribableArray(FlodymArray):
     _prescribed: Union[str, FlodymArray, None] = None
     """The array prescribing the values, or its parameter name before it is linked by
     :py:meth:`flodym.MFASystem.link_parameters`. Values are copied by
-    :py:meth:`flodym.MFASystem.fill_prescribed`."""
+    :py:meth:`flodym.MFASystem.set_prescribed_arrays`."""
 
     def _set_prescribed(self, prescribed: Union[str, FlodymArray, None]) -> None:
         """Set the prescribing array or its parameter name, or remove it by passing None.
@@ -1059,7 +1059,7 @@ class _PrescribableArray(FlodymArray):
             )
         self._prescribed = prescribed
 
-    def _fill_prescribed(self) -> None:
+    def _set_prescribed_arrays(self) -> None:
         """Copy the values of the prescribing array into this array, if one is given."""
         if self._prescribed is None:
             return

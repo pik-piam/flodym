@@ -280,7 +280,7 @@ print("Not computed:", my_mfa_system.compute_all_possible())
 #
 # For parameters that are not part of the definition, such as `"c"`, set `check_parameter_names=False` in the `MFADefinition`.
 #
-# The values of prescribing parameters are copied into the flows and stock arrays by `MFASystem.fill_prescribed()`, which `compute_all_possible()` calls first. Example 2 shows the use of definitions.
+# The values of prescribing parameters are copied into the flows and stock arrays by `MFASystem.set_prescribed_arrays()`, which `compute_all_possible()` calls first. Example 2 shows the use of definitions.
 
 # %% [markdown]
 # ## Generate attributes from Definition objects

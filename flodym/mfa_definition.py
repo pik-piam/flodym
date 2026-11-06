@@ -78,7 +78,7 @@ class FlowDefinition(DefinitionWithDimLetters):
     prescribed: Optional[str] = None
     """Optional name of a parameter whose values the flow is set to. The parameter is linked to
     the flow by :py:meth:`flodym.MFASystem.link_parameters`, and its values are copied into the
-    flow by :py:meth:`flodym.MFASystem.fill_prescribed`."""
+    flow by :py:meth:`flodym.MFASystem.set_prescribed_arrays`."""
 
 
 class StockDefinition(DefinitionWithDimLetters):
@@ -86,7 +86,7 @@ class StockDefinition(DefinitionWithDimLetters):
 
     The arrays of the stock (stock, inflow, outflow, and inflow by cohort) can be prescribed by
     parameters, see :py:meth:`flodym.MFASystem.link_parameters` and
-    :py:meth:`flodym.MFASystem.fill_prescribed`. For a dynamic stock
+    :py:meth:`flodym.MFASystem.set_prescribed_arrays`. For a dynamic stock
     model, at most one of stock, inflow and inflow by cohort can be given, as it determines the
     computation mode (see :py:meth:`flodym.DynamicStockModel.compute`).
     """

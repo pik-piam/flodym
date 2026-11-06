@@ -73,7 +73,7 @@ def make_mfa(
     mfa = MFASystem.from_data_reader(definition, DictReader(parameter_values))
     # fill prescribed flows, so that single processes can be computed without
     # compute_all_possible()
-    mfa.fill_prescribed()
+    mfa.set_prescribed_arrays()
     return mfa
 
 
@@ -760,7 +760,7 @@ def test_unlinked_parameters_raise():
     assert mfa.processes["a"].outflow_shares == {"b": "share b"}
     assert "outflow_shares={'b': 'share b'}" in repr(mfa.processes["a"])
     with pytest.raises(ValueError, match="'input' prescribed for 'sysenv => a' is not linked"):
-        mfa.fill_prescribed()
+        mfa.set_prescribed_arrays()
     mfa.flows["sysenv => a"][...] = 1.0
     with pytest.raises(ValueError, match="share b of shares or dimension splitters are not"):
         mfa.processes["a"].compute()
@@ -777,12 +777,12 @@ def test_link_parameters_resolves_share_keys():
     assert mfa.processes["a"].outflow_shares == shares
 
 
-def test_fill_prescribed_overwrites_and_uses_parameter_changes():
+def test_set_prescribed_arrays_overwrites_and_uses_parameter_changes():
     mfa = split_mfa()
     flow = mfa.flows["sysenv => a"]
     flow[...] = 5.0
     mfa.parameters["input"][...] = 7.0
-    mfa.fill_prescribed()
+    mfa.set_prescribed_arrays()
     np.testing.assert_allclose(flow.values, 7.0)
     assert flow.is_set
 
