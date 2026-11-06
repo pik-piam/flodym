@@ -162,6 +162,16 @@ This is a new feature and does not change existing models. If you use it, note:
 - New options in ``flodym.config.error_behaviors`` control these checks:
   ``process_underdetermined``, ``process_overdetermined``, ``process_shares`` and
   ``unused_dimension_splitter``.
+- Parameters used in definitions (shares, dimension splitters, prescribed flows and stock arrays)
+  are linked by ``MFASystem.link_parameters()``, which ``from_data_reader()``, ``from_csv()`` and
+  ``from_excel()`` call unless ``link=False`` is given. The parameters are stored by reference.
+- The values of prescribed flows and stock arrays are copied only by
+  ``MFASystem.set_arrays_from_prescribed()``, which ``compute_all_possible()`` calls first. It
+  overwrites the values of these arrays. If you compute single processes with
+  ``Process.compute()``, call ``set_arrays_from_prescribed()`` before.
+- To use parameters that are not part of the definition, e.g. computed from read parameters, set
+  ``MFADefinition.check_parameter_names`` to False, create the system with ``link=False``, add the
+  parameters to ``mfa.parameters``, and call ``mfa.link_parameters()``.
 
 See HOWTO 05 for details.
 
@@ -180,16 +190,28 @@ The following still work in v2, but emit a ``DeprecationWarning`` and will be re
 - ``LifetimeModel.set_prms()`` (deprecated since v1.1.0): assign the parameters directly, e.g.
   ``lifetime_model.mean = 10``.
 
+The ``naming`` argument of ``make_empty_flows()`` is deprecated as well and will be removed in
+v3.0.0. It still works, but logs an info message instead of a warning. Set the global option
+``flodym.config.flow_naming`` instead, e.g.
+``flodym.config.flow_naming = flodym.flow_naming.process_ids``, or use
+``with flodym.config.override(flow_naming=...):``.
+
 
 New features
 ------------
 
 - **Automatic process computation:** ``Process.compute()`` and
   ``MFASystem.compute_all_possible()`` compute unknown flows from known flows, shares and
-  dimension splitters. Shares, splitters and parameters for flows and stocks are given in
-  ``ProcessDefinition``, ``FlowDefinition`` and ``StockDefinition`` (HOWTO 05).
+  dimension splitters. Shares and splitters are given in ``ProcessDefinition``; flows and stock
+  arrays can be prescribed by parameters with ``FlowDefinition.prescribed`` and
+  ``StockDefinition.prescribed_stock``, ``prescribed_inflow``, ``prescribed_outflow`` and
+  ``prescribed_inflow_by_cohort``; ``MFASystem.link_parameters()`` and
+  ``MFASystem.set_arrays_from_prescribed()`` (HOWTO 05).
 - **Process links:** ``process.inflows``, ``process.outflows`` and ``process.stock``;
-  ``ProcessDefinition(id, name)`` to set process IDs explicitly; ``MFASystem.relink()``.
+  ``ProcessDefinition(id, name)`` to set process IDs explicitly; ``MFASystem.relink()``, which by
+  default also renames flows named after their processes (``update_names=True``).
+- **Flow naming:** the global option ``flodym.config.flow_naming`` sets the function that
+  generates flow names from the connected processes.
 - **Mass balance per process and stock:** ``Process.get_mass_balance()``,
   ``Stock.get_mass_balance()``, the corresponding ``check_mass_balance()`` methods, and the
   optional check after each computation (``flodym.config.checks.mass_balance_after_compute``).
