@@ -25,7 +25,7 @@ objects instead.
   error. In v1, the later process replaced the earlier one.
 - **Several flows between the same two processes** keep their own entries. If several flows
   without ``name_override`` get the same generated name, the second, third, ... flow get the
-  suffix ``_2``, ``_3``, ..., and a warning is logged. In v1, only the last of these flows was kept.
+  suffix ``__2``, ``__3``, ..., and a warning is logged. In v1, only the last of these flows was kept.
 
   *Action:* If your model has such flows, check which flow you access under the generated name,
   or give the flows a ``name_override``.
