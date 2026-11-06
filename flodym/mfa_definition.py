@@ -75,10 +75,21 @@ class FlowDefinition(DefinitionWithDimLetters):
     """Process to which the flow goes."""
     name_override: Optional[str] = None
     """Optional name for the flow. Will be generated from the connecting process names if not provided."""
+    prescribed: Optional[str] = None
+    """Optional name of a parameter whose values the flow is set to. The parameter is linked to
+    the flow by :py:meth:`flodym.MFASystem.link_parameters`, and its values are copied into the
+    flow by :py:meth:`flodym.MFASystem.set_arrays_from_prescribed`."""
 
 
 class StockDefinition(DefinitionWithDimLetters):
-    """Define the model stocks."""
+    """Define the model stocks.
+
+    The arrays of the stock (stock, inflow, outflow, and inflow by cohort) can be prescribed by
+    parameters, see :py:meth:`flodym.MFASystem.link_parameters` and
+    :py:meth:`flodym.MFASystem.set_arrays_from_prescribed`. For a dynamic stock
+    model, at most one of stock, inflow and inflow by cohort can be given, as it determines the
+    computation mode (see :py:meth:`flodym.DynamicStockModel.compute`).
+    """
 
     name: str = "undefined stock"
     """Name of the stock."""
@@ -96,6 +107,53 @@ class StockDefinition(DefinitionWithDimLetters):
     """
     solver: Optional[str] = "manual"
     """Deprecated and ignored. The stock-driven DSM always uses the former "manual" algorithm."""
+    cohort_letter: Optional[str] = None
+    """Letter of the cohort dimension of a dynamic stock model (see
+    :py:attr:`flodym.DynamicStockModel.cohort_dim`). It must be a defined dimension with the same
+    items as the time dimension, but not one of ``dim_letters``."""
+    prescribed_stock: Optional[str] = None
+    """Optional name of a parameter whose values the stock is set to."""
+    prescribed_inflow: Optional[str] = None
+    """Optional name of a parameter whose values the stock inflow is set to."""
+    prescribed_outflow: Optional[str] = None
+    """Optional name of a parameter whose values the stock outflow is set to."""
+    prescribed_inflow_by_cohort: Optional[str] = None
+    """Optional name of a parameter whose values the inflow by cohort of a dynamic stock model is
+    set to. Requires ``cohort_letter``."""
+
+    @property
+    def prescribed_arrays(self) -> Dict[str, str]:
+        """Names of the parameters which stock arrays are prescribed by, keyed by array name
+        (``"stock"``, ``"inflow"``, ``"outflow"``, ``"inflow_by_cohort"``)."""
+        parameters = {
+            "stock": self.prescribed_stock,
+            "inflow": self.prescribed_inflow,
+            "outflow": self.prescribed_outflow,
+            "inflow_by_cohort": self.prescribed_inflow_by_cohort,
+        }
+        return {name: p for name, p in parameters.items() if p is not None}
+
+    @model_validator(mode="after")
+    def check_prescribed_arrays(self):
+        is_dynamic = "cohort_dim" in self.subclass.model_fields
+        if self.cohort_letter is not None and not is_dynamic:
+            raise ValueError(
+                f"Stock '{self.name}': cohort_letter is given, but subclass {self.subclass} has "
+                "no cohort dimension."
+            )
+        if self.prescribed_inflow_by_cohort is not None and self.cohort_letter is None:
+            raise ValueError(
+                f"Stock '{self.name}': prescribed_inflow_by_cohort requires cohort_letter."
+            )
+        driving = [
+            n for n in ("stock", "inflow", "inflow_by_cohort") if n in self.prescribed_arrays
+        ]
+        if is_dynamic and len(driving) > 1:
+            raise ValueError(
+                f"Stock '{self.name}': For a dynamic stock model, at most one of the stock, "
+                f"inflow and inflow by cohort can be prescribed, but got {driving}."
+            )
+        return self
 
     @model_validator(mode="after")
     def init_solver(self):
@@ -125,13 +183,39 @@ class ParameterDefinition(DefinitionWithDimLetters):
 
 
 class ProcessDefinition(PydanticBaseModel):
-    """Define a process with an explicit ID. In :py:attr:`MFADefinition.processes`, it can be
-    used instead of a process name, see :py:func:`flodym.make_processes`."""
+    """Define a process, optionally with an explicit ID and with parameters used by
+    :py:meth:`flodym.Process.compute`. In :py:attr:`MFADefinition.processes`, it can be used
+    instead of a process name, see :py:func:`flodym.make_processes`.
 
-    id: int
-    """ID of the process."""
+    In- and outflows in ``inflow_shares`` and ``outflow_shares`` are given either by flow name,
+    or by the name of the process they come from or go to, if only one flow connects the two
+    processes.
+
+    **Examples**
+
+        >>> from flodym import ProcessDefinition
+        >>> ProcessDefinition(name="shredder", outflow_shares={"remelting": "shredder yield"})
+    """
+
     name: str
     """Name of the process."""
+    id: Optional[int] = None
+    """ID of the process. If None, it is assigned automatically, see
+    :py:func:`flodym.make_processes`."""
+    inflow_shares: Dict[str, str] = {}
+    """Names of the parameters giving the share of an inflow in the total throughput of the
+    process, keyed by flow name or by the name of the process the inflow comes from."""
+    outflow_shares: Dict[str, str] = {}
+    """Names of the parameters giving the share of an outflow in the total throughput of the
+    process, keyed by flow name or by the name of the process the outflow goes to."""
+    forward_dimension_splitter: Optional[str] = None
+    """Name of the parameter by which the total throughput of the process is multiplied before
+    computing outflows, to add dimensions which the total does not have, but the outflows do
+    (see :py:meth:`flodym.Process.compute`). It must sum to one over the added dimensions."""
+    backward_dimension_splitter: Optional[str] = None
+    """Name of the parameter by which the total throughput of the process is multiplied before
+    computing inflows, to add dimensions which the total does not have, but the inflows do
+    (see :py:meth:`flodym.Process.compute`). It must sum to one over the added dimensions."""
 
 
 class MFADefinition(PydanticBaseModel):
@@ -149,6 +233,11 @@ class MFADefinition(PydanticBaseModel):
     """List of definitions of stocks used in the model."""
     parameters: List[ParameterDefinition] = []
     """List of definitions of parameters used in the model."""
+    check_parameter_names: bool = True
+    """Whether to check that all parameters used in flow, stock and process definitions are
+    defined in :py:attr:`parameters`. Set it to False to use parameters which are added to
+    :py:attr:`flodym.MFASystem.parameters` later, before calling
+    :py:meth:`flodym.MFASystem.link_parameters`."""
 
     @model_validator(mode="after")
     def check_dimension_letters(self):
@@ -158,6 +247,36 @@ class MFADefinition(PydanticBaseModel):
             correct_dims = [letter in defined_dim_letters for letter in item.dim_letters]
             if not np.all(correct_dims):
                 raise ValueError(f"Undefined dimension in {item}")
+        for stock in self.stocks:
+            if stock.cohort_letter is not None and stock.cohort_letter not in defined_dim_letters:
+                raise ValueError(f"Undefined cohort dimension in {stock}")
+        return self
+
+    @model_validator(mode="after")
+    def validate_parameter_names(self):
+        """Check that parameters used by flow, stock and process definitions are defined,
+        unless :py:attr:`check_parameter_names` is False."""
+        if not self.check_parameter_names:
+            return self
+        defined_parameters = {p.name for p in self.parameters}
+        used_parameters = []
+        for flow in self.flows:
+            if flow.prescribed is not None:
+                used_parameters.append((flow.prescribed, f"flow definition {flow}"))
+        for stock in self.stocks:
+            for name in stock.prescribed_arrays.values():
+                used_parameters.append((name, f"definition of stock '{stock.name}'"))
+        for process in self.processes:
+            if isinstance(process, str):
+                continue
+            used_by = f"definition of process '{process.name}'"
+            names = list(process.inflow_shares.values()) + list(process.outflow_shares.values())
+            splitters = [process.forward_dimension_splitter, process.backward_dimension_splitter]
+            names += [splitter for splitter in splitters if splitter is not None]
+            used_parameters += [(name, used_by) for name in names]
+        for name, used_by in used_parameters:
+            if name not in defined_parameters:
+                raise ValueError(f"Parameter '{name}' used in {used_by} is not defined.")
         return self
 
     def to_dfs(self) -> Dict[str, pd.DataFrame]:
@@ -170,7 +289,8 @@ class MFADefinition(PydanticBaseModel):
         """
         all_dfs = {}
         for field_name, def_list in self.model_dump().items():
-            if not def_list:
+            # skip options such as check_parameter_names, and empty lists
+            if not isinstance(def_list, list) or not def_list:
                 continue
             def_dfs = []
             for definition in def_list:

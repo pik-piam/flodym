@@ -15,3 +15,6 @@ Definition Objects
 
 .. autopydantic_model:: flodym::DimensionDefinition
    :inherited-members: BaseModel
+
+.. autopydantic_model:: flodym::ProcessDefinition
+   :inherited-members: BaseModel

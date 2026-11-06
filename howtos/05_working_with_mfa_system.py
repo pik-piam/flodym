@@ -202,6 +202,87 @@ with flodym.config.override(checks={"mass_balance_after_compute": True}):
 my_mfa_system.check_flows(error_behavior="info")
 
 # %% [markdown]
+# ## Compute processes automatically
+#
+# Instead of writing all system equations in `compute()`, many processes can be computed automatically from the known flows, the shares of flows in the process throughput, and dimension splitters, which add dimensions to the process throughput.
+#
+# In our system, `process_a` splits its inflow (dimensions r, t) by product with `product_shares`. This is a forward dimension splitter, since it is used to compute outflows from the inflow. `process_a` then sends the share `process_a_yield` to `process_b`. The outflow without share, to `sysenv`, receives the remainder.
+# `process_b` passes everything on.
+
+# %%
+process_a = my_mfa_system.processes["process_a"]
+process_a.set_dimension_splitter("forward", my_mfa_system.parameters["product_shares"])
+process_a.set_outflow_share("process_b", my_mfa_system.parameters["process_a_yield"])
+
+manual_results = {name: f.values.copy() for name, f in my_mfa_system.flows.items()}
+
+my_mfa_system.mark_all_unset()
+my_mfa_system.flows["sysenv => process_a"][...] = my_mfa_system.parameters["extraction"]
+my_mfa_system.compute_all_possible()
+
+for name, f in my_mfa_system.flows.items():
+    assert np.allclose(f.values, manual_results[name])
+
+# %% [markdown]
+# Only flows which are not set (see `FlodymArray.is_set`) are computed, which is why we marked all flows as unset first.
+#
+# The rules for a process without stock are:
+# - The inflows sum to a total throughput, which is split into the outflows. The shares of flows refer to this total.
+# - The total is computed from the inflows or from the outflows: as the sum of the flows of that side if all are known, as a known flow divided by its share, or from the known flows if all unknown flows of the side have shares.
+# - If the outflows to compute have dimensions which the total does not have, the total is multiplied with the forward dimension splitter. Likewise, the backward dimension splitter is used to compute inflows. Splitters must sum to one over the dimensions they add.
+# - Each unknown flow with a share is the total times its share. One unknown flow per side may have no share; it receives the remainder.
+#
+# This also works backwards, from known outflows to unknown inflows.
+# A process with stock has two totals, the stock inflow and the stock outflow, and the stock is computed along with the process.
+# The documentation of `Process.compute()` describes the details.
+#
+# `Process.compute()` computes a single process. If it is underdetermined, i.e. not enough values are given, it raises an `UnderdeterminedError` and leaves the process unchanged:
+
+# %%
+from flodym import UnderdeterminedError
+
+my_mfa_system.mark_all_unset()
+try:
+    my_mfa_system.processes["process_a"].compute()
+except UnderdeterminedError as error:
+    print(error)
+
+# %% [markdown]
+# `compute_all_possible()` instead skips underdetermined processes, and returns the names of the processes it could not compute.
+# It tries all processes, and tries the neighbors of each computed process again, until no further process can be computed.
+
+# %%
+print("Not computed:", my_mfa_system.compute_all_possible())
+
+my_mfa_system.flows["sysenv => process_a"][...] = my_mfa_system.parameters["extraction"]
+print("Not computed:", my_mfa_system.compute_all_possible())
+
+# %% [markdown]
+# If more values are given than needed, the process is overdetermined, and the values are checked for consistency after the computation. This also applies to processes whose flows were all set by the computation of their neighbors.
+# If a computation raises an error, the process is restored to its state before.
+#
+# Problems are reported according to `flodym.config.error_behaviors`:
+# - `process_underdetermined`: not enough values given (only in `Process.compute()`; `compute_all_possible()` skips such processes)
+# - `process_shares`: shares outside [0, 1] or summing to more than one, dimension splitters not summing to one
+# - `process_overdetermined`: shares not fulfilled, or set stock arrays changed by the computation
+# - `mass_balance`: mass balance violated
+# - `unused_dimension_splitter`: a dimension splitter set but not needed
+#
+# With definition objects (see below), shares and dimension splitters are given in a `ProcessDefinition`. Flows can be prescribed by a parameter with the `prescribed` argument of `FlowDefinition`, and the arrays of stocks with the arguments `prescribed_stock`, `prescribed_inflow`, `prescribed_outflow` and `prescribed_inflow_by_cohort` of `StockDefinition`. All these arguments are parameter names.
+#
+# When the system is created, the processes, flows and stocks store these names. `MFASystem.link_parameters()` replaces them by the parameters of the same name in `MFASystem.parameters`. The parameters are stored by reference, so later changes of their values are used. `from_data_reader()` (and thus `from_csv()` and `from_excel()`) links the parameters, unless `link=False` is given. This allows to add parameters before linking, e.g. a flow prescribed by the sum of two parameters:
+#
+# ```python
+# mfa = MyMFA.from_data_reader(definition, data_reader, link=False)
+# mfa.parameters["c"] = mfa.parameters["a"] + mfa.parameters["b"]
+# mfa.link_parameters()
+# ```
+#
+# For parameters that are not part of the definition, such as `"c"`, set `check_parameter_names=False` in the `MFADefinition`.
+#
+# The values of prescribing parameters are copied into the flows and stock arrays by `MFASystem.set_arrays_from_prescribed()`, which `compute_all_possible()` calls first. Example 2 shows the use of definitions.
+
+# %% [markdown]
 # ## Generate attributes from Definition objects
 #
 # As you saw, some of the attributes were a bit cumbersome to create.

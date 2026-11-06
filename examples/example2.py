@@ -184,7 +184,7 @@ class SimpleMFA(MFASystem):
         ) * (1 - self.parameters["remelting yield"])
         self.stocks["landfills"].inflow[...] = self.flows["demolition => landfills"]
         self.stocks["landfills"].compute()
-        self.stocks["slag piles"].inflow[...] = self.flows["shredder => remelting"]
+        self.stocks["slag piles"].inflow[...] = self.flows["remelting => slag piles"]
         self.stocks["slag piles"].compute()
 
 
@@ -334,4 +334,70 @@ fig.show(renderer="notebook")
 # %% [markdown]
 # We can see that both measures reduce the copper concentration in the secondary steel. For the first year, the copper concentration is reduced from 0.294% to 0.244% if the Cu-yield into steel scrap of the shredder is reduced and to 0.259% if the EoL building flow treated is increased by 25%. The yield measure thus has a slightly higher impact on the copper contentration than the increase of a copper-poor scrap flow for dilution. In both cases the impact is not high enough to bring the copper concentration to values below 0.04%, which is necessary for automotive applications.
 
+# %% [markdown]
+# ## 7. Alternative: Computing processes automatically
+#
+# Many of the system equations above follow the same pattern: The inflows of a process are summed,
+# and the sum is split into the outflows according to given shares.
+# Instead of writing these equations, we can give the shares in the process definitions,
+# and let flodym compute the processes with `MFASystem.compute_all_possible()`.
+# Shares are keyed by the name of the process the flow goes to (or by the flow name).
+# For each process, one outflow may have no share; it receives the remainder.
+# Stocks connected to a process are computed along with it.
+# See `Process.compute()` for details.
+
 # %%
+process_definitions = [
+    ProcessDefinition(name="sysenv"),
+    ProcessDefinition(name="shredder", outflow_shares={"remelting": "shredder yield"}),
+    ProcessDefinition(name="demolition", outflow_shares={"remelting": "demolition yield"}),
+    ProcessDefinition(name="remelting", outflow_shares={"sysenv": "remelting yield"}),
+    ProcessDefinition(name="landfills"),
+    ProcessDefinition(name="slag piles"),
+]
+auto_mfa_definition = mfa_definition.model_copy(update={"processes": process_definitions})
+
+
+# %% [markdown]
+# Only the flows entering the system remain to be computed manually.
+
+
+# %%
+class AutoComputedMFA(MFASystem):
+    def compute(self):
+        self.flows["sysenv => shredder"][...] = (
+            self.parameters["eol machines"] * self.parameters["composition eol machines"]
+        )
+        self.flows["sysenv => demolition"][...] = (
+            self.parameters["eol buildings"] * self.parameters["composition eol buildings"]
+        )
+        not_computed = self.compute_all_possible()
+        if not_computed:
+            raise ValueError(f"Processes {not_computed} could not be computed.")
+
+
+auto_mfa = AutoComputedMFA.from_excel(
+    definition=auto_mfa_definition,
+    dimension_files={d.name: dimension_file for d in dimension_definitions},
+    parameter_files={p.name: parameter_file for p in parameter_definitions},
+    dimension_sheets={d.name: d.name for d in dimension_definitions},
+    parameter_sheets={p.name: p.name for p in parameter_definitions},
+)
+auto_mfa.compute()
+auto_mfa.check_mass_balance()
+
+for name, flow in auto_mfa.flows.items():
+    assert np.allclose(flow.values, mfa_example.flows[name].values)
+print("Automatic and manual computation give the same flows.")
+
+# %% [markdown]
+# Processes are only computed if their flows are not set yet (see `FlodymArray.is_set`).
+# To recompute the system, e.g. after changing parameters, mark all flows and stocks as unset first:
+
+# %%
+auto_mfa.parameters["shredder yield"].set_values(np.array([0.92, 0.075, 0.92]))
+auto_mfa.mark_all_unset()
+auto_mfa.compute()
+assert np.allclose(
+    auto_mfa.flows["remelting => sysenv"].get_shares_over("e").values, shares_shredder.values
+)
