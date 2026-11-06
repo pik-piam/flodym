@@ -504,7 +504,7 @@ class LifetimeModel(PydanticBaseModel):
             **kwargs: Keyword arguments for parameters, with parameter names as keys.
         """
         warnings.warn(
-            "set_prms is deprecated since v1.1.0. It will be removed in v2.0.0. "
+            "set_prms is deprecated since v1.1.0. It will be removed in v3.0.0. "
             "Use direct assignment instead, e.g. lifetime_model.mean = 10.",
             DeprecationWarning,
             stacklevel=2,

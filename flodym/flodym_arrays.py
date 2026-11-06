@@ -816,6 +816,15 @@ class FlodymArray(PydanticBaseModel):
         self._is_set = False
         return self
 
+    @property
+    def _absolute_float_precision(self) -> float:
+        """The machine epsilon of the data type, multiplied by the maximum absolute value.
+        NaN values are ignored."""
+        abs_values = np.abs(self.values)
+        max_value = float(np.max(abs_values, where=~np.isnan(abs_values), initial=0.0))
+        dtype = self.values.dtype if np.issubdtype(self.values.dtype, np.inexact) else np.float64
+        return float(np.finfo(dtype).eps) * max_value
+
     def _check_is_set(self, operation: str) -> None:
         if not self._is_set:
             handle_error(
@@ -1022,7 +1031,47 @@ class SubArrayHandler:
         return self.flodym_array.dims[dim_letter].items.index(item_name)
 
 
-class Flow(FlodymArray):
+class _PrescribableArray(FlodymArray):
+    """Base class of arrays whose values can be prescribed by another array, usually a
+    :py:class:`Parameter` (see :py:attr:`flodym.FlowDefinition.prescribed` and
+    :py:class:`flodym.StockDefinition`)."""
+
+    _prescribed: Union[str, FlodymArray, None] = None
+    """The array prescribing the values, or its parameter name before it is linked by
+    :py:meth:`flodym.MFASystem.link_parameters`. Values are copied by
+    :py:meth:`flodym.MFASystem.set_arrays_from_prescribed`."""
+
+    def _set_prescribed(self, prescribed: Union[str, FlodymArray, None]) -> None:
+        """Set the prescribing array or its parameter name, or remove it by passing None.
+        An array must have all dimensions of this array; further dimensions are summed over
+        when the values are copied."""
+        if isinstance(prescribed, FlodymArray):
+            missing_dims = self.dims - prescribed.dims
+            if missing_dims:
+                raise ValueError(
+                    f"Array '{prescribed.name}' prescribed for '{self.name}' does not have its "
+                    f"dimensions {missing_dims.names}."
+                )
+        elif prescribed is not None and not isinstance(prescribed, str):
+            raise TypeError(
+                f"Prescribed array of '{self.name}' must be a FlodymArray or a parameter name, "
+                f"not {type(prescribed).__name__}."
+            )
+        self._prescribed = prescribed
+
+    def _set_arrays_from_prescribed(self) -> None:
+        """Copy the values of the prescribing array into this array, if one is given."""
+        if self._prescribed is None:
+            return
+        if isinstance(self._prescribed, str):
+            raise ValueError(
+                f"Parameter '{self._prescribed}' prescribed for '{self.name}' is not linked. "
+                "Call MFASystem.link_parameters() first."
+            )
+        self.__setitem__(..., self._prescribed)
+
+
+class Flow(_PrescribableArray):
     """The values of Flow objects are the main computed outcome of the MFA system.
     A Flow object connects two :py:class:`Process` objects.
     The name of the Flow object is set as a combination of the names of the two processes it connects.
@@ -1037,7 +1086,7 @@ class Flow(FlodymArray):
         >>> dimensions = DimensionSet([goods, time])
         >>> fabrication = Process(name='fabrication', id=2)
         >>> use = Process(name='use', id=3)
-        >>> flow = Flow(from_process='fabrication', to_process='use', dims=dimensions)
+        >>> flow = Flow(from_process=fabrication, to_process=use, dims=dimensions)
 
     In the above example, we did not pass any values when initialising the Flow instance,
     and these would get filled with zeros.
@@ -1050,6 +1099,10 @@ class Flow(FlodymArray):
     """Process from which the flow originates."""
     to_process: Process
     """Process to which the flow goes."""
+    _named_after_processes: bool = False
+    """Whether the name was generated from the connected processes (see
+    :py:attr:`flodym.config.Config.flow_naming`), and is thus updated by
+    :py:meth:`flodym.MFASystem.relink`."""
 
     @classmethod
     def from_array(
@@ -1096,7 +1149,7 @@ class Flow(FlodymArray):
         return self.to_process.id
 
 
-class StockArray(FlodymArray):
+class StockArray(_PrescribableArray):
     """Stocks allow accumulation of material at a process, i.e. between two flows.
 
     StockArray inherits all its functionality from :py:class:`FlodymArray`.
