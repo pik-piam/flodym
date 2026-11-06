@@ -160,6 +160,16 @@ for f in my_mfa_system.flows.values():
     print(f.name, "\n", f.to_df(), "\n")
 
 # %% [markdown]
+# Flows, stocks, processes and parameters can be accessed via `[]`, but also as attributes.
+# Since flow names like `"sysenv => process_a"` are not valid Python names, they are converted:
+# `=>` becomes `__to__`, and other invalid characters (such as spaces) become `_`.
+# Use tab completion or `dir()` to see the available names.
+
+# %%
+print(my_mfa_system.flows.sysenv__to__process_a is my_mfa_system.flows["sysenv => process_a"])
+print(my_mfa_system.parameters.extraction.to_df())
+
+# %% [markdown]
 # We now call a method to check the mass balance of the system. If all is set up correctly, and no mass flows appear or disappear, this should not create errors. It's a nice safety check, but it's not a requirement. Thanks to Stefan Pauliuk, who implemented this in ODYM.
 #
 # The success message is implemented using an `info` of the `logging` package, so we have to configure it to show this message first. This is optional. The error is always shown if it fails.
