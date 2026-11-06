@@ -25,7 +25,7 @@ from .dimensions import DimensionSet
 from .flodym_arrays import FlodymArray, Flow, Parameter
 from .flow_helper import make_empty_flows, make_unique_name
 from .mfa_definition import MFADefinition
-from .processes import Process, compute_processes, make_processes, set_process_parameters
+from .processes import Process, compute_processes, make_processes
 from .stock_helper import make_empty_stocks
 from .stocks import Stock
 from ._checks import config_hint, report_balance_failures
@@ -69,15 +69,6 @@ class MFASystem(PydanticBaseModel):
     """The stocks of the MFA system,
     as a dictionary mapping the names of the MFA system stocks to the stocks themselves.
     """
-    flow_parameters: Dict[str, str] = {}
-    """Names of parameters whose values flows are set to, keyed by flow name,
-    see :py:meth:`set_arrays_from_parameters`. Taken from
-    :py:attr:`flodym.FlowDefinition.parameter` when set up from a definition."""
-    stock_parameters: Dict[str, Dict[str, str]] = {}
-    """Names of parameters whose values stock arrays are set to, keyed by stock name and array
-    name (``"stock"``, ``"inflow"``, ``"outflow"`` or ``"inflow_by_cohort"``), see
-    :py:meth:`set_arrays_from_parameters`. Taken from the parameter fields of
-    :py:class:`flodym.StockDefinition` when set up from a definition."""
 
     @model_validator(mode="after")
     def link_processes(self):
@@ -169,12 +160,23 @@ class MFASystem(PydanticBaseModel):
             )
 
     @classmethod
-    def from_data_reader(cls, definition: MFADefinition, data_reader: DataReader) -> Self:
+    def from_data_reader(
+        cls, definition: MFADefinition, data_reader: DataReader, link: bool = True
+    ) -> Self:
         """Define and set up the MFA system and load all required data.
-        Initialises stocks and flows with all zero values, except for flows and stock arrays
-        with a parameter (see :py:attr:`flodym.FlowDefinition.parameter` and
-        :py:class:`flodym.StockDefinition`), which are set to its values.
-        Shares and dimension splitters of process definitions are set to the processes.
+        Initialises stocks and flows with all zero values.
+
+        Parameters used in the definitions (shares and dimension splitters of processes,
+        prescribed flows and stock arrays) are linked by :py:meth:`link_parameters`, unless
+        ``link`` is False. Prescribed values are copied into the flows and stock arrays only by
+        :py:meth:`fill_prescribed`, which :py:meth:`compute_all_possible` calls.
+
+        Args:
+            definition: The MFA definition object.
+            data_reader: The data reader for dimensions and parameters.
+            link: Whether to link the parameters. Set it to False to change
+                :py:attr:`parameters` before linking, e.g. to add parameters computed from the
+                read ones, and call :py:meth:`link_parameters` afterwards.
         """
         dims = data_reader.read_dimensions(definition.dimensions)
         parameters = data_reader.read_parameters(definition.parameters, dims=dims)
@@ -183,28 +185,15 @@ class MFASystem(PydanticBaseModel):
         stocks = make_empty_stocks(
             processes=processes, stock_definitions=definition.stocks, dims=dims
         )
-        if len(flows) != len(definition.flows):
-            raise ValueError("Flow definitions result in duplicate flow names.")
-        flow_parameters = {}
-        for flow_definition, flow_name in zip(definition.flows, flows):
-            if flow_definition.parameter is not None:
-                flow_parameters[flow_name] = flow_definition.parameter
-        stock_parameters = {
-            stock_definition.name: stock_definition.array_parameters
-            for stock_definition in definition.stocks
-            if stock_definition.array_parameters
-        }
         mfa = cls(
             dims=dims,
             parameters=parameters,
             processes=processes,
             flows=flows,
             stocks=stocks,
-            flow_parameters=flow_parameters,
-            stock_parameters=stock_parameters,
         )
-        set_process_parameters(mfa.processes, definition.processes, mfa.parameters)
-        mfa.set_arrays_from_parameters()
+        if link:
+            mfa.link_parameters()
         return mfa
 
     @classmethod
@@ -215,6 +204,7 @@ class MFASystem(PydanticBaseModel):
         parameter_files: dict[str, str | PathLike[str]],
         allow_missing_parameter_values: bool = False,
         allow_extra_parameter_values: bool = False,
+        link: bool = True,
     ) -> Self:
         """Define and set up the MFA system and load all required data from CSV files.
         Initialises stocks and flows with all zero values.
@@ -228,6 +218,7 @@ class MFASystem(PydanticBaseModel):
         :param parameter_files: A dictionary mapping parameter names to CSV files
         :param allow_missing_parameter_values: Whether to allow missing values in the parameter data (missing rows or empty value cells)
         :param allow_extra_parameter_values: Whether to allow extra values in the parameter data
+        :param link: Whether to link the parameters, see :py:meth:`from_data_reader`
         """
 
         dimension_reader = CSVDimensionReader(
@@ -242,7 +233,7 @@ class MFASystem(PydanticBaseModel):
             dimension_reader=dimension_reader,
             parameter_reader=parameter_reader,
         )
-        return cls.from_data_reader(definition, data_reader)
+        return cls.from_data_reader(definition, data_reader, link=link)
 
     @classmethod
     def from_excel(
@@ -254,6 +245,7 @@ class MFASystem(PydanticBaseModel):
         parameter_sheets: Optional[dict[str, str]] = None,
         allow_missing_parameter_values: bool = False,
         allow_extra_parameter_values: bool = False,
+        link: bool = True,
     ) -> Self:
         """Define and set up the MFA system and load all required data from Excel files.
         Initialises stocks and flows with all zero values.
@@ -270,6 +262,7 @@ class MFASystem(PydanticBaseModel):
         :param parameter_sheets: A dictionary mapping parameter names to sheet names in the Excel files
         :param allow_missing_parameter_values: Whether to allow missing values in the parameter data (missing rows or empty value cells)
         :param allow_extra_parameter_values: Whether to allow extra values in the parameter data
+        :param link: Whether to link the parameters, see :py:meth:`from_data_reader`
         """
         dimension_reader = ExcelDimensionReader(
             dimension_files=dimension_files,
@@ -285,7 +278,7 @@ class MFASystem(PydanticBaseModel):
             dimension_reader=dimension_reader,
             parameter_reader=parameter_reader,
         )
-        return cls.from_data_reader(definition, data_reader)
+        return cls.from_data_reader(definition, data_reader, link=link)
 
     def compute(self):
         """Perform all computations for the MFA system.
@@ -471,80 +464,93 @@ class MFASystem(PydanticBaseModel):
         for stock in self.stocks.values():
             stock.mark_all_unset()
 
-    def set_arrays_from_parameters(self, overwrite: bool = False):
-        """Set the flows in :py:attr:`flow_parameters` and the stock arrays in
-        :py:attr:`stock_parameters` to the values of their parameters.
+    def link_parameters(self) -> None:
+        """Link the parameters used in definitions to the objects that use them: shares and
+        dimension splitters of processes (see :py:class:`flodym.ProcessDefinition`), and
+        prescribed flows and stock arrays (see :py:attr:`flodym.FlowDefinition.prescribed` and
+        :py:class:`flodym.StockDefinition`).
 
-        Dimensions of a parameter which the array does not have are summed over.
-        Called by :py:meth:`from_data_reader` and :py:meth:`compute_all_possible`.
+        When the processes, flows and stocks are created from definitions, they store the
+        parameter names. This method replaces the names by the parameters of the same name in
+        :py:attr:`parameters`. The parameters are stored by reference, so later changes of their
+        values are taken into account. Objects which are already linked are not changed.
+        Share keys given as process names are resolved to flow names.
 
-        Args:
-            overwrite: If False, only arrays which are not set (see
-                :py:attr:`flodym.FlodymArray.is_set`) are set.
+        :py:meth:`from_data_reader` calls this method, unless ``link=False`` is given. This
+        allows to change :py:attr:`parameters` before linking, for example:
+
+            >>> mfa = MyMFA.from_data_reader(definition, data_reader, link=False)
+            >>> mfa.parameters["c"] = mfa.parameters["a"] + mfa.parameters["b"]
+            >>> mfa.link_parameters()
+
+        For parameters which are not part of the definition, such as ``"c"``, set
+        :py:attr:`flodym.MFADefinition.check_parameter_names` to False.
+
+        Raises:
+            ValueError: If parameters are not found in :py:attr:`parameters` (all are listed),
+                if a prescribing parameter lacks dimensions of the array it prescribes, or if a
+                share key cannot be resolved to a flow of its process.
         """
-        for label, array, parameter_name in self._arrays_with_parameters():
-            if parameter_name not in self.parameters:
-                raise KeyError(
-                    f"Parameter '{parameter_name}' given for {label} is not a parameter of the "
-                    "system."
-                )
-            parameter = self.parameters[parameter_name]
-            missing_dims = array.dims - parameter.dims
-            if missing_dims:
-                raise ValueError(
-                    f"Parameter '{parameter_name}' given for {label} does not have its "
-                    f"dimensions {missing_dims.names}."
-                )
-            if overwrite or not array.is_set:
-                array[...] = parameter
+        users = self._unlinked_parameter_users()
+        missing = [(name, used_by) for name, used_by in users if name not in self.parameters]
+        if missing:
+            listed = "; ".join(f"'{name}' (used by {used_by})" for name, used_by in missing)
+            raise ValueError(f"Parameters not found in MFASystem.parameters: {listed}.")
+        for _, array in self._prescribable_arrays():
+            if isinstance(array._prescribed, str):
+                array._set_prescribed(self.parameters[array._prescribed])
+        for process in self.processes.values():
+            process._link_parameters(self.parameters)
 
-    def _arrays_with_parameters(self) -> list[tuple[str, FlodymArray, str]]:
-        """Flows and stock arrays to be set from parameters, as tuples of a label for messages,
-        the array, and the parameter name."""
-        arrays = []
-        for flow_name, parameter_name in self.flow_parameters.items():
-            if flow_name not in self.flows:
-                raise KeyError(
-                    f"Flow '{flow_name}' of flow_parameters is not a flow of the system."
-                )
-            arrays.append((f"flow '{flow_name}'", self.flows[flow_name], parameter_name))
-        for stock_name, array_parameters in self.stock_parameters.items():
-            if stock_name not in self.stocks:
-                raise KeyError(
-                    f"Stock '{stock_name}' of stock_parameters is not a stock of the system."
-                )
-            stock = self.stocks[stock_name]
-            for array_name, parameter_name in array_parameters.items():
-                if array_name not in ("stock", "inflow", "outflow", "inflow_by_cohort"):
-                    raise KeyError(
-                        f"'{array_name}' given in stock_parameters for stock '{stock_name}' is not "
-                        "a stock array. Use 'stock', 'inflow', 'outflow' or 'inflow_by_cohort'."
-                    )
+    def fill_prescribed(self) -> None:
+        """Copy the values of the prescribing parameters into the prescribed flows and stock
+        arrays (see :py:meth:`link_parameters`), overwriting their values and marking them as set.
+        Dimensions of a parameter which the array does not have are summed over.
+        Called by :py:meth:`compute_all_possible`.
+
+        Raises:
+            ValueError: If a prescribing parameter is not linked yet.
+        """
+        for _, array in self._prescribable_arrays():
+            array._fill_prescribed()
+
+    def _prescribable_arrays(self) -> list[tuple[str, FlodymArray]]:
+        """Flows and stock arrays, as tuples of a label for messages and the array."""
+        arrays = [(f"flow '{name}'", flow) for name, flow in self.flows.items()]
+        for stock_name, stock in self.stocks.items():
+            for array_name in ("stock", "inflow", "outflow", "inflow_by_cohort"):
                 array = getattr(stock, array_name, None)
-                if array is None:
-                    raise ValueError(
-                        f"Stock '{stock_name}' has no array '{array_name}'. inflow_by_cohort "
-                        "requires a dynamic stock model with a cohort dimension."
-                    )
-                label = f"{array_name} of stock '{stock_name}'"
-                arrays.append((label, array, parameter_name))
+                if array is not None:
+                    arrays.append((f"{array_name} of stock '{stock_name}'", array))
         return arrays
+
+    def _unlinked_parameter_users(self) -> list[tuple[str, str]]:
+        """Parameter names which are not linked yet, as tuples of the name and a label of the
+        object using it."""
+        users = [
+            (array._prescribed, label)
+            for label, array in self._prescribable_arrays()
+            if isinstance(array._prescribed, str)
+        ]
+        for process in self.processes.values():
+            users += [
+                (name, f"process '{process.name}'") for name in process._unlinked_parameter_names()
+            ]
+        return users
 
     def compute_all_possible(self) -> list[str]:
         """Compute all processes which can be computed from the known flows, shares and stock
         values, see :py:meth:`flodym.Process.compute`.
 
-        Unset flows and stock arrays with a parameter (see :py:attr:`flow_parameters` and
-        :py:attr:`stock_parameters`) are set first (see :py:meth:`set_arrays_from_parameters`).
-        Then, all
-        processes are tried, and each computed process triggers a new try of its neighbors, until
+        Prescribed flows and stock arrays are set to the values of their parameters first (see
+        :py:meth:`fill_prescribed`), overwriting their values. Then, all processes are tried, and each computed process triggers a new try of its neighbors, until
         no further process can be computed (see :py:func:`flodym.compute_processes`).
         Underdetermined processes are skipped.
 
         Returns:
             The names of the processes (except 'sysenv') which could not be computed.
         """
-        self.set_arrays_from_parameters()
+        self.fill_prescribed()
         compute_processes(self.processes.values())
         not_computed = [p.name for p in self.processes.values() if p.id != 0 and not p.is_computed]
         if not_computed:

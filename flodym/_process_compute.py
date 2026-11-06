@@ -381,6 +381,7 @@ class ProcessComputation:
     """
 
     def __init__(self, process: "Process"):
+        process._check_parameters_linked()
         self.process = process
         self.sides: Dict[Side, ProcessSide] = {side: ProcessSide(process, side) for side in SIDES}
         self.unused_splitters: List[Direction] = []
@@ -574,6 +575,7 @@ def check_completed_process(process: "Process") -> None:
 
 def is_overdetermined(process: "Process") -> bool:
     """See :py:attr:`flodym.Process.is_overdetermined`."""
+    process._check_parameters_linked()
     sides = [ProcessSide(process, side) for side in SIDES]
     n_flows = sum(len(side.flows) for side in sides)
     n_given = sum(len(side.known) + len(side.shares) - side.n_redundant_shares for side in sides)

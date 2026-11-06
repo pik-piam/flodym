@@ -268,7 +268,19 @@ print("Not computed:", my_mfa_system.compute_all_possible())
 # - `mass_balance`: mass balance violated
 # - `unused_dimension_splitter`: a dimension splitter set but not needed
 #
-# With definition objects (see below), shares and dimension splitters are given in a `ProcessDefinition`. Flows can be set from a parameter with the `parameter` argument of `FlowDefinition`, and the arrays of stocks with the arguments `stock_parameter`, `inflow_parameter`, `outflow_parameter` and `inflow_by_cohort_parameter` of `StockDefinition`. These arrays are set when the system is created, and again by `compute_all_possible()` if they are not set (e.g. after `mark_all_unset()`). Example 2 shows the use of definitions.
+# With definition objects (see below), shares and dimension splitters are given in a `ProcessDefinition`. Flows can be prescribed by a parameter with the `prescribed` argument of `FlowDefinition`, and the arrays of stocks with the arguments `prescribed_stock`, `prescribed_inflow`, `prescribed_outflow` and `prescribed_inflow_by_cohort` of `StockDefinition`. All these arguments are parameter names.
+#
+# When the system is created, the processes, flows and stocks store these names. `MFASystem.link_parameters()` replaces them by the parameters of the same name in `MFASystem.parameters`. The parameters are stored by reference, so later changes of their values are used. `from_data_reader()` (and thus `from_csv()` and `from_excel()`) links the parameters, unless `link=False` is given. This allows to add parameters before linking, e.g. a flow prescribed by the sum of two parameters:
+#
+# ```python
+# mfa = MyMFA.from_data_reader(definition, data_reader, link=False)
+# mfa.parameters["c"] = mfa.parameters["a"] + mfa.parameters["b"]
+# mfa.link_parameters()
+# ```
+#
+# For parameters that are not part of the definition, such as `"c"`, set `check_parameter_names=False` in the `MFADefinition`.
+#
+# The values of prescribing parameters are copied into the flows and stock arrays by `MFASystem.fill_prescribed()`, which `compute_all_possible()` calls first. Example 2 shows the use of definitions.
 
 # %% [markdown]
 # ## Generate attributes from Definition objects

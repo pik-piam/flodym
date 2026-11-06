@@ -70,7 +70,11 @@ def make_mfa(
             for name, dims in parameter_dims.items()
         ],
     )
-    return MFASystem.from_data_reader(definition, DictReader(parameter_values))
+    mfa = MFASystem.from_data_reader(definition, DictReader(parameter_values))
+    # fill prescribed flows, so that single processes can be computed without
+    # compute_all_possible()
+    mfa.fill_prescribed()
+    return mfa
 
 
 def flow(from_process: str, to_process: str, dims=("t",), **kwargs) -> FlowDefinition:
@@ -89,7 +93,7 @@ def split_mfa(**process_kwargs) -> MFASystem:
             "c",
         ],
         flows=[
-            flow("sysenv", "a", parameter="input"),
+            flow("sysenv", "a", prescribed="input"),
             flow("a", "b"),
             flow("a", "c"),
             flow("b", "sysenv"),
@@ -143,10 +147,10 @@ def test_underdetermined():
     assert not mfa.flows["a => b"].is_set
     with config.override(error_behaviors={"process_underdetermined": "ignore"}):
         assert not mfa.processes["a"].compute()
-    # compute_all_possible() sets unset flows from their parameters first
+    # compute_all_possible() sets prescribed flows from their parameters first
     assert mfa.compute_all_possible() == []
     mfa.mark_all_unset()
-    mfa.flow_parameters = {}
+    mfa.flows["sysenv => a"]._set_prescribed(None)
     assert mfa.compute_all_possible() == ["a", "b", "c"]
 
 
@@ -238,7 +242,7 @@ def splitter_mfa(split_values, **process_kwargs) -> MFASystem:
     return make_mfa(
         processes=["sysenv", ProcessDefinition(name="a", **process_kwargs), "b"],
         flows=[
-            flow("sysenv", "a", parameter="input"),
+            flow("sysenv", "a", prescribed="input"),
             flow("a", "b", dims=("t", "r")),
             flow("b", "sysenv", dims=("t", "r")),
         ],
@@ -267,7 +271,7 @@ def test_forward_dimension_splitter():
 def test_unused_dimension_splitter():
     mfa = make_mfa(
         processes=["sysenv", ProcessDefinition(name="a", forward_dimension_splitter="split"), "b"],
-        flows=[flow("sysenv", "a", dims=("t", "r"), parameter="input"), flow("a", "b")],
+        flows=[flow("sysenv", "a", dims=("t", "r"), prescribed="input"), flow("a", "b")],
         parameter_values={"input": 1.0, "split": np.array([0.2, 0.8])},
         parameter_dims={"input": ("t", "r"), "split": ("r",)},
     )
@@ -333,7 +337,7 @@ def test_missing_dimension_splitter():
         mfa.processes["a"].set_dimension_splitter("sideways", mfa.parameters["split"])
 
 
-def test_flow_parameters_reset_after_mark_all_unset():
+def test_prescribed_flows_refilled_after_mark_all_unset():
     mfa = split_mfa()
     mfa.compute_all_possible()
     mfa.parameters["input"][...] = 10.0
@@ -492,7 +496,7 @@ def test_failed_computation_changes_nothing():
     mfa = make_mfa(
         processes=["sysenv", ProcessDefinition(name="a", outflow_shares={"b": "s"}), "b", "c"],
         flows=[
-            flow("sysenv", "a", parameter="input"),
+            flow("sysenv", "a", prescribed="input"),
             flow("a", "b", dims=("t", "r")),
             flow("a", "c", dims=("t", "r")),
         ],
@@ -586,10 +590,10 @@ def test_inconsistency_found_regardless_of_order(order):
     mfa = make_mfa(
         processes=processes,
         flows=[
-            flow("sysenv", "p", parameter="a"),
+            flow("sysenv", "p", prescribed="a"),
             flow("p", "sysenv"),
             flow("p", "q"),
-            flow("q", "sysenv", parameter="d"),
+            flow("q", "sysenv", prescribed="d"),
         ],
         parameter_values={"a": 10.0, "share": 0.3, "d": 5.0},
         parameter_dims={"a": ("t",), "share": (), "d": ("t",)},
@@ -617,11 +621,11 @@ def test_unsupported_stock_type_is_skipped():
         mfa.processes["use"].compute()
 
 
-def test_flow_parameter_without_flow_dims():
+def test_prescribed_flow_without_flow_dims():
     with pytest.raises(ValueError, match="does not have its dimensions"):
         make_mfa(
             ["sysenv", "a"],
-            [flow("sysenv", "a", dims=("t", "r"), parameter="p")],
+            [flow("sysenv", "a", dims=("t", "r"), prescribed="p")],
             {"p": 1.0},
             {"p": ("t",)},
         )
@@ -632,7 +636,7 @@ def test_stock_inflow_from_parameter():
         InflowDrivenDSM,
         parameter_values={"inflow": 2.0},
         parameter_dims={"inflow": ("t",)},
-        inflow_parameter="inflow",
+        prescribed_inflow="inflow",
     )
     assert mfa.stocks["use"].inflow.is_set
     assert mfa.compute_all_possible() == []
@@ -650,7 +654,7 @@ def test_stock_from_parameter():
         DynamicStockModel,
         parameter_values={"stock": 1.0},
         parameter_dims={"stock": ("t",)},
-        stock_parameter="stock",
+        prescribed_stock="stock",
     )
     assert mfa.compute_all_possible() == []
     np.testing.assert_allclose(mfa.flows["sysenv => use"].values, 1.0)
@@ -664,7 +668,7 @@ def test_inflow_by_cohort_from_parameter():
         parameter_values={"ibc": inflow_by_cohort},
         parameter_dims={"ibc": ("t", "c")},
         cohort_letter="c",
-        inflow_by_cohort_parameter="ibc",
+        prescribed_inflow_by_cohort="ibc",
     )
     assert mfa.compute_all_possible() == []
     np.testing.assert_allclose(mfa.flows["sysenv => use"].values, [1.0, 2.0, 3.0, 4.0])
@@ -674,12 +678,12 @@ def test_inflow_by_cohort_from_parameter():
 @pytest.mark.parametrize(
     "kwargs, match",
     [
-        ({"stock_parameter": "p", "inflow_parameter": "p"}, "at most one"),
-        ({"inflow_by_cohort_parameter": "p"}, "requires cohort_letter"),
+        ({"prescribed_stock": "p", "prescribed_inflow": "p"}, "at most one"),
+        ({"prescribed_inflow_by_cohort": "p"}, "requires cohort_letter"),
         ({"subclass": SimpleFlowDrivenStock, "cohort_letter": "c"}, "no cohort dimension"),
     ],
 )
-def test_invalid_stock_parameters(kwargs, match):
+def test_invalid_prescribed_stocks(kwargs, match):
     kwargs = {"subclass": DynamicStockModel, "lifetime_model_class": FixedLifetime, **kwargs}
     if kwargs["subclass"] is SimpleFlowDrivenStock:
         del kwargs["lifetime_model_class"]
@@ -687,6 +691,110 @@ def test_invalid_stock_parameters(kwargs, match):
         StockDefinition(name="s", process="use", dim_letters=("t",), **kwargs)
 
 
-def test_undefined_stock_parameter():
+def test_undefined_prescribed_stock():
     with pytest.raises(ValueError, match="'missing' used in definition of stock 'use'"):
-        stock_mfa(InflowDrivenDSM, inflow_parameter="missing")
+        stock_mfa(InflowDrivenDSM, prescribed_inflow="missing")
+
+
+# Linking of parameters ------------------------------------------------------------------------
+
+
+def linked_split_definition(prescribed: str = "input", **kwargs) -> MFADefinition:
+    """Definition of split_mfa(), with the given parameter prescribing the inflow of 'a'."""
+    return MFADefinition(
+        dimensions=DIM_DEFINITIONS,
+        processes=[
+            "sysenv",
+            ProcessDefinition(name="a", outflow_shares={"b": "share b"}),
+            "b",
+            "c",
+        ],
+        flows=[
+            flow("sysenv", "a", prescribed=prescribed),
+            flow("a", "b"),
+            flow("a", "c"),
+            flow("b", "sysenv"),
+            flow("c", "sysenv"),
+        ],
+        parameters=[
+            ParameterDefinition(name="input", dim_letters=("t",)),
+            ParameterDefinition(name="share b", dim_letters=()),
+        ],
+        **kwargs,
+    )
+
+
+SPLIT_VALUES = {"input": np.array([1.0, 2.0, 3.0, 4.0]), "share b": 0.3}
+
+
+def test_prescribed_parameter_added_before_linking():
+    definition = linked_split_definition(prescribed="input sum", check_parameter_names=False)
+    mfa = MFASystem.from_data_reader(definition, DictReader(SPLIT_VALUES), link=False)
+    parameters = mfa.parameters
+    parameters["input sum"] = parameters["input"] + parameters["input"]
+    mfa.link_parameters()
+    assert mfa.compute_all_possible() == []
+    np.testing.assert_allclose(mfa.flows["sysenv => a"].values, [2.0, 4.0, 6.0, 8.0])
+    np.testing.assert_allclose(mfa.flows["a => b"].values, [0.6, 1.2, 1.8, 2.4])
+
+
+def test_undefined_parameter_is_checked_in_definition_only_if_enabled():
+    with pytest.raises(ValueError, match="'missing' used in flow definition"):
+        linked_split_definition(prescribed="missing")
+    linked_split_definition(prescribed="missing", check_parameter_names=False)
+
+
+def test_link_parameters_lists_all_missing_parameters():
+    definition = linked_split_definition(prescribed="missing", check_parameter_names=False)
+    mfa = MFASystem.from_data_reader(definition, DictReader(SPLIT_VALUES), link=False)
+    del mfa.parameters["share b"]
+    with pytest.raises(ValueError) as error:
+        mfa.link_parameters()
+    assert "'missing' (used by flow 'sysenv => a')" in str(error.value)
+    assert "'share b' (used by process 'a')" in str(error.value)
+
+
+def test_unlinked_parameters_raise():
+    definition = linked_split_definition()
+    mfa = MFASystem.from_data_reader(definition, DictReader(SPLIT_VALUES), link=False)
+    assert mfa.processes["a"].outflow_shares == {"b": "share b"}
+    assert "outflow_shares={'b': 'share b'}" in repr(mfa.processes["a"])
+    with pytest.raises(ValueError, match="'input' prescribed for 'sysenv => a' is not linked"):
+        mfa.fill_prescribed()
+    mfa.flows["sysenv => a"][...] = 1.0
+    with pytest.raises(ValueError, match="share b of shares or dimension splitters are not"):
+        mfa.processes["a"].compute()
+
+
+def test_link_parameters_resolves_share_keys():
+    definition = linked_split_definition()
+    mfa = MFASystem.from_data_reader(definition, DictReader(SPLIT_VALUES))
+    shares = mfa.processes["a"].outflow_shares
+    assert list(shares) == ["a => b"]
+    assert shares["a => b"] is mfa.parameters["share b"]
+    # linking again changes nothing
+    mfa.link_parameters()
+    assert mfa.processes["a"].outflow_shares == shares
+
+
+def test_fill_prescribed_overwrites_and_uses_parameter_changes():
+    mfa = split_mfa()
+    flow = mfa.flows["sysenv => a"]
+    flow[...] = 5.0
+    mfa.parameters["input"][...] = 7.0
+    mfa.fill_prescribed()
+    np.testing.assert_allclose(flow.values, 7.0)
+    assert flow.is_set
+
+
+def test_prescribed_flow_is_kept_when_relink_renames_it():
+    from flodym.flow_naming import process_ids
+
+    mfa = split_mfa()
+    mfa.mark_all_unset()
+    with config.override(flow_naming=process_ids):
+        mfa.relink()
+    assert "F0_1" in mfa.flows
+    assert list(mfa.processes["a"].outflow_shares) == ["F1_2"]
+    assert mfa.compute_all_possible() == []
+    np.testing.assert_allclose(mfa.flows["F1_2"].values, [0.3, 0.6, 0.9, 1.2])

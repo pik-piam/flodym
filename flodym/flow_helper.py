@@ -16,6 +16,9 @@ def make_empty_flows(
 ) -> dict[str, Flow]:
     """Initialize all defined flows with zero values.
 
+    The parameter names given as :py:attr:`flodym.FlowDefinition.prescribed` are stored in the
+    flows; the parameters are linked by :py:meth:`flodym.MFASystem.link_parameters`.
+
     The names of flows without ``name_override`` are generated from the processes they connect,
     using the function given in the global config option :py:attr:`flodym.config.Config.flow_naming`
     (default: :py:func:`flodym.flow_naming.process_names_with_arrow`). It can be changed, e.g. by
@@ -68,6 +71,7 @@ def make_empty_flows(
         dim_subset = dims.get_subset(flow_definition.dim_letters)
         flow = Flow(from_process=from_process, to_process=to_process, name=name, dims=dim_subset)
         flow._named_after_processes = flow_definition.name_override is None
+        flow._set_prescribed(flow_definition.prescribed)
         flows[flow.name] = flow
     return flows
 

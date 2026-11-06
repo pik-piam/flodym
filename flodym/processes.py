@@ -18,7 +18,7 @@ from .config import ErrorBehavior, config
 from .mfa_definition import ProcessDefinition
 
 if TYPE_CHECKING:
-    from .flodym_arrays import FlodymArray, Flow, Parameter
+    from .flodym_arrays import FlodymArray, Flow
     from .stocks import Stock
 
 
@@ -48,9 +48,13 @@ class Process(PydanticBaseModel):
     _inflows: Dict[str, "Flow"] = PrivateAttr(default_factory=dict)
     _outflows: Dict[str, "Flow"] = PrivateAttr(default_factory=dict)
     _stock: Optional["Stock"] = PrivateAttr(default=None)
-    _inflow_shares: Dict[str, "FlodymArray"] = PrivateAttr(default_factory=dict)
-    _outflow_shares: Dict[str, "FlodymArray"] = PrivateAttr(default_factory=dict)
-    _dimension_splitters: Dict[Direction, "FlodymArray"] = PrivateAttr(default_factory=dict)
+    # Shares and splitters hold parameter names until linked (see _link_parameters).
+    # Before linking, share keys are given as in the definition: flow or process names.
+    _inflow_shares: Dict[str, Union["FlodymArray", str]] = PrivateAttr(default_factory=dict)
+    _outflow_shares: Dict[str, Union["FlodymArray", str]] = PrivateAttr(default_factory=dict)
+    _dimension_splitters: Dict[Direction, Union["FlodymArray", str]] = PrivateAttr(
+        default_factory=dict
+    )
 
     @model_validator(mode="after")
     def check_id0(self):
@@ -72,11 +76,11 @@ class Process(PydanticBaseModel):
         yield "outflows", list(self._outflows)
         yield "stock", None if self._stock is None else self._stock.name
         if self._inflow_shares:
-            yield "inflow_shares", {k: v.name for k, v in self._inflow_shares.items()}
+            yield "inflow_shares", {k: _label(v) for k, v in self._inflow_shares.items()}
         if self._outflow_shares:
-            yield "outflow_shares", {k: v.name for k, v in self._outflow_shares.items()}
+            yield "outflow_shares", {k: _label(v) for k, v in self._outflow_shares.items()}
         for direction, splitter in self._dimension_splitters.items():
-            yield f"{direction}_dimension_splitter", splitter.name
+            yield f"{direction}_dimension_splitter", _label(splitter)
 
     @property
     def inflows(self) -> Dict[str, "Flow"]:
@@ -239,15 +243,17 @@ class Process(PydanticBaseModel):
     # Shares and dimension splitters
 
     @property
-    def inflow_shares(self) -> Dict[str, "FlodymArray"]:
+    def inflow_shares(self) -> Dict[str, Union["FlodymArray", str]]:
         """Shares of inflows in the total throughput of the process, keyed by flow name.
-        Set them with :py:meth:`set_inflow_share`."""
+        Set them with :py:meth:`set_inflow_share`, or by a :py:class:`flodym.ProcessDefinition`.
+        Shares from a definition are parameter names, keyed as in the definition, until they are
+        linked by :py:meth:`flodym.MFASystem.link_parameters`."""
         return dict(self._inflow_shares)
 
     @property
-    def outflow_shares(self) -> Dict[str, "FlodymArray"]:
+    def outflow_shares(self) -> Dict[str, Union["FlodymArray", str]]:
         """Shares of outflows in the total throughput of the process, keyed by flow name.
-        Set them with :py:meth:`set_outflow_share`."""
+        See :py:attr:`inflow_shares`."""
         return dict(self._outflow_shares)
 
     @property
@@ -359,6 +365,63 @@ class Process(PydanticBaseModel):
             renamed = {new_keys.get(name, name): share for name, share in shares.items()}
             shares.clear()
             shares.update(renamed)
+
+    def _set_parameter_names(self, definition: ProcessDefinition) -> None:
+        """Store the names of the shares and dimension splitters given in a process definition.
+        They are replaced by the parameters in :py:meth:`_link_parameters`."""
+        self._inflow_shares.update(definition.inflow_shares)
+        self._outflow_shares.update(definition.outflow_shares)
+        splitters = {
+            "forward": definition.forward_dimension_splitter,
+            "backward": definition.backward_dimension_splitter,
+        }
+        for direction, parameter_name in splitters.items():
+            if parameter_name is not None:
+                self._dimension_splitters[direction] = parameter_name
+
+    def _unlinked_parameter_names(self) -> List[str]:
+        """Names of the parameters of shares and dimension splitters which are not linked yet."""
+        values = (
+            list(self._inflow_shares.values())
+            + list(self._outflow_shares.values())
+            + list(self._dimension_splitters.values())
+        )
+        return [value for value in values if isinstance(value, str)]
+
+    def _link_parameters(self, parameters: Dict[str, "FlodymArray"]) -> None:
+        """Replace the parameter names of shares and dimension splitters by the parameters.
+        Share keys given as process names are resolved to flow names, so the process must be
+        linked to its flows (see :py:meth:`flodym.MFASystem.relink`). Linked entries are kept."""
+        for side in ("in", "out"):
+            shares = ProcessSide(self, side).shares
+            linked = {}
+            for key, share in shares.items():
+                if isinstance(share, str):
+                    key = self._resolve_flow_name(side, key)
+                    share = parameters[share]
+                    check_share_values(self, share, f"Share of flow '{key}'")
+                if key in linked:
+                    raise ValueError(
+                        f"In process '{self.name}': Several shares are given for {side}flow "
+                        f"'{key}'."
+                    )
+                linked[key] = share
+            shares.clear()
+            shares.update(linked)
+        for direction, splitter in self._dimension_splitters.items():
+            if isinstance(splitter, str):
+                splitter = parameters[splitter]
+                check_share_values(self, splitter, f"The {direction} dimension splitter")
+                self._dimension_splitters[direction] = splitter
+
+    def _check_parameters_linked(self) -> None:
+        """Raise an error if shares or dimension splitters are not linked to parameters yet."""
+        unlinked = self._unlinked_parameter_names()
+        if unlinked:
+            raise ValueError(
+                f"In process '{self.name}': The parameters {', '.join(unlinked)} of shares or "
+                "dimension splitters are not linked. Call MFASystem.link_parameters() first."
+            )
 
     def _remove_share(self, side: Side, flow: str) -> None:
         shares = ProcessSide(self, side).shares
@@ -484,8 +547,9 @@ def make_processes(definitions: List[str | ProcessDefinition]) -> dict[str, Proc
     definitions without ``id`` get the smallest IDs not used by any definition, in the order they
     are listed. If no IDs are given explicitly, the IDs are thus the positions in the list.
 
-    The parameters of process definitions (such as shares) are set separately, by
-    :py:func:`set_process_parameters`.
+    The names of the parameters of process definitions (shares and dimension splitters) are
+    stored in the processes. They are replaced by the parameters in
+    :py:meth:`flodym.MFASystem.link_parameters`.
     The process with ID 0 must be named 'sysenv'.
     """
     explicit_ids = [
@@ -509,48 +573,13 @@ def make_processes(definitions: List[str | ProcessDefinition]) -> dict[str, Proc
             used_ids.add(id)
         if name in processes:
             raise ValueError(f"Process name '{name}' is defined more than once.")
-        processes[name] = Process(name=name, id=id)
+        process = Process(name=name, id=id)
+        if isinstance(definition, ProcessDefinition):
+            process._set_parameter_names(definition)
+        processes[name] = process
     return processes
 
 
-def set_process_parameters(
-    processes: Dict[str, Process],
-    definitions: List[str | ProcessDefinition],
-    parameters: Dict[str, "Parameter"],
-) -> None:
-    """Set the shares and dimension splitters given in process definitions (see
-    :py:class:`flodym.ProcessDefinition`) to the processes. Process names in ``definitions``
-    are skipped. The processes must be linked to their flows (see
-    :py:meth:`flodym.MFASystem.relink`). Called by :py:meth:`flodym.MFASystem.from_data_reader`.
-
-    Args:
-        processes: The processes, keyed by name.
-        definitions: Process names or definitions, as in :py:attr:`flodym.MFADefinition.processes`.
-        parameters: The parameters, keyed by name.
-    """
-    for definition in definitions:
-        if isinstance(definition, str):
-            continue
-        if definition.name not in processes:
-            raise ValueError(f"Process '{definition.name}' is not defined.")
-        process = processes[definition.name]
-
-        def get_parameter(name: str) -> "Parameter":
-            if name not in parameters:
-                raise ValueError(
-                    f"Parameter '{name}' given in the definition of process '{definition.name}' "
-                    "is not defined."
-                )
-            return parameters[name]
-
-        for flow, parameter_name in definition.inflow_shares.items():
-            process.set_inflow_share(flow, get_parameter(parameter_name))
-        for flow, parameter_name in definition.outflow_shares.items():
-            process.set_outflow_share(flow, get_parameter(parameter_name))
-        splitters = {
-            "forward": definition.forward_dimension_splitter,
-            "backward": definition.backward_dimension_splitter,
-        }
-        for direction, parameter_name in splitters.items():
-            if parameter_name is not None:
-                process.set_dimension_splitter(direction, get_parameter(parameter_name))
+def _label(value: Union["FlodymArray", str]) -> str:
+    """Name of a parameter array, or the parameter name itself if not linked yet."""
+    return value if isinstance(value, str) else value.name

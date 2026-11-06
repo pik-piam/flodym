@@ -19,7 +19,6 @@ from flodym.processes import (
     Process as Process,
     make_processes as make_processes,
     compute_processes as compute_processes,
-    set_process_parameters as set_process_parameters,
     UnderdeterminedError as UnderdeterminedError,
 )
 from flodym.stocks import (
