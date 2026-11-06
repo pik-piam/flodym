@@ -1050,6 +1050,10 @@ class Flow(FlodymArray):
     """Process from which the flow originates."""
     to_process: Process
     """Process to which the flow goes."""
+    _named_after_processes: bool = False
+    """Whether the name was generated from the connected processes (see
+    :py:attr:`flodym.config.Config.flow_naming`), and is thus updated by
+    :py:meth:`flodym.MFASystem.relink`."""
 
     @classmethod
     def from_array(

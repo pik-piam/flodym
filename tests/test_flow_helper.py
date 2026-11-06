@@ -74,3 +74,32 @@ def test_make_empty_flows_missing_process_raises(processes, dims, from_name, to_
     ]
     with pytest.raises(KeyError, match="missing"):
         make_empty_flows(processes, flow_definitions, dims)
+
+
+def test_make_empty_flows_uses_config_naming(processes, dims):
+    import flodym
+    from flodym.flow_naming import process_ids, process_names_with_arrow
+
+    flow_definitions = [
+        FlowDefinition(from_process_name="sysenv", to_process_name="a", dim_letters=("t",)),
+        FlowDefinition(
+            from_process_name="a", to_process_name="b", dim_letters=("t",), name_override="custom"
+        ),
+    ]
+    with flodym.config.override(flow_naming=process_ids):
+        flows = make_empty_flows(processes, flow_definitions, dims)
+    assert list(flows) == ["F0_1", "custom"]
+    assert flodym.config.flow_naming is process_names_with_arrow
+
+
+def test_make_empty_flows_naming_argument_deprecated(processes, dims, caplog):
+    from flodym.flow_naming import process_ids
+
+    flow_definitions = [
+        FlowDefinition(from_process_name="sysenv", to_process_name="a", dim_letters=("t",))
+    ]
+    with caplog.at_level(logging.INFO):
+        flows = make_empty_flows(processes, flow_definitions, dims, naming=process_ids)
+    assert list(flows) == ["F0_1"]
+    assert "deprecated" in caplog.text
+    assert "flodym.config.flow_naming" in caplog.text
