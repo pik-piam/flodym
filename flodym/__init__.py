@@ -4,6 +4,7 @@ from flodym.mfa_definition import (
     DimensionDefinition as DimensionDefinition,
     StockDefinition as StockDefinition,
     ParameterDefinition as ParameterDefinition,
+    ProcessDefinition as ProcessDefinition,
 )
 from flodym.mfa_system import MFASystem as MFASystem
 from flodym.dimensions import DimensionSet as DimensionSet, Dimension as Dimension

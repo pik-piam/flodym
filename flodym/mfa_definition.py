@@ -124,6 +124,16 @@ class ParameterDefinition(DefinitionWithDimLetters):
     """Name of the parameter."""
 
 
+class ProcessDefinition(PydanticBaseModel):
+    """Define a process with an explicit ID. In :py:attr:`MFADefinition.processes`, it can be
+    used instead of a process name, see :py:func:`flodym.make_processes`."""
+
+    id: int
+    """ID of the process."""
+    name: str
+    """Name of the process."""
+
+
 class MFADefinition(PydanticBaseModel):
     """All the information needed to define an MFA system, compiled of lists of definition objects."""
 
@@ -131,8 +141,8 @@ class MFADefinition(PydanticBaseModel):
 
     dimensions: List[DimensionDefinition]
     """List of definitions of dimensions used in the model."""
-    processes: List[str]
-    """List of process names used in the model."""
+    processes: List[str | ProcessDefinition]
+    """List of the processes used in the model, given as names or process definitions."""
     flows: List[FlowDefinition]
     """List of definitions of flows used in the model."""
     stocks: List[StockDefinition] = []
