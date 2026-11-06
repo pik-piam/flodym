@@ -1037,7 +1037,7 @@ class Flow(FlodymArray):
         >>> dimensions = DimensionSet([goods, time])
         >>> fabrication = Process(name='fabrication', id=2)
         >>> use = Process(name='use', id=3)
-        >>> flow = Flow(from_process='fabrication', to_process='use', dims=dimensions)
+        >>> flow = Flow(from_process=fabrication, to_process=use, dims=dimensions)
 
     In the above example, we did not pass any values when initialising the Flow instance,
     and these would get filled with zeros.
@@ -1050,6 +1050,10 @@ class Flow(FlodymArray):
     """Process from which the flow originates."""
     to_process: Process
     """Process to which the flow goes."""
+    _named_after_processes: bool = False
+    """Whether the name was generated from the connected processes (see
+    :py:attr:`flodym.config.Config.flow_naming`), and is thus updated by
+    :py:meth:`flodym.MFASystem.relink`."""
 
     @classmethod
     def from_array(

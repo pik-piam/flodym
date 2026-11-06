@@ -51,6 +51,7 @@ from flodym import (
     DimensionDefinition,
     FlowDefinition,
     MFADefinition,
+    ProcessDefinition,
     MFASystem,
     ParameterDefinition,
     SimpleFlowDrivenStock,
@@ -82,12 +83,12 @@ parameter_definitions = [
 
 # %%
 process_names = [
-    "sysenv",
-    "shredder",
-    "demolition",
-    "remelting",
-    "landfills",
-    "slag piles",
+    ProcessDefinition(id=0, name="sysenv"),
+    ProcessDefinition(id=1, name="shredder"),
+    ProcessDefinition(id=2, name="demolition"),
+    ProcessDefinition(id=3, name="remelting"),
+    ProcessDefinition(id=4, name="landfills"),
+    ProcessDefinition(id=5, name="slag piles"),
 ]
 
 # %%
