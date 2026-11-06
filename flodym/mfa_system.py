@@ -23,7 +23,7 @@ from .data_reader import (
 )
 from .dimensions import DimensionSet
 from .flodym_arrays import FlodymArray, Flow, Parameter
-from .flow_helper import make_empty_flows
+from .flow_helper import make_empty_flows, make_unique_name
 from .mfa_definition import MFADefinition
 from .processes import Process, compute_processes, make_processes, set_process_parameters
 from .stock_helper import make_empty_stocks
@@ -81,17 +81,33 @@ class MFASystem(PydanticBaseModel):
 
     @model_validator(mode="after")
     def link_processes(self):
-        """Link the processes to the flows and stocks at setup, see :py:meth:`relink`."""
-        self.relink()
+        """Link the processes to the flows and stocks at setup, see :py:meth:`relink`.
+        Flow names are not changed."""
+        self.relink(update_names=False)
         return self
 
-    def relink(self) -> None:
+    def relink(self, update_names: bool = True) -> None:
         """Link each process to its inflows, outflows and stock, as given by the flows and stocks
         of the MFA system (see :py:attr:`flodym.Process.inflows`).
 
-        This is done automatically when the MFA system is set up. Call it again after adding,
-        replacing or removing entries of :py:attr:`flows` or :py:attr:`stocks`.
+        This is done automatically when the MFA system is set up, without changing flow names.
+        Call it again after adding, replacing or removing entries of :py:attr:`flows` or
+        :py:attr:`stocks`, or after changing the processes of a flow.
         Existing links of the processes are replaced.
+
+        Args:
+            update_names: If True (default), the names of flows that are named after the
+                processes they connect, i.e. flows created by :py:func:`flodym.make_empty_flows`
+                without ``name_override``, are generated anew from their current processes.
+                Both the flow names and the keys of :py:attr:`flows` are updated; the order of
+                :py:attr:`flows` is kept. Names are generated with the function given in the
+                global config option :py:attr:`flodym.config.Config.flow_naming`. If a generated
+                name is already used, a suffix ``_2``, ``_3``, ... is appended, and a warning is
+                logged. Other flows keep their names and keys.
+
+                Warning: With ``update_names=False``, flows named after processes keep their old
+                names after their processes have been changed or renamed. These names are then
+                misleading.
 
         Raises:
             ValueError: If a flow or stock refers to a process object which is not in
@@ -113,6 +129,8 @@ class MFASystem(PydanticBaseModel):
                 )
             linked_stocks[stock.process.name] = stock.name
 
+        if update_names:
+            self._update_flow_names()
         for process in self.processes.values():
             process.clear_links()
         for flow in self.flows.values():
@@ -121,6 +139,21 @@ class MFASystem(PydanticBaseModel):
         for stock in self.stocks.values():
             if stock.process is not None:
                 stock.process.set_stock(stock)
+
+    def _update_flow_names(self) -> None:
+        """Generate the names of flows named after their processes anew, and update the keys of
+        :py:attr:`flows` accordingly, keeping their order. See :py:meth:`relink`."""
+        fixed_names = {key for key, flow in self.flows.items() if not flow._named_after_processes}
+        renamed_flows = {}
+        for key, flow in self.flows.items():
+            if flow._named_after_processes:
+                generated_name = config.flow_naming(flow.from_process, flow.to_process)
+                key = make_unique_name(generated_name, fixed_names | renamed_flows.keys())
+                flow.name = key
+            renamed_flows[key] = flow
+        # change the existing dictionary instead of replacing it, to keep references to it valid
+        self.flows.clear()
+        self.flows.update(renamed_flows)
 
     def _check_is_own_process(self, process: Process, used_by: str) -> None:
         if self.processes.get(process.name) is not process:

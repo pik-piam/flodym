@@ -318,7 +318,7 @@ print("Flow names:\n ", "\n  ".join(flows))
 
 # %% [markdown]
 # As you can see, the flow names were automatically created from the process names.
-# If you don't like this, you can either choose a different naming function, write your own (not shown), or override the names in the `FlowDefinition` with the `name_override` attribute:
+# If you don't like this, you can either choose a different naming function in the global config option `flodym.config.flow_naming`, write your own (not shown), or override the names in the `FlowDefinition` with the `name_override` attribute:
 
 # %%
 from flodym.flow_naming import (
@@ -330,13 +330,16 @@ from flodym.flow_naming import (
     process_names_no_spaces,
 )
 
-# other naming function
-flows_a = make_empty_flows(
-    processes=processes,
-    flow_definitions=flow_definitions,
-    dims=dims,
-    naming=process_ids,
-)
+import flodym
+
+# other naming function, here only within the with block.
+# Use flodym.config.flow_naming = process_ids to change it permanently.
+with flodym.config.override(flow_naming=process_ids):
+    flows_a = make_empty_flows(
+        processes=processes,
+        flow_definitions=flow_definitions,
+        dims=dims,
+    )
 print("Flow names with ids:\n ", "\n  ".join(flows_a), "\n")
 
 # custom name

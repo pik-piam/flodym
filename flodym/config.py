@@ -2,10 +2,12 @@
 
 from contextlib import contextmanager
 from enum import Enum
-from typing import Annotated, Any, Generator, Optional
+from typing import Annotated, Any, Callable, Generator, Optional
 import logging
 
 from pydantic import BaseModel, Field
+
+from .flow_naming import process_names_with_arrow
 
 
 class ErrorBehavior(str, Enum):
@@ -103,6 +105,14 @@ class Config(BaseModel, validate_assignment=True):
 
     error_behaviors: ErrorBehaviors = ErrorBehaviors()
     """What to do if a check fails."""
+
+    flow_naming: Callable[..., str] = process_names_with_arrow
+    """Function which generates the name of a flow from the process it starts from and the process
+    it ends in, as ``flow_naming(from_process, to_process)``. Used by
+    :py:func:`flodym.make_empty_flows` and :py:meth:`flodym.MFASystem.relink`, but not for flows
+    with a ``name_override``. Predefined functions are found in :py:mod:`flodym.flow_naming`.
+    Default: :py:func:`flodym.flow_naming.process_names_with_arrow`.
+    """
 
     relative_tolerance: Annotated[float, Field(ge=0)] = 100.0
     """Tolerance for mass balance and other checks, relative to the float precision of the checked
