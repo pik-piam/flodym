@@ -308,6 +308,20 @@ class MFASystem(PydanticBaseModel):
         if all_good:
             logging.info(f"Success - No negative flows or NaN values in {self.__class__.__name__}")
 
+    def mark_all_set(self):
+        """Mark all stocks and flows as set."""
+        for flow in self.flows.values():
+            flow.mark_set()
+        for stock in self.stocks.values():
+            stock.mark_all_set()
+
+    def mark_all_unset(self):
+        """Mark all stocks and flows as unset."""
+        for flow in self.flows.values():
+            flow.mark_unset()
+        for stock in self.stocks.values():
+            stock.mark_all_unset()
+
     @staticmethod
     def _error_or_warning(message: str, raise_error: bool) -> None:
         if raise_error:

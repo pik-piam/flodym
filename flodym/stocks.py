@@ -3,18 +3,41 @@ including flow-driven stocks and dynamic (lifetime-based) stocks.
 """
 
 from abc import ABC, abstractmethod
+import functools
 import numpy as np
 from scipy.linalg import solve_triangular
 from pydantic import BaseModel as PydanticBaseModel, ConfigDict, model_validator
-from typing import Optional, Union, TypeVar, Type
+from typing import Callable, Optional, Union, TypeVar, Type
 import logging
 
 from .processes import Process
 from .flodym_arrays import StockArray
 from .dimensions import DimensionSet
 from .lifetime_models import LifetimeModel, UnevenTimeDim
+from .config import config, handle_error
 
 StockSubtype = TypeVar("StockSubtype", bound="Stock")
+
+
+def _wrap_compute(compute: Callable) -> Callable:
+    """Adds checks before and marks the stock arrays as set after a stock compute routine.
+    Nested calls (e.g. via ``super().compute()``) only run the outermost checks."""
+
+    @functools.wraps(compute)
+    def wrapper(self: "Stock", *args, **kwargs):
+        if self._in_compute:
+            return compute(self, *args, **kwargs)
+        self._check_needed_arrays()
+        self._in_compute = True
+        try:
+            result = compute(self, *args, **kwargs)
+        finally:
+            self._in_compute = False
+        self.mark_all_set()
+        return result
+
+    wrapper._is_wrapped_compute = True
+    return wrapper
 
 
 class Stock(PydanticBaseModel):
@@ -44,6 +67,15 @@ class Stock(PydanticBaseModel):
     time_letter: str = "t"
     """Letter of the time dimension in the dimensions set, to make sure it's the first one."""
     _t: UnevenTimeDim = None
+    _in_compute: bool = False
+
+    def __init_subclass__(cls, **kwargs):
+        """Wrap the compute method of every subclass with checks before and
+        marking the stock arrays as set afterwards."""
+        super().__init_subclass__(**kwargs)
+        compute = cls.__dict__.get("compute")
+        if compute is not None and not getattr(compute, "_is_wrapped_compute", False):
+            cls.compute = _wrap_compute(compute)
 
     @model_validator(mode="after")
     def validate_stock_arrays(self):
@@ -82,12 +114,42 @@ class Stock(PydanticBaseModel):
 
     @abstractmethod
     def compute(self):
-        # always add this check first
-        self._check_needed_arrays()
+        """Compute the missing stock arrays from the known ones.
+
+        In all subclasses, ``_check_needed_arrays()`` is automatically called before, and the
+        stock arrays are marked as set after the computation.
+        """
+        pass
 
     @abstractmethod
     def _check_needed_arrays(self):
         pass
+
+    def _check_array_known(self, array: StockArray, label: str, consequence: str) -> None:
+        """Warn if a stock array needed for the computation is zero, and handle the case that it
+        is not set according to ``config.error_behaviors.unset_array_used``."""
+        if np.allclose(array.values, 0.0):
+            logging.warning(f"{label} is zero. {consequence}")
+        if not array.is_set:
+            handle_error(
+                config.error_behaviors.unset_array_used,
+                message=(
+                    f"{label} of stock '{self.name}' is not set (is_set=False). "
+                    "If its values are intended, call mark_set() on it."
+                ),
+            )
+
+    def mark_all_set(self):
+        """Mark all StockArrays (inflow, outflow, stock) as set."""
+        self.inflow.mark_set()
+        self.outflow.mark_set()
+        self.stock.mark_set()
+
+    def mark_all_unset(self):
+        """Mark all StockArrays (inflow, outflow, stock) as unset."""
+        self.inflow.mark_unset()
+        self.outflow.mark_unset()
+        self.stock.mark_unset()
 
     @property
     def shape(self) -> tuple:
@@ -139,6 +201,13 @@ class Stock(PydanticBaseModel):
         )  # stock_change(t) = stock(t) - stock(t-1)
         return self.inflow.values - self.outflow.values - dsdt
 
+    @property
+    def is_computed(self) -> bool:
+        """Check whether the stock has been computed, i.e. whether the stock, inflow, and outflow arrays
+        are all set.
+        """
+        return self.inflow.is_set and self.outflow.is_set and self.stock.is_set
+
     def _to_whole_period(self, annual_flow: np.ndarray) -> np.ndarray:
         """multiply annual flow by interval length to get flow over whole period."""
         return np.einsum("t...,t->t...", annual_flow, self._t.interval_lengths)
@@ -162,9 +231,16 @@ class SimpleFlowDrivenStock(Stock):
             and np.max(np.abs(self.outflow.values)) < 1e-10
         ):
             logging.warning("Inflow and Outflow are zero. This will lead to a zero stock.")
+        if not self.inflow.is_set and not self.outflow.is_set:
+            handle_error(
+                config.error_behaviors.unset_array_used,
+                message=(
+                    f"Neither inflow nor outflow of stock '{self.name}' is set (is_set=False). "
+                    "If their values are intended, call mark_set() on one of them."
+                ),
+            )
 
     def compute(self):
-        self._check_needed_arrays()
         annual_net_inflow = self.inflow.values - self.outflow.values
         net_inflow_whole_period = self._to_whole_period(annual_net_inflow)
         self.stock.values[...] = np.cumsum(net_inflow_whole_period, axis=0)
@@ -257,12 +333,12 @@ class InflowDrivenDSM(DynamicStockModel):
 
     def _check_needed_arrays(self):
         super()._check_needed_arrays()
-        if np.allclose(self.inflow.values, np.zeros(self.shape)):
-            logging.warning("Inflow is zero. This will lead to a zero stock and outflow.")
+        self._check_array_known(
+            self.inflow, "Inflow", "This will lead to a zero stock and outflow."
+        )
 
     def compute(self):
         """Determine stocks and outflows and store values in the class instance."""
-        self._check_needed_arrays()
         self._compute_stock()
         self._compute_outflow()
 
@@ -297,12 +373,10 @@ class StockDrivenDSM(DynamicStockModel):
 
     def _check_needed_arrays(self):
         super()._check_needed_arrays()
-        if np.allclose(self.stock.values, np.zeros(self.shape)):
-            logging.warning("Stock is zero. This will lead to a zero inflow and outflow.")
+        self._check_array_known(self.stock, "Stock", "This will lead to a zero inflow and outflow.")
 
     def compute(self):
         """Determine inflows and outflows and store values in the class instance."""
-        self._check_needed_arrays()
         self._compute_cohorts_and_inflow()
         self._compute_outflow()
 

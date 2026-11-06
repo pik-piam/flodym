@@ -45,6 +45,11 @@ print(f"Array names: {my_stock.stock.name}, {my_stock.inflow.name}, {my_stock.ou
 #
 # As mentioned above, for `SimpleFlowDrivenStock`, the stock is calculated as the cumulative sum over time of inflow minus outflow.
 #
+# After `compute()`, the stock, inflow and outflow arrays are marked as set (see the HOWTO on arrays).
+# Before the computation, flodym checks the arrays the computation is based on: a warning is logged if they are zero.
+# What happens if they are not set is controlled by `flodym.config.error_behaviors.unset_array_used`.
+# The check and the marking are added automatically to the `compute()` method of every `Stock` subclass, including your own.
+#
 # There's a `check_stock_balance()` method, which checks whether inflow, outflow and stock are consistent:
 
 # %%
