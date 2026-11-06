@@ -171,8 +171,7 @@ See HOWTO 05 for details.
 Deprecated
 ----------
 
-The following still work in v2, but emit a ``DeprecationWarning`` and will be removed in a future
-version:
+The following still work in v2, but emit a ``DeprecationWarning`` and will be removed in v3.0.0:
 
 - the ``raise_error`` argument of ``MFASystem.check_mass_balance()`` and
   ``MFASystem.check_flows()``;
