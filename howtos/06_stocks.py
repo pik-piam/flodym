@@ -135,6 +135,41 @@ print("Stock values for Vehicles:", stocks["in-use"].stock["Vehicles"].values)
 # For an example of how to use stock definitions in the `MFASystem.from_data_reader()` method, see Example 5.
 
 # %% [markdown]
+# ## Computation modes
+#
+# `InflowDrivenDSM` and `StockDrivenDSM` fix whether `compute()` starts from the inflow or from the stock.
+# The general `DynamicStockModel` instead has one method for each mode:
+# `compute_inflow_driven()`, `compute_stock_driven()` and `compute_inflow_by_cohort_driven()`.
+# The latter starts from `inflow_by_cohort`, an inflow by year and age-cohort, for which a `cohort_dim` must be given.
+#
+# These methods can be called repeatedly and in any order on the same object.
+# For example, a stock-driven computation yields negative inflows if the stock decreases faster than items reach the end of their lifetime.
+# These inflows can be set to zero, and the stock recomputed inflow-driven:
+
+# %%
+from flodym import DynamicStockModel
+
+stock_values = np.array([1, 2, 3, 4, 5, 6, 6, 3, 2, 2, 2], dtype=float)[:, np.newaxis]
+my_dsm = DynamicStockModel(
+    dims=dims,
+    name="in-use-dsm",
+    lifetime_model=NormalLifetime(dims=dims, mean=lifetime_mean, std=0.3 * lifetime_mean),
+    stock=StockArray(dims=dims, values=stock_values * np.ones(dims.shape)),
+)
+my_dsm.compute_stock_driven()
+print("Smallest inflow, stock-driven:", my_dsm.inflow.values.min())
+
+my_dsm.inflow[...] = np.maximum(my_dsm.inflow.values, 0.0)
+my_dsm.compute_inflow_driven()
+print("Smallest inflow, corrected:", my_dsm.inflow.values.min())
+print("Stock values for Vehicles:", my_dsm.stock["Vehicles"].values)
+
+# %% [markdown]
+# `DynamicStockModel.compute()` chooses the mode itself: it uses whichever of stock, inflow and `inflow_by_cohort` is set (see `is_set` in the how-to on arrays).
+# After a computation, stock, inflow and outflow are all set, so a second call to `compute()` raises an error.
+# To recompute, use the explicit methods above.
+
+# %% [markdown]
 # ## Lifetime extension
 #
 # Lifetime extension can by modeled. To this end, a time-dependent extension factor can be specified.
