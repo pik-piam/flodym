@@ -302,7 +302,7 @@ def test_inflow_by_cohort_driven_dsm():
     assert np.allclose(dsm.inflow.values, 1.0)
 
     # Verify stock balance
-    dsm.check_stock_balance()
+    dsm.check_mass_balance()
 
 
 def test_inflow_driven_dsm_with_initial_stock():
@@ -365,7 +365,7 @@ def test_inflow_driven_dsm_with_initial_stock():
     assert dsm.stock.values[initial_year_idx, ...].sum() > 0
 
     # Verify stock balance
-    dsm.check_stock_balance()
+    dsm.check_mass_balance()
 
 
 def test_stock_driven_dsm_with_initial_stock():
@@ -431,7 +431,7 @@ def test_stock_driven_dsm_with_initial_stock():
     assert dsm.inflow.values.sum() > 0
 
     # Verify stock balance
-    dsm.check_stock_balance()
+    dsm.check_mass_balance()
 
 
 time_items_cohort_tests = list(range(2000, 2021))
@@ -506,7 +506,7 @@ def test_inflow_driven_dsm_initial_stock_survival():
     )
     np.testing.assert_allclose(stock_by_cohort[iiy:, : iiy + 1], expected)
     assert np.all(stock_by_cohort[:iiy] == 0.0)
-    dsm.check_stock_balance()
+    dsm.check_mass_balance()
 
 
 def test_stock_driven_dsm_initial_stock_reproduces_stock():
@@ -524,7 +524,7 @@ def test_stock_driven_dsm_initial_stock_reproduces_stock():
     stock_by_cohort = dsm.get_stock_by_cohort().values
     np.testing.assert_allclose(stock_by_cohort[iiy], initial_stock.values)
     np.testing.assert_allclose(dsm.stock.values[iiy + 1 :], prescribed_stock[iiy + 1 :])
-    dsm.check_stock_balance()
+    dsm.check_mass_balance()
 
 
 dims_with_cohort_tests = DimensionSet(
@@ -658,7 +658,7 @@ def test_stock_driven_then_inflow_driven_with_initial_stock(included_in_inflow):
     else:
         # the initial stock of the older cohorts is counted twice
         assert np.all(dsm.stock.values[iiy:] > stock_driven_stock[iiy:])
-    dsm.check_stock_balance()
+    dsm.check_mass_balance()
 
 
 def test_user_subclass_of_dynamic_stock_model_marks_set():

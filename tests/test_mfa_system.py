@@ -72,8 +72,8 @@ def test_mass_balance_check_without_stocks_for_simple_system():
 
     mfa.flows["sysenv => process"][...] = 2.0
     mfa.flows["process => sysenv"][...] = 2.0
-    mfa.check_mass_balance(raise_error=True)
+    mfa.check_mass_balance(error_behavior="error")
 
     mfa.flows["process => sysenv"][...] = 1.0
     with pytest.raises(ValueError, match="Mass balance check failed"):
-        mfa.check_mass_balance(tolerance=1e-12, raise_error=True)
+        mfa.check_mass_balance(tolerance=1e-12, error_behavior="error")

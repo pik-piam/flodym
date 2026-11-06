@@ -816,6 +816,15 @@ class FlodymArray(PydanticBaseModel):
         self._is_set = False
         return self
 
+    @property
+    def _absolute_float_precision(self) -> float:
+        """The machine epsilon of the data type, multiplied by the maximum absolute value.
+        NaN values are ignored."""
+        abs_values = np.abs(self.values)
+        max_value = float(np.max(abs_values, where=~np.isnan(abs_values), initial=0.0))
+        dtype = self.values.dtype if np.issubdtype(self.values.dtype, np.inexact) else np.float64
+        return float(np.finfo(dtype).eps) * max_value
+
     def _check_is_set(self, operation: str) -> None:
         if not self._is_set:
             handle_error(

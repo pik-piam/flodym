@@ -50,7 +50,10 @@ print(f"Array names: {my_stock.stock.name}, {my_stock.inflow.name}, {my_stock.ou
 # What happens if they are not set is controlled by `flodym.config.error_behaviors.unset_array_used`.
 # The check and the marking are added automatically to the `compute()` method of every `Stock` subclass, including your own.
 #
-# There's a `check_stock_balance()` method, which checks whether inflow, outflow and stock are consistent:
+# The `check_mass_balance()` method checks whether inflow, outflow and stock are consistent, i.e. whether the stock change in each time step equals the net inflow over the time step.
+# The mass balance error itself is returned by `get_mass_balance()`.
+# With `flodym.config.checks.mass_balance_after_compute = True`, the check is performed automatically after each computation.
+# What happens if it fails, and the tolerance it uses, are controlled by `flodym.config` as well (see the HOWTO on working with the MFA system):
 
 # %%
 my_stock.inflow.values[...] = 0.1
@@ -59,7 +62,7 @@ my_stock.compute()
 
 print("Stock values for Vehicles:", my_stock.stock["Vehicles"].values)
 
-my_stock.check_stock_balance()
+my_stock.check_mass_balance()
 
 # %% [markdown]
 # ## Dynamic Stock Models (DSM)
