@@ -99,8 +99,8 @@ class MFASystem(PydanticBaseModel):
             update_names: If True (default), the names of flows that are named after the
                 processes they connect, i.e. flows created by :py:func:`flodym.make_empty_flows`
                 without ``name_override``, are generated anew from their current processes.
-                Both the flow names and the keys of :py:attr:`flows` are updated; the order of
-                :py:attr:`flows` is kept. Names are generated with the function given in the
+                The flow names, the keys of :py:attr:`flows` and the keys of the process shares
+                (see :py:attr:`flodym.Process.inflow_shares`) are updated; their order is kept. Names are generated with the function given in the
                 global config option :py:attr:`flodym.config.Config.flow_naming`. If a generated
                 name is already used, a suffix ``_2``, ``_3``, ... is appended, and a warning is
                 logged. Other flows keep their names and keys.
@@ -142,18 +142,25 @@ class MFASystem(PydanticBaseModel):
 
     def _update_flow_names(self) -> None:
         """Generate the names of flows named after their processes anew, and update the keys of
-        :py:attr:`flows` accordingly, keeping their order. See :py:meth:`relink`."""
+        :py:attr:`flows` and of the process shares accordingly, keeping their order.
+        See :py:meth:`relink`."""
         fixed_names = {key for key, flow in self.flows.items() if not flow._named_after_processes}
         renamed_flows = {}
+        new_keys = {}
         for key, flow in self.flows.items():
             if flow._named_after_processes:
                 generated_name = config.flow_naming(flow.from_process, flow.to_process)
-                key = make_unique_name(generated_name, fixed_names | renamed_flows.keys())
-                flow.name = key
+                new_key = make_unique_name(generated_name, fixed_names | renamed_flows.keys())
+                flow.name = new_key
+                if new_key != key:
+                    new_keys[key] = new_key
+                key = new_key
             renamed_flows[key] = flow
         # change the existing dictionary instead of replacing it, to keep references to it valid
         self.flows.clear()
         self.flows.update(renamed_flows)
+        for process in self.processes.values():
+            process._rename_share_keys(new_keys)
 
     def _check_is_own_process(self, process: Process, used_by: str) -> None:
         if self.processes.get(process.name) is not process:

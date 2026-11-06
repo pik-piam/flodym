@@ -223,3 +223,24 @@ def test_relink_without_updating_names():
     mfa.relink(update_names=False)
     assert list(mfa.flows) == ["sysenv => a", "custom", "b => sysenv"]
     assert list(mfa.processes["b"].inflows) == ["sysenv => a", "custom"]
+
+
+def test_relink_renames_share_keys():
+    import numpy as np
+
+    from flodym import Parameter
+
+    mfa = _named_flows_mfa()
+    a, b = mfa.processes["a"], mfa.processes["b"]
+    share = Parameter(dims=mfa.dims, values=np.full(mfa.dims.shape, 0.5), name="share")
+    b.set_outflow_share("b => sysenv", share)
+    a.set_outflow_share("custom", share)
+    flow = mfa.flows["b => sysenv"]
+    flow.from_process = mfa.processes["sysenv"]
+    flow.to_process = b
+    mfa.relink()
+    assert list(mfa.flows) == ["sysenv => a", "custom", "sysenv => b"]
+    # the share stays with the process it was set for, under the new flow name
+    assert list(b.outflow_shares) == ["sysenv => b"]
+    assert b.outflow_shares["sysenv => b"] is share
+    assert list(a.outflow_shares) == ["custom"]

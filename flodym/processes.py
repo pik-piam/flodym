@@ -348,6 +348,18 @@ class Process(PydanticBaseModel):
         check_share_values(self, share, f"Share of flow '{name}'")
         ProcessSide(self, side).shares[name] = share
 
+    def _rename_share_keys(self, new_keys: Dict[str, str]) -> None:
+        """Rename the flow names under which shares are stored, keeping their order.
+        Used by :py:meth:`flodym.MFASystem.relink` when flows are renamed.
+
+        Args:
+            new_keys: New flow names, keyed by old flow names.
+        """
+        for shares in (self._inflow_shares, self._outflow_shares):
+            renamed = {new_keys.get(name, name): share for name, share in shares.items()}
+            shares.clear()
+            shares.update(renamed)
+
     def _remove_share(self, side: Side, flow: str) -> None:
         shares = ProcessSide(self, side).shares
         name = flow if flow in shares else self._resolve_flow_name(side, flow)
