@@ -16,6 +16,9 @@ def make_empty_flows(
 ) -> dict[str, Flow]:
     """Initialize all defined flows with zero values.
 
+    The parameter names given as :py:attr:`flodym.FlowDefinition.prescribed` are stored in the
+    flows; the parameters are linked by :py:meth:`flodym.MFASystem.link_parameters`.
+
     The names of flows without ``name_override`` are generated from the processes they connect,
     using the function given in the global config option :py:attr:`flodym.config.Config.flow_naming`
     (default: :py:func:`flodym.flow_naming.process_names_with_arrow`). It can be changed, e.g. by
@@ -23,7 +26,7 @@ def make_empty_flows(
     ``with flodym.config.override(flow_naming=...):``.
 
     If several flows without name_override get the same generated name, e.g. because they connect
-    the same pair of processes, a suffix ``_2``, ``_3``, ... is appended to the name of the second,
+    the same pair of processes, a suffix ``__2``, ``__3``, ... is appended to the name of the second,
     third, ... flow, and a warning is logged.
 
     Args:
@@ -68,18 +71,19 @@ def make_empty_flows(
         dim_subset = dims.get_subset(flow_definition.dim_letters)
         flow = Flow(from_process=from_process, to_process=to_process, name=name, dims=dim_subset)
         flow._named_after_processes = flow_definition.name_override is None
+        flow._set_prescribed(flow_definition.prescribed)
         flows[flow.name] = flow
     return flows
 
 
 def make_unique_name(name: str, used_names: Collection[str]) -> str:
-    """Append a numeric suffix ``_2``, ``_3``, ... to the name if it is already used.
+    """Append a numeric suffix ``__2``, ``__3``, ... to the name if it is already used.
     In this case, a warning is logged."""
     if name not in used_names:
         return name
     suffix_number = 2
-    while f"{name}_{suffix_number}" in used_names:
+    while f"{name}__{suffix_number}" in used_names:
         suffix_number += 1
-    unique_name = f"{name}_{suffix_number}"
+    unique_name = f"{name}__{suffix_number}"
     logging.warning(f"Flow name '{name}' already exists. Using '{unique_name}' instead.")
     return unique_name

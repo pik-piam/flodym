@@ -35,23 +35,26 @@ def test_make_empty_flows_duplicate_generated_names_get_suffix(processes, dims, 
     ]
     with caplog.at_level(logging.WARNING):
         flows = make_empty_flows(processes, flow_definitions, dims)
-    assert list(flows) == ["a => b", "a => b_2", "a => b_3"]
+    assert list(flows) == ["a => b", "a => b__2", "a => b__3"]
     assert all(flow.name == name for name, flow in flows.items())
     assert len({id(flow) for flow in flows.values()}) == 3
-    assert "a => b_2" in caplog.text
-    assert "a => b_3" in caplog.text
+    assert "a => b__2" in caplog.text
+    assert "a => b__3" in caplog.text
 
 
 def test_make_empty_flows_suffix_skips_used_names(processes, dims):
     flow_definitions = [
         FlowDefinition(
-            from_process_name="a", to_process_name="b", dim_letters=("t",), name_override="a => b_2"
+            from_process_name="a",
+            to_process_name="b",
+            dim_letters=("t",),
+            name_override="a => b__2",
         ),
         FlowDefinition(from_process_name="a", to_process_name="b", dim_letters=("t",)),
         FlowDefinition(from_process_name="a", to_process_name="b", dim_letters=("t",)),
     ]
     flows = make_empty_flows(processes, flow_definitions, dims)
-    assert list(flows) == ["a => b_2", "a => b", "a => b_3"]
+    assert list(flows) == ["a => b__2", "a => b", "a => b__3"]
 
 
 def test_make_empty_flows_duplicate_name_override_raises(processes, dims):

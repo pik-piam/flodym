@@ -15,7 +15,12 @@ from flodym.flodym_arrays import (
     Flow as Flow,
 )
 from flodym.flodym_array_helper import flodym_array_stack as flodym_array_stack
-from flodym.processes import Process as Process, make_processes as make_processes
+from flodym.processes import (
+    Process as Process,
+    make_processes as make_processes,
+    compute_processes as compute_processes,
+    UnderdeterminedError as UnderdeterminedError,
+)
 from flodym.stocks import (
     Stock as Stock,
     SimpleFlowDrivenStock as SimpleFlowDrivenStock,

@@ -31,7 +31,11 @@ def make_empty_stocks(
     processes: dict[str, Process],
     dims: DimensionSet,
 ) -> dict[str, Stock]:
-    """Initialise empty Stock objects for each of the stocks listed in stock definitions."""
+    """Initialise empty Stock objects for each of the stocks listed in stock definitions.
+
+    The parameter names of prescribed stock arrays (see :py:class:`flodym.StockDefinition`) are
+    stored in the arrays; the parameters are linked by
+    :py:meth:`flodym.MFASystem.link_parameters`."""
     empty_stocks = {}
     for stock_definition in stock_definitions:
         dim_subset = dims.get_subset(stock_definition.dim_letters)
@@ -49,6 +53,8 @@ def make_empty_stocks(
             name=stock_definition.name,
             process=process,
         )
+        if stock_definition.cohort_letter is not None:
+            init_args["cohort_dim"] = dims[stock_definition.cohort_letter]
         if stock_definition.lifetime_model_class is not None:
             lifetime_model = stock_definition.lifetime_model_class(
                 dims=dim_subset, time_letter=stock_definition.time_letter
@@ -56,5 +62,14 @@ def make_empty_stocks(
             init_args["lifetime_model"] = lifetime_model
 
         stock = stock_definition.subclass(**init_args)
+        for array_name, parameter_name in stock_definition.prescribed_arrays.items():
+            array = getattr(stock, array_name, None)
+            if array is None:
+                raise ValueError(
+                    f"Stock '{stock.name}' has no array '{array_name}', which is prescribed in its "
+                    "definition. inflow_by_cohort requires a dynamic stock model with a cohort "
+                    "dimension."
+                )
+            array._set_prescribed(parameter_name)
         empty_stocks[stock.name] = stock
     return empty_stocks
