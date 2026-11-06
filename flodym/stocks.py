@@ -315,7 +315,7 @@ class Stock(PydanticBaseModel):
     def check_stock_balance(self) -> bool:
         """Deprecated. Use :py:meth:`check_mass_balance` instead."""
         warnings.warn(
-            "check_stock_balance is deprecated since v1.2.0. It will be removed in v2.0.0. "
+            "check_stock_balance is deprecated since v2.0.0. It will be removed in v3.0.0. "
             "Use check_mass_balance instead.",
             DeprecationWarning,
             stacklevel=2,
@@ -326,7 +326,7 @@ class Stock(PydanticBaseModel):
         """Deprecated. Use :py:meth:`get_mass_balance` instead, which returns a
         :py:class:`flodym.FlodymArray`. This method returns its values."""
         warnings.warn(
-            "get_stock_balance is deprecated since v1.2.0. It will be removed in v2.0.0. "
+            "get_stock_balance is deprecated since v2.0.0. It will be removed in v3.0.0. "
             "Use get_mass_balance instead, which returns a FlodymArray.",
             DeprecationWarning,
             stacklevel=2,

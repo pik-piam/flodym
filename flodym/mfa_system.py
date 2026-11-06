@@ -529,8 +529,8 @@ def _resolve_error_behavior(
         raise_error, error_behavior = error_behavior, None
     if raise_error is not None:
         warnings.warn(
-            f"The raise_error argument of MFASystem.{method_name}() is deprecated since v1.2.0. "
-            "It will be removed in v2.0.0. Use error_behavior='error' or 'warn' instead.",
+            f"The raise_error argument of MFASystem.{method_name}() is deprecated since v2.0.0. "
+            "It will be removed in v3.0.0. Use error_behavior='error' or 'warn' instead.",
             DeprecationWarning,
             stacklevel=3,
         )
