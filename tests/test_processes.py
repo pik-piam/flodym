@@ -202,7 +202,7 @@ def test_relink_keeps_custom_names_and_avoids_duplicates(caplog):
     mfa.flows["b => sysenv"].from_process = mfa.processes["sysenv"]
     mfa.flows["b => sysenv"].to_process = mfa.processes["a"]
     mfa.relink()
-    assert list(mfa.flows) == ["sysenv => a", "custom", "sysenv => a_2"]
+    assert list(mfa.flows) == ["sysenv => a", "custom", "sysenv => a__2"]
     assert custom.name == "custom"
     assert "already exists" in caplog.text
 

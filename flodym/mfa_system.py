@@ -93,7 +93,7 @@ class MFASystem(PydanticBaseModel):
                 The flow names, the keys of :py:attr:`flows` and the keys of the process shares
                 (see :py:attr:`flodym.Process.inflow_shares`) are updated; their order is kept. Names are generated with the function given in the
                 global config option :py:attr:`flodym.config.Config.flow_naming`. If a generated
-                name is already used, a suffix ``_2``, ``_3``, ... is appended, and a warning is
+                name is already used, a suffix ``__2``, ``__3``, ... is appended, and a warning is
                 logged. Other flows keep their names and keys.
 
                 Warning: With ``update_names=False``, flows named after processes keep their old

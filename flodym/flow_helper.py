@@ -26,7 +26,7 @@ def make_empty_flows(
     ``with flodym.config.override(flow_naming=...):``.
 
     If several flows without name_override get the same generated name, e.g. because they connect
-    the same pair of processes, a suffix ``_2``, ``_3``, ... is appended to the name of the second,
+    the same pair of processes, a suffix ``__2``, ``__3``, ... is appended to the name of the second,
     third, ... flow, and a warning is logged.
 
     Args:
@@ -77,13 +77,13 @@ def make_empty_flows(
 
 
 def make_unique_name(name: str, used_names: Collection[str]) -> str:
-    """Append a numeric suffix ``_2``, ``_3``, ... to the name if it is already used.
+    """Append a numeric suffix ``__2``, ``__3``, ... to the name if it is already used.
     In this case, a warning is logged."""
     if name not in used_names:
         return name
     suffix_number = 2
-    while f"{name}_{suffix_number}" in used_names:
+    while f"{name}__{suffix_number}" in used_names:
         suffix_number += 1
-    unique_name = f"{name}_{suffix_number}"
+    unique_name = f"{name}__{suffix_number}"
     logging.warning(f"Flow name '{name}' already exists. Using '{unique_name}' instead.")
     return unique_name
