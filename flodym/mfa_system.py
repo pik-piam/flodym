@@ -169,7 +169,7 @@ class MFASystem(PydanticBaseModel):
         Parameters used in the definitions (shares and dimension splitters of processes,
         prescribed flows and stock arrays) are linked by :py:meth:`link_parameters`, unless
         ``link`` is False. Prescribed values are copied into the flows and stock arrays only by
-        :py:meth:`set_prescribed_arrays`, which :py:meth:`compute_all_possible` calls.
+        :py:meth:`set_arrays_from_prescribed`, which :py:meth:`compute_all_possible` calls.
 
         Args:
             definition: The MFA definition object.
@@ -502,7 +502,7 @@ class MFASystem(PydanticBaseModel):
         for process in self.processes.values():
             process._link_parameters(self.parameters)
 
-    def set_prescribed_arrays(self) -> None:
+    def set_arrays_from_prescribed(self) -> None:
         """Copy the values of the prescribing parameters into the prescribed flows and stock
         arrays (see :py:meth:`link_parameters`), overwriting their values and marking them as set.
         Dimensions of a parameter which the array does not have are summed over.
@@ -512,7 +512,7 @@ class MFASystem(PydanticBaseModel):
             ValueError: If a prescribing parameter is not linked yet.
         """
         for _, array in self._prescribable_arrays():
-            array._set_prescribed_arrays()
+            array._set_arrays_from_prescribed()
 
     def _prescribable_arrays(self) -> list[tuple[str, FlodymArray]]:
         """Flows and stock arrays, as tuples of a label for messages and the array."""
@@ -543,14 +543,14 @@ class MFASystem(PydanticBaseModel):
         values, see :py:meth:`flodym.Process.compute`.
 
         Prescribed flows and stock arrays are set to the values of their parameters first (see
-        :py:meth:`set_prescribed_arrays`), overwriting their values. Then, all processes are tried, and each computed process triggers a new try of its neighbors, until
+        :py:meth:`set_arrays_from_prescribed`), overwriting their values. Then, all processes are tried, and each computed process triggers a new try of its neighbors, until
         no further process can be computed (see :py:func:`flodym.compute_processes`).
         Underdetermined processes are skipped.
 
         Returns:
             The names of the processes (except 'sysenv') which could not be computed.
         """
-        self.set_prescribed_arrays()
+        self.set_arrays_from_prescribed()
         compute_processes(self.processes.values())
         not_computed = [p.name for p in self.processes.values() if p.id != 0 and not p.is_computed]
         if not_computed:
