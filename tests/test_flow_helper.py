@@ -45,7 +45,10 @@ def test_make_empty_flows_duplicate_generated_names_get_suffix(processes, dims, 
 def test_make_empty_flows_suffix_skips_used_names(processes, dims):
     flow_definitions = [
         FlowDefinition(
-            from_process_name="a", to_process_name="b", dim_letters=("t",), name_override="a => b__2"
+            from_process_name="a",
+            to_process_name="b",
+            dim_letters=("t",),
+            name_override="a => b__2",
         ),
         FlowDefinition(from_process_name="a", to_process_name="b", dim_letters=("t",)),
         FlowDefinition(from_process_name="a", to_process_name="b", dim_letters=("t",)),
