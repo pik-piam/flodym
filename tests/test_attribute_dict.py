@@ -158,3 +158,18 @@ def test_make_empty_helpers_as_attribute_dict():
     assert isinstance(stocks, AttributeDict)
     assert flows.sysenv__to__shredder is flows["sysenv => shredder"]
     assert stocks.slag_piles is stocks["slag piles"]
+
+
+def test_aliases_follow_flow_renaming_by_relink():
+    from flodym import config
+    from flodym.flow_naming import process_ids
+
+    mfa = get_example_mfa()
+    flows = mfa.flows
+    flow = mfa.flows.sysenv__to__shredder
+    with config.override(flow_naming=process_ids):
+        mfa.relink()
+    assert mfa.flows is flows
+    assert mfa.flows.F0_1 is flow
+    with pytest.raises(AttributeError):
+        mfa.flows.sysenv__to__shredder

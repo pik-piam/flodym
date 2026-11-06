@@ -45,7 +45,15 @@ print(f"Array names: {my_stock.stock.name}, {my_stock.inflow.name}, {my_stock.ou
 #
 # As mentioned above, for `SimpleFlowDrivenStock`, the stock is calculated as the cumulative sum over time of inflow minus outflow.
 #
-# There's a `check_stock_balance()` method, which checks whether inflow, outflow and stock are consistent:
+# After `compute()`, the stock, inflow and outflow arrays are marked as set (see the HOWTO on arrays).
+# Before the computation, flodym checks the arrays the computation is based on: a warning is logged if they are zero.
+# What happens if they are not set is controlled by `flodym.config.error_behaviors.unset_array_used`.
+# The check and the marking are added automatically to the `compute()` method of every `Stock` subclass, including your own.
+#
+# The `check_mass_balance()` method checks whether inflow, outflow and stock are consistent, i.e. whether the stock change in each time step equals the net inflow over the time step.
+# The mass balance error itself is returned by `get_mass_balance()`.
+# With `flodym.config.checks.mass_balance_after_compute = True`, the check is performed automatically after each computation.
+# What happens if it fails, and the tolerance it uses, are controlled by `flodym.config` as well (see the HOWTO on working with the MFA system):
 
 # %%
 my_stock.inflow.values[...] = 0.1
@@ -54,7 +62,7 @@ my_stock.compute()
 
 print("Stock values for Vehicles:", my_stock.stock["Vehicles"].values)
 
-my_stock.check_stock_balance()
+my_stock.check_mass_balance()
 
 # %% [markdown]
 # ## Dynamic Stock Models (DSM)
@@ -128,6 +136,41 @@ print("Stock values for Vehicles:", stocks["in-use"].stock["Vehicles"].values)
 
 # %% [markdown]
 # For an example of how to use stock definitions in the `MFASystem.from_data_reader()` method, see Example 5.
+
+# %% [markdown]
+# ## Computation modes
+#
+# `InflowDrivenDSM` and `StockDrivenDSM` fix whether `compute()` starts from the inflow or from the stock.
+# The general `DynamicStockModel` instead has one method for each mode:
+# `compute_inflow_driven()`, `compute_stock_driven()` and `compute_inflow_by_cohort_driven()`.
+# The latter starts from `inflow_by_cohort`, an inflow by year and age-cohort, for which a `cohort_dim` must be given.
+#
+# These methods can be called repeatedly and in any order on the same object.
+# For example, a stock-driven computation yields negative inflows if the stock decreases faster than items reach the end of their lifetime.
+# These inflows can be set to zero, and the stock recomputed inflow-driven:
+
+# %%
+from flodym import DynamicStockModel
+
+stock_values = np.array([1, 2, 3, 4, 5, 6, 6, 3, 2, 2, 2], dtype=float)[:, np.newaxis]
+my_dsm = DynamicStockModel(
+    dims=dims,
+    name="in-use-dsm",
+    lifetime_model=NormalLifetime(dims=dims, mean=lifetime_mean, std=0.3 * lifetime_mean),
+    stock=StockArray(dims=dims, values=stock_values * np.ones(dims.shape)),
+)
+my_dsm.compute_stock_driven()
+print("Smallest inflow, stock-driven:", my_dsm.inflow.values.min())
+
+my_dsm.inflow[...] = np.maximum(my_dsm.inflow.values, 0.0)
+my_dsm.compute_inflow_driven()
+print("Smallest inflow, corrected:", my_dsm.inflow.values.min())
+print("Stock values for Vehicles:", my_dsm.stock["Vehicles"].values)
+
+# %% [markdown]
+# `DynamicStockModel.compute()` chooses the mode itself: it uses whichever of stock, inflow and `inflow_by_cohort` is set (see `is_set` in the how-to on arrays).
+# After a computation, stock, inflow and outflow are all set, so a second call to `compute()` raises an error.
+# To recompute, use the explicit methods above.
 
 # %% [markdown]
 # ## Lifetime extension

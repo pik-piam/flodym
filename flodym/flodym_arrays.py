@@ -13,16 +13,16 @@ import numpy as np
 import pandas as pd
 from pydantic import (
     BaseModel as PydanticBaseModel,
-)
-from pydantic import (
     ConfigDict,
     Field,
     field_validator,
     model_validator,
+    ModelWrapValidatorHandler,
 )
 from typing_extensions import Self
 
 from ._df_to_flodym_array import DataFrameToFlodymDataConverter
+from .config import config, handle_error
 from .dimensions import Dimension, DimensionSet
 from .processes import Process
 
@@ -75,6 +75,8 @@ class FlodymArray(PydanticBaseModel):
     If not given or None, an array of zeros is created."""
     name: Optional[str] = "unnamed"
     """Name of the FlodymArray."""
+    _is_set: bool = False
+    """Flag indicating whether the array has been set or not."""
 
     @field_validator("values", mode="before")
     @classmethod
@@ -112,6 +114,14 @@ class FlodymArray(PydanticBaseModel):
                 f"Array shape: {self.dims.shape}\n"
                 f"Values shape: {self.values.shape}\n"
             )
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def mark_set_or_unset(cls, data: Any, handler: ModelWrapValidatorHandler[Self]) -> Self:
+        obj = handler(data)
+        if isinstance(data, dict):
+            obj._is_set = data.get("values") is not None
+        return obj
 
     @classmethod
     def from_dims_superset(
@@ -276,6 +286,7 @@ class FlodymArray(PydanticBaseModel):
             self._check_value_format()
         else:
             self.values[...] = values
+        self._is_set = True
 
     def sum_values(self) -> np.ndarray:
         """Return the sum of all values in the FlodymArray."""
@@ -335,6 +346,7 @@ class FlodymArray(PydanticBaseModel):
         Returns:
             FlodymArray: The FlodymArray cast to the new dimensions.
         """
+        self._check_is_set("cast_to()")
         # dimension consistency checks are performed in cast_values_to
         values = self.cast_values_to(target_dims)
         if inplace:
@@ -342,11 +354,9 @@ class FlodymArray(PydanticBaseModel):
             self.values = values
             return self
         else:
-            return FlodymArray(
-                dims=target_dims,
-                values=self.cast_values_to(target_dims),
-                name=self.name,
-            )
+            result = FlodymArray(dims=target_dims, values=values, name=self.name)
+            result._is_set = self._is_set
+            return result
 
     def sum_values_to(self, result_dims: tuple[str | Dimension, ...] = ()) -> np.ndarray:
         """Return the values of the FlodymArray partially summed, such that only the dimensions given in the result_dims tuple are left.
@@ -366,6 +376,7 @@ class FlodymArray(PydanticBaseModel):
         Returns:
             FlodymArray: FlodymArray object with the summed values and the reduced dimensions.
         """
+        self._check_is_set("sum_to()")
         result_letters = self._tuple_to_letters(result_dims)
         return FlodymArray(
             dims=self.dims.get_subset(result_letters),
@@ -382,6 +393,7 @@ class FlodymArray(PydanticBaseModel):
         Returns:
             FlodymArray: FlodymArray object with the summed values and the reduced dimensions.
         """
+        self._check_is_set("sum_over()")
         sum_over_dims = self._tuple_to_letters(sum_over_dims)
         result_dims = tuple([d for d in self.dims.letters if d not in sum_over_dims])
         return FlodymArray(
@@ -433,6 +445,8 @@ class FlodymArray(PydanticBaseModel):
         )
         if isinstance(other, Number):
             other = FlodymArray(dims=self.dims, values=np.full(self.shape, other))
+        self._check_is_set("a math operation")
+        other._check_is_set("a math operation")
         return other
 
     def __add__(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
@@ -506,6 +520,7 @@ class FlodymArray(PydanticBaseModel):
         Returns:
             FlodymArray: FlodymArray object with the values transformed by the function.
         """
+        self._check_is_set("apply()")
         if inplace:
             self.values = func(self.values, **kwargs)
             return None
@@ -541,12 +556,14 @@ class FlodymArray(PydanticBaseModel):
         """
         if not (isinstance(array_class, type) and issubclass(array_class, FlodymArray)):
             raise TypeError(f"array_class must be a FlodymArray subclass, got {array_class!r}.")
-        return array_class(
+        result = array_class(
             dims=self.dims.copy(),
             values=self.values.copy(),
             name=self.name if name is None else name,
             **kwargs,
         )
+        result._is_set = self._is_set
+        return result
 
     @classmethod
     def from_array(cls: type[T], array: "FlodymArray", name: Optional[str] = None, **kwargs) -> T:
@@ -598,9 +615,11 @@ class FlodymArray(PydanticBaseModel):
         return self.apply(np.cumsum, kwargs={"axis": i_axis}, inplace=inplace)
 
     def __neg__(self) -> "FlodymArray":
+        self._check_is_set("a math operation")
         return FlodymArray(dims=self.dims, values=-self.values)
 
     def __abs__(self) -> "FlodymArray":
+        self._check_is_set("a math operation")
         return FlodymArray(dims=self.dims, values=abs(self.values))
 
     def __radd__(self, other: SupportsFloat) -> "FlodymArray":
@@ -613,6 +632,7 @@ class FlodymArray(PydanticBaseModel):
         return self * other
 
     def __rtruediv__(self, other: SupportsFloat) -> "FlodymArray":
+        self._check_is_set("a math operation")
         inv_self = FlodymArray(dims=self.dims, values=1 / self.values)
         return inv_self * other
 
@@ -620,6 +640,7 @@ class FlodymArray(PydanticBaseModel):
         """Defines what is returned when the object with square brackets stands on the right-hand side of an assignment,
         e.g. foo = foo = bar[{'e': 'C'}] Here, it is solely used for slicing, the the input tot the square brackets must
         be a dictionary defining the slice."""
+        self._check_is_set("slicing")
         return self._sub_array_handler(keys).to_flodym_array()
 
     def __setitem__(self, keys, item) -> None:
@@ -632,11 +653,13 @@ class FlodymArray(PydanticBaseModel):
         """
         slice_obj = self._sub_array_handler(keys)
         if isinstance(item, FlodymArray):
+            item._check_is_set("an assignment to another array")
             self.values[slice_obj.ids] = item.sum_values_to(slice_obj.dim_letters)
         elif isinstance(keys, type(Ellipsis)):
             self.set_values(copy(item))
         else:
             self.values[slice_obj.ids] = copy(item)
+        self._is_set = True
 
     def to_df(
         self, index: bool = True, dim_to_columns: Optional[str] = None, sparse: bool = False
@@ -766,6 +789,51 @@ class FlodymArray(PydanticBaseModel):
             for i, letter in enumerate(self.dims.letters)
         ]
         return np.array(items).transpose()
+
+    @property
+    def is_set(self) -> bool:
+        """Whether the values of the array are known.
+
+        Arrays are set if values are given at initialization, or if values are assigned through
+        one of the methods of the class (e.g. ``set_values()``, ``foo[...] = bar``).
+        Writing to the ``values`` attribute directly (e.g. ``foo.values[0, ...] = bar``) does not
+        mark the array as set; call :py:meth:`mark_set` afterwards in that case.
+
+        What happens if an unset array is used in an operation is controlled by
+        ``flodym.config.error_behaviors.unset_array_used``.
+        """
+        return self._is_set
+
+    def mark_set(self) -> Self:
+        """Mark the array as having known values. Returns the array itself, to allow
+        e.g. ``FlodymArray(dims=dims).mark_set()`` for an array of intended zeros."""
+        self._is_set = True
+        return self
+
+    def mark_unset(self) -> Self:
+        """Mark the array as not having known values. The values themselves are kept.
+        Returns the array itself."""
+        self._is_set = False
+        return self
+
+    @property
+    def _absolute_float_precision(self) -> float:
+        """The machine epsilon of the data type, multiplied by the maximum absolute value.
+        NaN values are ignored."""
+        abs_values = np.abs(self.values)
+        max_value = float(np.max(abs_values, where=~np.isnan(abs_values), initial=0.0))
+        dtype = self.values.dtype if np.issubdtype(self.values.dtype, np.inexact) else np.float64
+        return float(np.finfo(dtype).eps) * max_value
+
+    def _check_is_set(self, operation: str) -> None:
+        if not self._is_set:
+            handle_error(
+                config.error_behaviors.unset_array_used,
+                message=(
+                    f"{self.__class__.__name__} '{self.name}' is used in {operation}, but is not set "
+                    "(is_set=False). If its values are intended, call mark_set() on it."
+                ),
+            )
 
     def __str__(self) -> str:
         base = f"{self.__class__.__name__} '{self.name}'"
@@ -963,7 +1031,47 @@ class SubArrayHandler:
         return self.flodym_array.dims[dim_letter].items.index(item_name)
 
 
-class Flow(FlodymArray):
+class _PrescribableArray(FlodymArray):
+    """Base class of arrays whose values can be prescribed by another array, usually a
+    :py:class:`Parameter` (see :py:attr:`flodym.FlowDefinition.prescribed` and
+    :py:class:`flodym.StockDefinition`)."""
+
+    _prescribed: Union[str, FlodymArray, None] = None
+    """The array prescribing the values, or its parameter name before it is linked by
+    :py:meth:`flodym.MFASystem.link_parameters`. Values are copied by
+    :py:meth:`flodym.MFASystem.set_arrays_from_prescribed`."""
+
+    def _set_prescribed(self, prescribed: Union[str, FlodymArray, None]) -> None:
+        """Set the prescribing array or its parameter name, or remove it by passing None.
+        An array must have all dimensions of this array; further dimensions are summed over
+        when the values are copied."""
+        if isinstance(prescribed, FlodymArray):
+            missing_dims = self.dims - prescribed.dims
+            if missing_dims:
+                raise ValueError(
+                    f"Array '{prescribed.name}' prescribed for '{self.name}' does not have its "
+                    f"dimensions {missing_dims.names}."
+                )
+        elif prescribed is not None and not isinstance(prescribed, str):
+            raise TypeError(
+                f"Prescribed array of '{self.name}' must be a FlodymArray or a parameter name, "
+                f"not {type(prescribed).__name__}."
+            )
+        self._prescribed = prescribed
+
+    def _set_arrays_from_prescribed(self) -> None:
+        """Copy the values of the prescribing array into this array, if one is given."""
+        if self._prescribed is None:
+            return
+        if isinstance(self._prescribed, str):
+            raise ValueError(
+                f"Parameter '{self._prescribed}' prescribed for '{self.name}' is not linked. "
+                "Call MFASystem.link_parameters() first."
+            )
+        self.__setitem__(..., self._prescribed)
+
+
+class Flow(_PrescribableArray):
     """The values of Flow objects are the main computed outcome of the MFA system.
     A Flow object connects two :py:class:`Process` objects.
     The name of the Flow object is set as a combination of the names of the two processes it connects.
@@ -978,7 +1086,7 @@ class Flow(FlodymArray):
         >>> dimensions = DimensionSet([goods, time])
         >>> fabrication = Process(name='fabrication', id=2)
         >>> use = Process(name='use', id=3)
-        >>> flow = Flow(from_process='fabrication', to_process='use', dims=dimensions)
+        >>> flow = Flow(from_process=fabrication, to_process=use, dims=dimensions)
 
     In the above example, we did not pass any values when initialising the Flow instance,
     and these would get filled with zeros.
@@ -991,6 +1099,10 @@ class Flow(FlodymArray):
     """Process from which the flow originates."""
     to_process: Process
     """Process to which the flow goes."""
+    _named_after_processes: bool = False
+    """Whether the name was generated from the connected processes (see
+    :py:attr:`flodym.config.Config.flow_naming`), and is thus updated by
+    :py:meth:`flodym.MFASystem.relink`."""
 
     @classmethod
     def from_array(
@@ -1037,7 +1149,7 @@ class Flow(FlodymArray):
         return self.to_process.id
 
 
-class StockArray(FlodymArray):
+class StockArray(_PrescribableArray):
     """Stocks allow accumulation of material at a process, i.e. between two flows.
 
     StockArray inherits all its functionality from :py:class:`FlodymArray`.
