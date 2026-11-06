@@ -8,6 +8,7 @@ from ._process_compute import (
     Direction,
     ProcessSide,
     Side,
+    UnderdeterminedError as UnderdeterminedError,
     check_share_values,
     compute_process,
     compute_processes,
