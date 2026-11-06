@@ -7,6 +7,7 @@ from flodym.mfa_definition import (
     ProcessDefinition as ProcessDefinition,
 )
 from flodym.mfa_system import MFASystem as MFASystem
+from flodym._attribute_dict import AttributeDict as AttributeDict
 from flodym.dimensions import DimensionSet as DimensionSet, Dimension as Dimension
 from flodym.flodym_arrays import (
     FlodymArray as FlodymArray,

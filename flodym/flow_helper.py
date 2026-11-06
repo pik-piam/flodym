@@ -1,6 +1,7 @@
 import logging
-from typing import Callable, Collection, Optional
+from typing import Callable, Collection, Literal, Optional, overload
 
+from ._attribute_dict import AttributeDict
 from .config import config
 from .processes import Process
 from .flodym_arrays import Flow
@@ -8,12 +9,30 @@ from .dimensions import DimensionSet
 from .mfa_definition import FlowDefinition
 
 
+@overload
+def make_empty_flows(
+    processes: dict[str, Process],
+    flow_definitions: list[FlowDefinition],
+    dims: DimensionSet,
+    naming: Optional[Callable[[Process, Process], str]] = ...,
+    as_attribute_dict: Literal[False] = ...,
+) -> dict[str, Flow]: ...
+@overload
+def make_empty_flows(
+    processes: dict[str, Process],
+    flow_definitions: list[FlowDefinition],
+    dims: DimensionSet,
+    naming: Optional[Callable[[Process, Process], str]] = ...,
+    *,
+    as_attribute_dict: Literal[True],
+) -> AttributeDict[Flow]: ...
 def make_empty_flows(
     processes: dict[str, Process],
     flow_definitions: list[FlowDefinition],
     dims: DimensionSet,
     naming: Optional[Callable[[Process, Process], str]] = None,
-) -> dict[str, Flow]:
+    as_attribute_dict: bool = False,
+) -> dict[str, Flow] | AttributeDict[Flow]:
     """Initialize all defined flows with zero values.
 
     The parameter names given as :py:attr:`flodym.FlowDefinition.prescribed` are stored in the
@@ -35,6 +54,8 @@ def make_empty_flows(
         dims: DimensionSet object containing all dimensions.
         naming: Deprecated, use the config option :py:attr:`flodym.config.Config.flow_naming`
             instead. If given, it is used instead of the config option.
+        as_attribute_dict: If True, return an :py:class:`flodym.AttributeDict`, whose entries
+            can also be accessed as attributes. Default is False, returning a plain dict.
 
     Returns:
         Dictionary of flows, with flow names as keys.
@@ -73,6 +94,8 @@ def make_empty_flows(
         flow._named_after_processes = flow_definition.name_override is None
         flow._set_prescribed(flow_definition.prescribed)
         flows[flow.name] = flow
+    if as_attribute_dict:
+        return AttributeDict(flows)
     return flows
 
 

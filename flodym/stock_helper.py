@@ -1,5 +1,8 @@
 """Home to helper functions for the `Stock` class."""
 
+from typing import Literal, overload
+
+from ._attribute_dict import AttributeDict
 from .processes import Process
 from .flodym_array_helper import flodym_array_stack
 from .dimensions import Dimension, DimensionSet
@@ -26,16 +29,42 @@ def stock_stack(stocks: list[Stock], dimension: Dimension) -> Stock:
     )
 
 
+@overload
 def make_empty_stocks(
     stock_definitions: list[StockDefinition],
     processes: dict[str, Process],
     dims: DimensionSet,
-) -> dict[str, Stock]:
+    as_attribute_dict: Literal[False] = ...,
+) -> dict[str, Stock]: ...
+@overload
+def make_empty_stocks(
+    stock_definitions: list[StockDefinition],
+    processes: dict[str, Process],
+    dims: DimensionSet,
+    as_attribute_dict: Literal[True],
+) -> AttributeDict[Stock]: ...
+def make_empty_stocks(
+    stock_definitions: list[StockDefinition],
+    processes: dict[str, Process],
+    dims: DimensionSet,
+    as_attribute_dict: bool = False,
+) -> dict[str, Stock] | AttributeDict[Stock]:
     """Initialise empty Stock objects for each of the stocks listed in stock definitions.
 
     The parameter names of prescribed stock arrays (see :py:class:`flodym.StockDefinition`) are
     stored in the arrays; the parameters are linked by
-    :py:meth:`flodym.MFASystem.link_parameters`."""
+    :py:meth:`flodym.MFASystem.link_parameters`.
+
+    Args:
+        stock_definitions: List of stock definitions.
+        processes: Dictionary of processes, with process names as keys.
+        dims: DimensionSet object containing all dimensions.
+        as_attribute_dict: If True, return an :py:class:`flodym.AttributeDict`, whose entries
+            can also be accessed as attributes. Default is False, returning a plain dict.
+
+    Returns:
+        Dictionary of stocks, with stock names as keys.
+    """
     empty_stocks = {}
     for stock_definition in stock_definitions:
         dim_subset = dims.get_subset(stock_definition.dim_letters)
@@ -72,4 +101,6 @@ def make_empty_stocks(
                 )
             array._set_prescribed(parameter_name)
         empty_stocks[stock.name] = stock
+    if as_attribute_dict:
+        return AttributeDict(empty_stocks)
     return empty_stocks
