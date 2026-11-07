@@ -15,7 +15,7 @@ from typing_extensions import Self
 
 from ._attribute_dict import AttributeDict
 from ._checks import config_hint, report_balance_failures
-from .config import ErrorBehavior, config, handle_error
+from ._config import ErrorBehavior, config, handle_error
 from .data_reader import (
     CompoundDataReader,
     CSVDimensionReader,
@@ -26,7 +26,7 @@ from .data_reader import (
 )
 from .dimensions import DimensionSet
 from .flodym_arrays import FlodymArray, Flow, Parameter
-from .flow_helper import make_empty_flows, make_unique_name
+from .flow_helper import make_empty_flows, _make_unique_name
 from .mfa_definition import MFADefinition
 from .processes import Process, compute_processes, make_processes
 from .stock_helper import make_empty_stocks
@@ -84,7 +84,7 @@ class MFASystem(PydanticBaseModel):
     """
 
     @model_validator(mode="after")
-    def link_processes(self) -> Self:
+    def _link_processes(self) -> Self:
         """Link the processes to the flows and stocks at setup, see :py:meth:`relink`.
         Flow names are not changed."""
         self.relink(update_names=False)
@@ -242,7 +242,7 @@ class MFASystem(PydanticBaseModel):
     @property
     def tolerance(self) -> float:
         """Absolute tolerance based on all flows and stocks of the MFA system, see
-        :py:attr:`flodym.config.Config.relative_tolerance`. Used by :py:meth:`check_flows`."""
+        :py:attr:`flodym.Config.relative_tolerance`. Used by :py:meth:`check_flows`."""
         return config.get_tolerance(self._absolute_float_precision)
 
     def relink(self, update_names: bool = True) -> None:
@@ -260,7 +260,7 @@ class MFASystem(PydanticBaseModel):
                 without ``name_override``, are generated anew from their current processes.
                 The flow names, the keys of :py:attr:`flows` and the keys of the process shares
                 (see :py:attr:`flodym.Process.inflow_shares`) are updated; their order is kept. Names are generated with the function given in the
-                global config option :py:attr:`flodym.config.Config.flow_naming`. If a generated
+                global config option :py:attr:`flodym.Config.flow_naming`. If a generated
                 name is already used, a suffix ``__2``, ``__3``, ... is appended, and a warning is
                 logged. Other flows keep their names and keys.
 
@@ -309,7 +309,7 @@ class MFASystem(PydanticBaseModel):
         for key, flow in self.flows.items():
             if flow._named_after_processes:
                 generated_name = config.flow_naming(flow.from_process, flow.to_process)
-                new_key = make_unique_name(generated_name, fixed_names | renamed_flows.keys())
+                new_key = _make_unique_name(generated_name, fixed_names | renamed_flows.keys())
                 flow.name = new_key
                 if new_key != key:
                     new_keys[key] = new_key

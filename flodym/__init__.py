@@ -7,7 +7,11 @@ from flodym._attribute_dict import AttributeDict as AttributeDict
 from flodym._process_compute import (
     UnderdeterminedError as UnderdeterminedError,
 )
-from flodym.config import config as config
+from flodym._config import Checks as Checks
+from flodym._config import Config as Config
+from flodym._config import ErrorBehavior as ErrorBehavior
+from flodym._config import ErrorBehaviors as ErrorBehaviors
+from flodym._config import config as config
 from flodym.data_reader import (
     CompoundDataReader as CompoundDataReader,
 )
@@ -48,6 +52,9 @@ from flodym.flodym_arrays import (
     StockArray as StockArray,
 )
 from flodym.flow_helper import make_empty_flows as make_empty_flows
+from flodym.flow_naming import process_ids as process_ids
+from flodym.flow_naming import process_names_no_spaces as process_names_no_spaces
+from flodym.flow_naming import process_names_with_arrow as process_names_with_arrow
 from flodym.lifetime_models import (
     CompetingRisksLifetime as CompetingRisksLifetime,
 )
@@ -64,6 +71,9 @@ from flodym.lifetime_models import (
     Leaching as Leaching,
 )
 from flodym.lifetime_models import (
+    LifetimeArrayType as LifetimeArrayType,
+)
+from flodym.lifetime_models import (
     LifetimeModel as LifetimeModel,
 )
 from flodym.lifetime_models import (
@@ -71,6 +81,9 @@ from flodym.lifetime_models import (
 )
 from flodym.lifetime_models import (
     NormalLifetime as NormalLifetime,
+)
+from flodym.lifetime_models import (
+    StandardDeviationLifetimeModel as StandardDeviationLifetimeModel,
 )
 from flodym.lifetime_models import (
     TabulatedLifetime as TabulatedLifetime,

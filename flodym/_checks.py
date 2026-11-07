@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Union
 
 import numpy as np
 
-from .config import ErrorBehavior, handle_error
+from ._config import ErrorBehavior, handle_error
 
 if TYPE_CHECKING:
     from .flodym_arrays import FlodymArray

@@ -11,7 +11,7 @@ import pandas as pd
 
 from ..flodym_arrays import FlodymArray
 from ..mfa_system import MFASystem
-from .helper import to_valid_file_name
+from ._helper import to_valid_file_name
 
 logger = logging.getLogger(__name__)
 

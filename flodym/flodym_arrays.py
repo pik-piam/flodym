@@ -1,5 +1,5 @@
 """The classes and methods defined here are building blocks for creating MFA systems.
-This includes the base `FlodymArray` class and its helper the `SubArrayHandler`,
+This includes the base `FlodymArray` class and its helper the `_SubArrayHandler`,
 as well as applications of the `FlodymArray` for specific model components.
 """
 
@@ -26,7 +26,7 @@ from pydantic import (
 from typing_extensions import Self
 
 from ._df_to_flodym_array import DataFrameToFlodymDataConverter
-from .config import config, handle_error
+from ._config import config, handle_error
 from .dimensions import Dimension, DimensionSet
 from .processes import Process
 
@@ -65,8 +65,23 @@ class FlodymArray(PydanticBaseModel):
 
     Subsets of arrays can be set or retrieved.
     Here, slicing information is passed instead of the ellipsis to the square brackets of the FlodymArray, i.e.
-    foo[keys] = bar or foo = bar[keys]. For details on the allowed values of 'keys', see the docstring of the
-    SubArrayHandler class.
+    `foo[keys] = bar` or `foo = bar[keys]`. Retrieving returns a new FlodymArray. The allowed values of `keys` are:
+
+    - An ellipsis slice `...` addresses all the values of the FlodymArray.
+
+      *Example:* `foo[...]` addresses all values of `foo`.
+    - A dictionary of the form `{'dim_letter': 'item_name'}` defines a subset along one or several dimensions.
+      Instead of a single 'item_name', a list of 'item_names' can be passed.
+
+      *Example:* `foo[{'e': 'C'}]` addresses all values where the element is carbon.
+      `foo[{'e': 'C', 'r': ['EUR', 'USA']}]` addresses all values where the element is carbon and the region is
+      Europe or the USA.
+    - An item name can be passed directly. In this case, the dimension is inferred from the item name.
+      An error is raised if the item name occurs in more than one dimension.
+      Several comma-separated item names can be passed, in the same or in different dimensions.
+
+      *Example:* `foo['C']` addresses all values where the element is carbon.
+      `foo['C', 'EUR', 'USA']` addresses all values where the element is carbon and the region is Europe or the USA.
 
     The dimensions of a FlodymArray stored as a :py:class:`flodym.DimensionSet` object in the 'dims' attribute.
     """
@@ -100,13 +115,13 @@ class FlodymArray(PydanticBaseModel):
         return value
 
     @model_validator(mode="after")
-    def copy_dims(self) -> Self:
+    def _copy_dims(self) -> Self:
         """Ensure dims is always copied to avoid shared references."""
         self.dims = self.dims.copy()
         return self
 
     @model_validator(mode="after")
-    def validate_values(self) -> Self:
+    def _validate_values(self) -> Self:
         """Check that the values are a numpy array with the shape of the dimensions."""
         self._check_value_format()
         return self
@@ -123,7 +138,7 @@ class FlodymArray(PydanticBaseModel):
 
     @model_validator(mode="wrap")
     @classmethod
-    def mark_set_or_unset(cls, data: Any, handler: ModelWrapValidatorHandler[Self]) -> Self:
+    def _mark_set_or_unset(cls, data: Any, handler: ModelWrapValidatorHandler[Self]) -> Self:
         """Mark the array as set if values are given at initialization, else as unset."""
         obj = handler(data)
         if isinstance(data, dict):
@@ -697,7 +712,7 @@ class FlodymArray(PydanticBaseModel):
     def __getitem__(self, keys: dict[str, Any] | Hashable) -> "FlodymArray":
         """Defines what is returned when the object with square brackets stands on the right-hand side of an assignment,
         e.g. foo = bar[{'e': 'C'}]. Here, it is solely used for slicing. For allowed values in the square brackets,
-        see the docstring of the SubArrayHandler class."""
+        see the class docstring."""
         self._check_is_set("slicing")
         return self._sub_array_handler(keys).to_flodym_array()
 
@@ -705,8 +720,7 @@ class FlodymArray(PydanticBaseModel):
         self, keys: dict[str, Any] | Hashable, item: "FlodymArray | npt.ArrayLike"
     ) -> None:
         """Defines what is returned when the object with square brackets stands on the left-hand side of an assignment,
-        i.e. 'foo[bar] = baz' For allowed values in the square brackets (bar), see the docstring of the SubArrayHandler
-        class.
+        i.e. 'foo[bar] = baz' For allowed values in the square brackets (bar), see the class docstring.
 
         The RHS (baz) is either a FlodymArray, a numpy array of correct shape, or a scalar.
         If it is a numpy array, a copy is used to avoid modifying the original array.
@@ -721,8 +735,8 @@ class FlodymArray(PydanticBaseModel):
             self.values[slice_obj.ids] = copy(item)
         self._is_set = True
 
-    def _sub_array_handler(self, definition: dict[str, Any] | Hashable) -> "SubArrayHandler":
-        return SubArrayHandler(self, definition)
+    def _sub_array_handler(self, definition: dict[str, Any] | Hashable) -> "_SubArrayHandler":
+        return _SubArrayHandler(self, definition)
 
     def to_df(
         self, index: bool = True, dim_to_columns: str | None = None, sparse: bool = False
@@ -906,7 +920,7 @@ class FlodymArray(PydanticBaseModel):
             )
 
 
-class SubArrayHandler:
+class _SubArrayHandler:
     """This class handles subsets of the 'values' numpy array of a FlodymArray object, created by slicing along one or
     several dimensions. It specifies the behavior of `foo[definition] = bar` and `foo = bar[definition]`, where `foo` and `bar`
     are FlodymArray objects. This is done via the `__getitem__` and `__setitem__` methods of the FlodymArray class.
@@ -916,31 +930,9 @@ class SubArrayHandler:
     - a new FlodymArray object (via the `to_flodym_array()` function), or
     - a pointer to a subset of the values array of the parent FlodymArray object, via the `values_pointer` attribute.
 
-    There are several possible syntaxes for the definition of the subset:
-
-    - An ellipsis slice `...` can be used to address all the values of the original FlodymArray object
-
-      *Example:* `foo[...]` addresses all values of the FlodymArray object `foo`.
-    - A dictionary can be used to define a subset along one or several dimensions.
-      The dictionary has the form `{'dim_letter': 'item_name'}`.
-
-      *Example:* `foo[{'e': 'C'}]` addresses all values where the element is carbon,
-
-      Instead of a single 'item_name', a list of 'item_names' can be passed.
-
-      *Example:* `foo[{'e': 'C', 'r': ['EUR', 'USA']}]` addresses all values where the element is carbon and the region is
-      Europe or the USA.
-    - Instead of a dictionary, an item name can be passed directly. In this case, the dimension is inferred from the
-      item name.
-      Throws an error if the item name is not unique, i.e. occurs in more than one dimension.
-
-      *Example:* `foo['C']` addresses all values where the element is carbon
-
-      Several comma-separated item names can be passed, which appear in `__getitem__` and `__setitem__` methods as a tuple.
-      Those can either be in the same dimension or in different dimensions.
-
-      *Example:* `foo['C', 'EUR', 'USA']` addresses all values where the element is carbon and the region is Europe or the
-      USA.
+    The allowed syntaxes for the definition of the subset are described in the docstring of
+    :py:class:`FlodymArray`. Several comma-separated item names appear in `__getitem__` and
+    `__setitem__` as a tuple.
 
     Note that does not inherit from FlodymArray, so it is not a FlodymArray object itself.
     However, one can use it to create a FlodymArray object with the `to_flodym_array()` method.
@@ -1168,7 +1160,7 @@ class Flow(_PrescribableArray):
     """Process to which the flow goes."""
     _named_after_processes: bool = False
     """Whether the name was generated from the connected processes (see
-    :py:attr:`flodym.config.Config.flow_naming`), and is thus updated by
+    :py:attr:`flodym.Config.flow_naming`), and is thus updated by
     :py:meth:`flodym.MFASystem.relink`."""
 
     @classmethod

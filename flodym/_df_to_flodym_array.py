@@ -54,17 +54,17 @@ class DataFrameToFlodymDataConverter:
         self.allow_extra_values = allow_extra_values
         self.strip_whitespace = strip_whitespace
         try:
-            self.target_values = self.get_target_values()
+            self.target_values = self._get_target_values()
         except Exception as e:  # noqa: BLE001 - re-raised below with added context
             # add error context to all errors to ease debugging
-            raise type(e)(f"{self.error_context} {e!s}").with_traceback(sys.exc_info()[2])
+            raise type(e)(f"{self._error_context} {e!s}").with_traceback(sys.exc_info()[2])
 
     @property
-    def error_context(self) -> str:
+    def _error_context(self) -> str:
         """Prefix for error messages, naming the FlodymArray whose values are set."""
         return f"While setting values of {self.flodym_array.__class__.__name__} '{self.flodym_array.name}' from DataFrame:"
 
-    def get_target_values(self) -> np.ndarray:
+    def _get_target_values(self) -> np.ndarray:
         """Determine the DataFrame format and convert it to an array of the FlodymArray's shape.
 
         Returns:
@@ -315,7 +315,7 @@ class DataFrameToFlodymDataConverter:
             if len(self.df) != self.flodym_array.size:
                 # print warning first, as compiling expected index tuples may take long
                 logger.warning(
-                    f"{self.error_context} Detected missing values in the data, but "
+                    f"{self._error_context} Detected missing values in the data, but "
                     f"allow_missing_values is set to False. Expected {self.flodym_array.size} "
                     f"rows, but only got {len(self.df)}. Computing missing values...."
                 )

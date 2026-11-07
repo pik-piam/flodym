@@ -256,3 +256,12 @@ def test_data_reader_is_abstract():
 
     with pytest.raises(TypeError):
         DataReader()  # ty: ignore[call-non-callable]
+
+
+def test_parameter_filenames_is_deprecated():
+    reader = CSVParameterReader(csv_parameter_files)
+    with pytest.warns(DeprecationWarning, match="parameter_files"):
+        assert reader.parameter_filenames is reader.parameter_files
+    with pytest.warns(DeprecationWarning, match="parameter_files"):
+        reader.parameter_filenames = {}
+    assert reader.parameter_files == {}

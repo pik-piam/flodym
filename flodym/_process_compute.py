@@ -9,7 +9,7 @@ The computation is split into these parts:
   process can be computed, combines the two sides (and the stock, if any), and applies the
   dimension splitters. Processes with a stock are computed by the stock
   (``Stock._compute_process``), using the methods of :py:class:`ProcessComputation`.
-- :py:class:`_Snapshot` stores the arrays a computation may change, so that they are restored
+- :py:class:`Snapshot` stores the arrays a computation may change, so that they are restored
   if the computation fails.
 - :py:func:`compute_process` runs one computation with the checks before and after it, and
   :py:func:`compute_processes` computes as many processes as possible.
@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Literal, Optional
 import numpy as np
 
 from ._checks import config_hint, max_abs, report_balance_failures
-from .config import ErrorBehavior, config, handle_error
+from ._config import ErrorBehavior, config, handle_error
 from .dimensions import DimensionSet
 
 if TYPE_CHECKING:
@@ -506,7 +506,7 @@ class ProcessComputation:
 
     # Checks after the computation ---------------------------------------------------------------
 
-    def check_result(self, was_overdetermined: bool, snapshot: "_Snapshot") -> None:
+    def check_result(self, was_overdetermined: bool, snapshot: "Snapshot") -> None:
         """Checks after a successful computation."""
         process = self.process
         if not process.is_computed:
@@ -531,7 +531,7 @@ class ProcessComputation:
         if was_overdetermined or config.checks.mass_balance_after_compute:
             check_process_mass_balance(process, overdetermined=was_overdetermined)
 
-    def _check_given_stock_arrays_kept(self, snapshot: "_Snapshot") -> None:
+    def _check_given_stock_arrays_kept(self, snapshot: "Snapshot") -> None:
         """Check that stock arrays which were set before the computation kept their values.
         The stock computation overwrites them if the process is overdetermined."""
         stock = self.process.stock
@@ -597,11 +597,11 @@ def is_overdetermined(process: "Process") -> bool:
         # flows, shares and stock arrays, and the stock model
         n_unknowns = n_flows + 3
         n_equations = 2 + n_given + stock._n_equations
-        n_equations += sum(a.is_set for a in _stock_arrays(stock))
+        n_equations += sum(a.is_set for a in stock_arrays(stock))
     return n_equations > n_unknowns
 
 
-def _stock_arrays(stock: "Stock") -> list["FlodymArray"]:
+def stock_arrays(stock: "Stock") -> list["FlodymArray"]:
     """Inflow, outflow, stock and, if present, inflow by cohort of a stock."""
     arrays = [stock.inflow, stock.outflow, stock.stock]
     inflow_by_cohort = getattr(stock, "inflow_by_cohort", None)
@@ -610,7 +610,7 @@ def _stock_arrays(stock: "Stock") -> list["FlodymArray"]:
     return arrays
 
 
-class _Snapshot:
+class Snapshot:
     """Values and ``is_set`` flags of all arrays which a computation of a process may change:
     its in- and outflows and the arrays of its stock. Used to restore them if the computation
     fails."""
@@ -620,10 +620,10 @@ class _Snapshot:
     def __init__(self, process: "Process") -> None:
         stock = process.stock
         self.stock = stock
-        stock_arrays: list[FlodymArray] = [] if stock is None else _stock_arrays(stock)
+        arrays_of_stock: list[FlodymArray] = [] if stock is None else stock_arrays(stock)
         flows = list(process.inflows.values()) + list(process.outflows.values())
         self.arrays: list[tuple[FlodymArray, np.ndarray, bool]] = [
-            (a, a.values.copy(), a.is_set) for a in flows + stock_arrays
+            (a, a.values.copy(), a.is_set) for a in flows + arrays_of_stock
         ]
         """Arrays with their values and ``is_set`` flags."""
         self.given_stock_arrays: list[tuple[FlodymArray, np.ndarray]] = [
@@ -681,7 +681,7 @@ def compute_process(
         p for p in process._neighbors() if p.id != 0 and p is not process and not p.is_computed
     ]
     was_overdetermined = is_overdetermined(process)
-    snapshot = _Snapshot(process)
+    snapshot = Snapshot(process)
     computation = ProcessComputation(process)
     try:
         computation.run()

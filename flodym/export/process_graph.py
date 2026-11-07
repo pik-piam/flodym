@@ -27,7 +27,7 @@ from ..flodym_arrays import Flow
 from ..mfa_system import MFASystem
 from ..processes import Process
 from ..stocks import Stock
-from .helper import CustomNameDisplayer
+from ._helper import CustomNameDisplayer
 
 if TYPE_CHECKING:
     import graphviz
@@ -71,7 +71,7 @@ class ProcessGraphPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
     Nodes not in this dictionary use ``process_color`` or ``stock_color``, respectively."""
 
     @model_validator(mode="after")
-    def check_consistency_with_mfa(self) -> Self:
+    def _check_consistency_with_mfa(self) -> Self:
         """Check that all excluded processes, excluded flows and colored nodes exist in the MFA."""
         for process in self.exclude_processes:
             if process not in self.mfa.processes:

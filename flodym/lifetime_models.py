@@ -16,14 +16,14 @@ from typing_extensions import Self
 
 from .dimensions import Dimension, DimensionSet
 from .flodym_arrays import FlodymArray
-from .gauss_lobatto import gl_nodes, gl_weights
+from ._gauss_lobatto import gl_nodes, gl_weights
 
 LifetimeArrayType: TypeAlias = FlodymArray | np.ndarray | SupportsFloat
 """Types accepted for lifetime model parameters: a FlodymArray with a subset of the lifetime model
 dimensions, a numpy array broadcastable to the lifetime model shape, or a number."""
 
 
-class UnevenTimeDim(PydanticBaseModel):
+class _UnevenTimeDim(PydanticBaseModel):
     """Time dimension with possibly uneven spacing, where each item is the center of a time step.
 
     The bounds of the time steps lie halfway between neighboring items. The outer bounds are
@@ -37,7 +37,7 @@ class UnevenTimeDim(PydanticBaseModel):
     def bounds(self) -> np.ndarray:
         """Bounds of the time steps, with one more entry than the time dimension."""
         if self._bounds is None:
-            self.compute_t_bounds()
+            self._compute_t_bounds()
         return self._bounds
 
     @property
@@ -45,7 +45,7 @@ class UnevenTimeDim(PydanticBaseModel):
         """Returns the length of the time intervals, i.e. the difference between the bounds."""
         return np.diff(self.bounds)
 
-    def compute_t_bounds(self) -> None:
+    def _compute_t_bounds(self) -> None:
         """Computes the bounds of the time steps from the items of the time dimension."""
         middle = (np.array(self.dim.items[:-1]) + np.array(self.dim.items[1:])) / 2.0
         self._bounds = np.concatenate(
@@ -121,7 +121,7 @@ class LifetimeModel(PydanticBaseModel):
     _cumulative_survival: np.ndarray | None = PrivateAttr(default=None)
     _outflow_pmf: np.ndarray | None = PrivateAttr(default=None)
     _conditional_survival: np.ndarray | None = PrivateAttr(default=None)
-    _t: UnevenTimeDim | None = PrivateAttr(default=None)
+    _t: _UnevenTimeDim | None = PrivateAttr(default=None)
     _quad_points: list[float] | None = PrivateAttr(default=None)
     """Intra-time step quadrature points for numerical integration of the cumulative survival."""
     _quad_weights: list[float] | None = PrivateAttr(default=None)
@@ -139,7 +139,7 @@ class LifetimeModel(PydanticBaseModel):
                 f"Lifetime model uses time_letter '{self.time_letter}', but first dimension is {self.dims.letters[0]}. "
                 f"If the time dimension uses a different letter, set time_letter explicitly."
             )
-        self._t = UnevenTimeDim(dim=self.dims[self.time_letter])
+        self._t = _UnevenTimeDim(dim=self.dims[self.time_letter])
         return self
 
     @model_validator(mode="after")

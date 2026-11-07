@@ -9,7 +9,7 @@ def flodym_array_stack(
 ) -> FlodymArray:
     """Stack a list of FlodymArray objects using a new dimension.
 
-    Like numpy.stack, but for `FlodymArray`s. New dimension is added at the end.
+    Like numpy.stack, but for `FlodymArray` objects. New dimension is added at the end.
 
     Args:
         flodym_arrays (list[FlodymArray]): List of FlodymArray objects to stack. Must have the same dimensions and shape.

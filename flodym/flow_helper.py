@@ -5,7 +5,7 @@ from collections.abc import Callable, Collection
 from typing import Literal, overload
 
 from ._attribute_dict import AttributeDict
-from .config import config
+from ._config import config
 from .dimensions import DimensionSet
 from .flodym_arrays import Flow
 from .mfa_definition import FlowDefinition
@@ -44,7 +44,7 @@ def make_empty_flows(
     flows; the parameters are linked by :py:meth:`flodym.MFASystem.link_parameters`.
 
     The names of flows without ``name_override`` are generated from the processes they connect,
-    using the function given in the global config option :py:attr:`flodym.config.Config.flow_naming`
+    using the function given in the global config option :py:attr:`flodym.Config.flow_naming`
     (default: :py:func:`flodym.flow_naming.process_names_with_arrow`). It can be changed, e.g. by
     ``flodym.config.flow_naming = flodym.flow_naming.process_ids``, or temporarily by
     ``with flodym.config.override(flow_naming=...):``.
@@ -57,7 +57,7 @@ def make_empty_flows(
         processes: Dictionary of processes, with process names as keys.
         flow_definitions: List of flow definitions.
         dims: DimensionSet object containing all dimensions.
-        naming: Deprecated, use the config option :py:attr:`flodym.config.Config.flow_naming`
+        naming: Deprecated, use the config option :py:attr:`flodym.Config.flow_naming`
             instead. If given, it is used instead of the config option.
         as_attribute_dict: If True, return an :py:class:`flodym.AttributeDict`, whose entries
             can also be accessed as attributes. Default is False, returning a plain dict.
@@ -93,7 +93,7 @@ def make_empty_flows(
             if name in flows:
                 raise ValueError(f"Flow name '{name}' given as name_override is not unique.")
         else:
-            name = make_unique_name(naming(from_process, to_process), flows)
+            name = _make_unique_name(naming(from_process, to_process), flows)
         dim_subset = dims.get_subset(flow_definition.dim_letters)
         flow = Flow(from_process=from_process, to_process=to_process, name=name, dims=dim_subset)
         flow._named_after_processes = flow_definition.name_override is None
@@ -104,7 +104,7 @@ def make_empty_flows(
     return flows
 
 
-def make_unique_name(name: str, used_names: Collection[str]) -> str:
+def _make_unique_name(name: str, used_names: Collection[str]) -> str:
     """Append a numeric suffix ``__2``, ``__3``, ... to the name if it is already used.
 
     In this case, a warning is logged.

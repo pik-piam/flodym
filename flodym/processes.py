@@ -2,7 +2,7 @@
 :py:func:`flodym.make_processes`."""
 
 from collections.abc import Iterator
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Literal, Optional, Union
 
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import PrivateAttr, model_validator
@@ -19,7 +19,7 @@ from ._process_compute import (
     compute_processes,
     is_overdetermined,
 )
-from .config import ErrorBehavior, config
+from ._config import ErrorBehavior, config
 from .mfa_definition import ProcessDefinition
 
 if TYPE_CHECKING:
@@ -62,7 +62,7 @@ class Process(PydanticBaseModel):
     )
 
     @model_validator(mode="after")
-    def check_id0(self) -> Self:
+    def _check_id0(self) -> Self:
         """Ensure that the process with ID 0 is named 'sysenv', and vice versa."""
         if (self.id == 0) != (self.name == "sysenv"):
             raise ValueError(
@@ -198,7 +198,7 @@ class Process(PydanticBaseModel):
     @property
     def tolerance(self) -> float:
         """Absolute tolerance for the mass balance check of the process, see
-        :py:attr:`flodym.config.Config.relative_tolerance`."""
+        :py:attr:`flodym.Config.relative_tolerance`."""
         return config.get_tolerance(self._absolute_float_precision)
 
     def check_mass_balance(
@@ -310,7 +310,7 @@ class Process(PydanticBaseModel):
         self._remove_share("out", flow)
 
     def set_dimension_splitter(
-        self, direction: Direction, splitter: Optional["FlodymArray"]
+        self, direction: Literal["forward", "backward"], splitter: Optional["FlodymArray"]
     ) -> None:
         """Set a dimension splitter of the process, or remove it by passing None. The array is
         stored by reference, so later changes of its values are taken into account.

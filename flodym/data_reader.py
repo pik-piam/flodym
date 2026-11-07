@@ -1,5 +1,6 @@
 """Home to some data readers."""
 
+import warnings
 from abc import ABC, abstractmethod
 from os import PathLike
 from typing import Any
@@ -171,10 +172,31 @@ class CSVParameterReader(ParameterReader):
         allow_extra_values: bool = False,
         **read_csv_kwargs: Any,
     ) -> None:
-        self.parameter_filenames = parameter_files
+        self.parameter_files = parameter_files
         self.allow_missing_values = allow_missing_values
         self.allow_extra_values = allow_extra_values
         self.read_csv_kwargs = read_csv_kwargs
+
+    @property
+    def parameter_filenames(self) -> dict[str, str | PathLike[str]]:
+        """Deprecated. Use :py:attr:`parameter_files` instead."""
+        warnings.warn(
+            "parameter_filenames is deprecated since v2.0.0. It will be removed in v3.0.0. "
+            "Use parameter_files instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.parameter_files
+
+    @parameter_filenames.setter
+    def parameter_filenames(self, value: dict[str, str | PathLike[str]]) -> None:
+        warnings.warn(
+            "parameter_filenames is deprecated since v2.0.0. It will be removed in v3.0.0. "
+            "Use parameter_files instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.parameter_files = value
 
     def read_parameter_values(self, parameter_name: str, dims: DimensionSet) -> Parameter:
         """Read the values of a parameter from the CSV file given for the parameter name.
@@ -182,9 +204,9 @@ class CSVParameterReader(ParameterReader):
         Raises:
             ValueError: If no parameter files were specified.
         """
-        if not self.parameter_filenames:
+        if not self.parameter_files:
             raise ValueError("No parameter files specified.")
-        datasets_path = self.parameter_filenames[parameter_name]
+        datasets_path = self.parameter_files[parameter_name]
         data = pd.read_csv(datasets_path, **self.read_csv_kwargs)
         return Parameter.from_df(
             dims=dims,

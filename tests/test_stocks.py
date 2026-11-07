@@ -23,6 +23,7 @@ from flodym import (
     WeibullLifetime,
     WeibullMeanStdLifetime,
     make_empty_stocks,
+    make_processes,
 )
 
 dim_list = [
@@ -1040,3 +1041,24 @@ def test_nurture_keeps_lifetime_parameters():
     # recomputing, e.g. for a second scenario, starts from the same parameters
     lt.reset_cached_arrays()
     np.testing.assert_array_equal(lt.cumulative_survival, first)
+
+
+def test_process_id_and_to_stock_type():
+    time_dims = DimensionSet(dim_list=[dims["t"]])
+    processes = make_processes(["sysenv", "a"])
+    stock = SimpleFlowDrivenStock(
+        dims=time_dims,
+        inflow=StockArray(dims=time_dims, values=np.ones(time_dims.shape)),
+        outflow=StockArray(dims=time_dims, values=np.zeros(time_dims.shape)),
+        process=processes["a"],
+        name="s",
+    )
+    assert stock.process_id == processes["a"].id
+
+    dsm = stock.to_stock_type(InflowDrivenDSM, lifetime_model=FixedLifetime(dims=time_dims, mean=3))
+    assert isinstance(dsm, InflowDrivenDSM)
+    assert dsm.name == "s"
+    assert dsm.process is processes["a"]
+    assert np.array_equal(dsm.inflow.values, stock.inflow.values)
+    dsm.compute()
+    assert_almost_equal(dsm.stock.values[:5], [1.0, 2.0, 3.0, 3.0, 3.0])

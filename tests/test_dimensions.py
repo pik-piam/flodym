@@ -621,3 +621,12 @@ def test_from_np_with_stringarray():
     assert dim.items == ["a", "b", "c"]
     assert dim.name == "Region"
     assert dim.letter == "r"
+
+
+def test_extend_is_alias_of_expand_by():
+    time = Dimension(name="time", letter="t", items=[2000, 2001])
+    region = Dimension(name="region", letter="r", items=["EU", "US"])
+    dims = DimensionSet(dim_list=[time])
+    assert dims.extend([region]).letters == dims.expand_by([region]).letters == ("t", "r")
+    dims.extend([region], inplace=True)
+    assert dims.letters == ("t", "r")

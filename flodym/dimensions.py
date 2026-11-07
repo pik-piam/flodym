@@ -42,7 +42,7 @@ class Dimension(PydanticBaseModel):
     """
 
     @model_validator(mode="after")
-    def items_have_datatype(self) -> Dimension:
+    def _items_have_datatype(self) -> Dimension:
         """If a datatype is specified, check that all items have this datatype."""
         if self.dtype is not None and any(not isinstance(i, self.dtype) for i in self.items):
             raise ValueError("All items must have the same datatype as specified in dtype.")
@@ -178,7 +178,7 @@ class DimensionSet(PydanticBaseModel):
     """A list of Dimension objects defining the set"""
 
     @model_validator(mode="after")
-    def no_repeated_dimensions(self) -> DimensionSet:
+    def _no_repeated_dimensions(self) -> DimensionSet:
         """Check that all dimensions have unique letters."""
         letters = self.letters
         if len(letters) != len(set(letters)):
@@ -186,7 +186,7 @@ class DimensionSet(PydanticBaseModel):
         return self
 
     @model_validator(mode="after")
-    def copy_dim_list(self) -> DimensionSet:
+    def _copy_dim_list(self) -> DimensionSet:
         """Ensure each DimensionSet has its own copy of the dim_list to avoid inplace operations
         affecting other DimensionSets."""
         self.dim_list = copy(self.dim_list)
@@ -521,7 +521,7 @@ class DimensionSet(PydanticBaseModel):
             dim_list[self.index(key)] = new_dim
             return DimensionSet(dim_list=dim_list)
 
-    def prepare_other(self, other: DimensionSet | Dimension) -> DimensionSet:
+    def _prepare_other(self, other: DimensionSet | Dimension) -> DimensionSet:
         """Check that the other object is a DimensionSet or Dimension, and convert if necessary.
 
         Raises:
@@ -543,7 +543,7 @@ class DimensionSet(PydanticBaseModel):
         Returns:
             DimensionSet: The intersection of the two DimensionSets
         """
-        other = self.prepare_other(other)
+        other = self._prepare_other(other)
         intersection_letters = tuple(letter for letter in self.letters if letter in other.letters)
         return self.get_subset(intersection_letters)
 
@@ -560,7 +560,7 @@ class DimensionSet(PydanticBaseModel):
         Returns:
             DimensionSet: The union of the two DimensionSets
         """
-        other = self.prepare_other(other)
+        other = self._prepare_other(other)
         added_dims = [dim for dim in other.dim_list if dim.letter not in self.letters]
         return self.expand_by(added_dims)
 
@@ -587,7 +587,7 @@ class DimensionSet(PydanticBaseModel):
         Returns:
             DimensionSet: The difference of the two DimensionSets
         """
-        other = self.prepare_other(other)
+        other = self._prepare_other(other)
         difference_letters = tuple(letter for letter in self.letters if letter not in other.letters)
         return self.get_subset(difference_letters)
 

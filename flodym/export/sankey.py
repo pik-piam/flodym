@@ -10,7 +10,7 @@ from typing_extensions import Self
 from ..flodym_arrays import Flow
 from ..mfa_system import MFASystem
 from ..processes import Process
-from .helper import CustomNameDisplayer
+from ._helper import CustomNameDisplayer
 
 
 class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
@@ -46,7 +46,7 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
     """flows that won't show up in the plot"""
 
     @model_validator(mode="after")
-    def check_dims(self) -> Self:
+    def _check_dims(self) -> Self:
         """Check that all dimensions in ``slice_dict`` are in the MFA system."""
         for dim_letter in self.slice_dict:
             if dim_letter not in self.mfa.dims.letters:
@@ -54,7 +54,7 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
         return self
 
     @model_validator(mode="after")
-    def check_excluded(self) -> Self:
+    def _check_excluded(self) -> Self:
         """Check that all excluded processes and flows exist in the MFA system."""
         for p in self.exclude_processes:
             if p not in self.mfa.processes:
@@ -65,7 +65,7 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
         return self
 
     @model_validator(mode="after")
-    def check_flow_colors(self) -> Self:
+    def _check_flow_colors(self) -> Self:
         """Validate ``flow_color_dict`` and fill in the default color for missing flows."""
         for f in self.shown_flows.values():
             if "default" not in self.flow_color_dict:
@@ -81,7 +81,7 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
         return self
 
     @model_validator(mode="after")
-    def check_node_colors(self) -> Self:
+    def _check_node_colors(self) -> Self:
         """Validate ``node_color_dict`` and fill in the default color for missing processes."""
         for p in self.shown_processes:
             if "default" not in self.node_color_dict:
@@ -105,7 +105,7 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
         return [p for p in self.mfa.processes.values() if p.name not in self.exclude_processes]
 
     @property
-    def excluded_process_ids(self) -> list[int]:
+    def _excluded_process_ids(self) -> list[int]:
         """IDs of the excluded processes."""
         return [p.id for p in self.mfa.processes.values() if p.name in self.exclude_processes]
 
@@ -117,12 +117,12 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
     def _flow_is_shown(self, f: Flow) -> bool:
         return not (
             (f.name in self.exclude_flows)
-            or (f.from_process_id in self.excluded_process_ids)
-            or (f.to_process_id in self.excluded_process_ids)
+            or (f.from_process_id in self._excluded_process_ids)
+            or (f.to_process_id in self._excluded_process_ids)
         )
 
     @property
-    def ids_in_sankey(self) -> dict[int, int]:
+    def _ids_in_sankey(self) -> dict[int, int]:
         """Mapping from process IDs to node indices in the Sankey diagram."""
         return {p.id: i for i, p in enumerate(self.shown_processes)}
 
@@ -137,14 +137,14 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
         return self._get_fig(links, nodes)
 
     def _get_links_dict(self) -> dict[str, list[Any]]:
-        links = DictOfLists(list_names=["source", "target", "value", "label", "color"])
+        links = _DictOfLists(list_names=["source", "target", "value", "label", "color"])
         for f in self.shown_flows.values():
             self._append_flow(f, links)
         return links.dict
 
-    def _append_flow(self, f: Flow, links: "DictOfLists") -> None:
-        source = self.ids_in_sankey[f.from_process.id]
-        target = self.ids_in_sankey[f.to_process.id]
+    def _append_flow(self, f: Flow, links: "_DictOfLists") -> None:
+        source = self._ids_in_sankey[f.from_process.id]
+        target = self._ids_in_sankey[f.to_process.id]
         label = self.display_name(f.name)
 
         slice_dict = {k: v for k, v in self.slice_dict.items() if k in f.dims.letters}
@@ -210,7 +210,7 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
             )
 
 
-class DictOfLists:
+class _DictOfLists:
     """Dictionary of lists, to which values can be appended for several keys at once."""
 
     def __init__(self, list_names: list[str]) -> None:

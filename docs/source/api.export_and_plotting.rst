@@ -23,3 +23,19 @@ Export and plotting classes and functions
 .. autofunction:: flodym.export.export_mfa_to_pickle
 
 .. autofunction:: flodym.export.convert_to_dict
+
+Base classes
+^^^^^^^^^^^^
+
+These appear in type hints and as base classes of the plotters above. They are not meant to be
+used directly.
+
+.. py:class:: flodym.export.ArrayPlotter
+
+   Base class of :py:class:`flodym.export.PyplotArrayPlotter` and
+   :py:class:`flodym.export.PlotlyArrayPlotter`.
+
+.. py:class:: flodym.export.ProcessGraphPlotter
+
+   Base class of :py:class:`flodym.export.PlotlyProcessGraphPlotter` and
+   :py:class:`flodym.export.GraphvizProcessGraphPlotter`.

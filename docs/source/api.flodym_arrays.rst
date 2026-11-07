@@ -13,11 +13,11 @@ FlodymArrays
 .. autopydantic_model:: flodym::Parameter
    :inherited-members: BaseModel
 
-.. autofunction:: flodym.flow_naming.process_names_with_arrow
+.. autofunction:: flodym.process_names_with_arrow
 
-.. autofunction:: flodym.flow_naming.process_names_no_spaces
+.. autofunction:: flodym.process_names_no_spaces
 
-.. autofunction:: flodym.flow_naming.process_ids
+.. autofunction:: flodym.process_ids
 
 .. autofunction:: flodym.make_empty_flows
 

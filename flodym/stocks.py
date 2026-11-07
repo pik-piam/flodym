@@ -16,10 +16,10 @@ from typing_extensions import Self
 
 from ._checks import balance_failure, config_hint, report_balance_failures
 from ._process_compute import UnderdeterminedError
-from .config import ErrorBehavior, config, handle_error
+from ._config import ErrorBehavior, config, handle_error
 from .dimensions import Dimension, DimensionSet
 from .flodym_arrays import FlodymArray, StockArray
-from .lifetime_models import LifetimeModel, UnevenTimeDim
+from .lifetime_models import LifetimeModel, _UnevenTimeDim
 from .processes import Process
 
 if TYPE_CHECKING:
@@ -92,14 +92,14 @@ class Stock(PydanticBaseModel):
     """Process the stock is associated with, if any. Needed for example for the mass balance."""
     time_letter: str = "t"
     """Letter of the time dimension in the dimensions set, to make sure it's the first one."""
-    _t: UnevenTimeDim | None = None
+    _t: _UnevenTimeDim | None = None
     _in_compute: bool = False
     _n_equations: ClassVar[int] = 1
     """Number of equations relating inflow, outflow and stock. Used to detect overdetermined
     processes in :py:attr:`flodym.Process.is_overdetermined`."""
 
     @model_validator(mode="after")
-    def validate_stock_arrays(self) -> Self:
+    def _validate_stock_arrays(self) -> Self:
         """Create stock, inflow and outflow arrays if not given, and check the dimensions of
         given ones."""
         if self.stock is None:
@@ -123,7 +123,7 @@ class Stock(PydanticBaseModel):
         return self
 
     @model_validator(mode="after")
-    def validate_time_first_dim(self) -> Self:
+    def _validate_time_first_dim(self) -> Self:
         """Check that the time dimension is the first dimension."""
         if self.dims.letters[0] != self.time_letter:
             raise ValueError(
@@ -132,10 +132,10 @@ class Stock(PydanticBaseModel):
         return self
 
     @model_validator(mode="after")
-    def init_t(self) -> Self:
+    def _init_t(self) -> Self:
         """Initialize the time interval bounds used to convert between annual and whole-period
         flows."""
-        self._t = UnevenTimeDim(dim=self.dims[self.time_letter])
+        self._t = _UnevenTimeDim(dim=self.dims[self.time_letter])
         return self
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
@@ -257,7 +257,7 @@ class Stock(PydanticBaseModel):
     @property
     def tolerance(self) -> float:
         """Absolute tolerance for the mass balance check of the stock, see
-        :py:attr:`flodym.config.Config.relative_tolerance`."""
+        :py:attr:`flodym.Config.relative_tolerance`."""
         return config.get_tolerance(self._absolute_float_precision)
 
     def check_mass_balance(
@@ -466,14 +466,14 @@ class DynamicStockModel(Stock):
     _n_equations: ClassVar[int] = 2
 
     @model_validator(mode="after")
-    def init_cohort_arrays(self) -> Self:
+    def _init_cohort_arrays(self) -> Self:
         """Initialize the stock and outflow by cohort with zeros."""
         self._stock_by_cohort = np.zeros(self._shape_cohort)
         self._outflow_by_cohort = np.zeros(self._shape_cohort)
         return self
 
     @model_validator(mode="after")
-    def init_inflow_by_cohort(self) -> Self:
+    def _init_inflow_by_cohort(self) -> Self:
         """Create ``inflow_by_cohort`` if not given and ``cohort_dim`` is given, and check the
         dimensions of a given one."""
         if self.inflow_by_cohort is None:
@@ -488,7 +488,7 @@ class DynamicStockModel(Stock):
         return self
 
     @model_validator(mode="after")
-    def init_lifetime_model(self) -> Self:
+    def _init_lifetime_model(self) -> Self:
         """Instantiate the lifetime model if given as a class, and check its dimensions."""
         if isinstance(self.lifetime_model, type):
             if not issubclass(self.lifetime_model, LifetimeModel):
@@ -513,7 +513,7 @@ class DynamicStockModel(Stock):
         if self._dims_cohort is None:
             if self.cohort_dim is None:
                 raise ValueError("Cohort dimension must be provided at DSM initialization")
-            self.validate_cohort_dim()
+            self._validate_cohort_dim()
             t = self.dims[self.time_letter]
             c = self.cohort_dim
             self._dims_cohort = t + c + self.dims.drop(self.time_letter)
@@ -532,14 +532,10 @@ class DynamicStockModel(Stock):
         return tuple(list(self.shape)[1:])
 
     @property
-    def _t_diag_indices(self) -> tuple[np.ndarray | slice, ...]:
-        return np.diag_indices(self._n_t) + (slice(None),) * len(self._shape_no_t)
-
-    @property
     def _initial_year_index(self) -> int:
         return self.dims[self.time_letter].items.index(self._initial_stock_year)
 
-    def validate_cohort_dim(self) -> None:
+    def _validate_cohort_dim(self) -> None:
         """Check that the cohort dimension is consistent with the time dimension and not part of
         the stock dimensions.
 

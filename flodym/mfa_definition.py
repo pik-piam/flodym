@@ -43,7 +43,7 @@ class DimensionDefinition(PydanticBaseModel):
     """Data type of the dimension items, e.g. ``int`` or ``str``."""
 
 
-class DefinitionWithDimLetters(PydanticBaseModel):
+class _DefinitionWithDimLetters(PydanticBaseModel):
     """Base class for any definition that contains dimension letters."""
 
     model_config = ConfigDict(protected_namespaces=())
@@ -52,7 +52,7 @@ class DefinitionWithDimLetters(PydanticBaseModel):
     """Letters of the dimensions that the object is defined on."""
 
     @field_validator("dim_letters", mode="before")
-    def check_dimensions(cls, v: Any) -> Any:
+    def _check_dimensions(cls, v: Any) -> Any:
         """Check that all dimension letters are single-character strings."""
         for letter in v:
             if (not isinstance(letter, str)) or (len(letter) != 1):
@@ -60,7 +60,7 @@ class DefinitionWithDimLetters(PydanticBaseModel):
         return v
 
 
-class FlowDefinition(DefinitionWithDimLetters):
+class FlowDefinition(_DefinitionWithDimLetters):
     """Define the model flows.
 
     **Examples**
@@ -86,7 +86,7 @@ class FlowDefinition(DefinitionWithDimLetters):
     flow by :py:meth:`flodym.MFASystem.set_arrays_from_prescribed`."""
 
 
-class StockDefinition(DefinitionWithDimLetters):
+class StockDefinition(_DefinitionWithDimLetters):
     """Define the model stocks.
 
     The arrays of the stock (stock, inflow, outflow, and inflow by cohort) can be prescribed by
@@ -127,7 +127,7 @@ class StockDefinition(DefinitionWithDimLetters):
     set to. Requires ``cohort_letter``."""
 
     @model_validator(mode="after")
-    def check_prescribed_arrays(self) -> Self:
+    def _check_prescribed_arrays(self) -> Self:
         """Check that ``cohort_letter`` and ``prescribed_inflow_by_cohort`` are only given for
         dynamic stock models, and that at most one of the arrays which determine the computation
         mode of a dynamic stock model is prescribed."""
@@ -152,14 +152,14 @@ class StockDefinition(DefinitionWithDimLetters):
         return self
 
     @model_validator(mode="after")
-    def init_solver(self) -> Self:
+    def _init_solver(self) -> Self:
         """Check that the deprecated ``solver`` is ``"manual"`` or ``"lapack"``."""
         if self.solver not in ["manual", "lapack"]:
             raise ValueError("Solver must be either 'manual' or 'lapack'.")
         return self
 
     @model_validator(mode="after")
-    def check_lifetime_model(self) -> Self:
+    def _check_lifetime_model(self) -> Self:
         """Check that a lifetime model class is given if and only if the stock subclass uses a
         lifetime model."""
         if (
@@ -186,7 +186,7 @@ class StockDefinition(DefinitionWithDimLetters):
         return {name: p for name, p in parameters.items() if p is not None}
 
 
-class ParameterDefinition(DefinitionWithDimLetters):
+class ParameterDefinition(_DefinitionWithDimLetters):
     """Define the model parameters."""
 
     name: str
@@ -251,7 +251,7 @@ class MFADefinition(PydanticBaseModel):
     :py:meth:`flodym.MFASystem.link_parameters`."""
 
     @model_validator(mode="after")
-    def check_dimension_letters(self) -> Self:
+    def _check_dimension_letters(self) -> Self:
         """Check that dimension letters used for flows, stocks and parameters are part of the defined dimensions."""
         defined_dim_letters = [dd.letter for dd in self.dimensions]
         for item in self.flows + self.stocks + self.parameters:
@@ -264,7 +264,7 @@ class MFADefinition(PydanticBaseModel):
         return self
 
     @model_validator(mode="after")
-    def validate_parameter_names(self) -> Self:
+    def _validate_parameter_names(self) -> Self:
         """Check that parameters used by flow, stock and process definitions are defined,
         unless :py:attr:`check_parameter_names` is False."""
         if not self.check_parameter_names:

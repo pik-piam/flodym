@@ -12,7 +12,8 @@ from flodym import (
     StockArray,
     config,
 )
-from flodym.config import ErrorBehavior, handle_error
+from flodym import ErrorBehavior
+from flodym._config import handle_error
 from flodym.example_objects import get_example_mfa
 
 
