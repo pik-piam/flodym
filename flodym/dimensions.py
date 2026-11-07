@@ -26,6 +26,27 @@ class Dimension(PydanticBaseModel):
 
     The list of items can be loaded using a :py:class:`flodym.DataReader` object,
     or set directly, for example if a subset of an existing dimension is formed.
+
+    **Sub-dimensions**
+
+    A dimension can be a finer resolution of another dimension, its ``parent``: Each item is
+    assigned to exactly one item of the parent, given in ``parent_items``. Examples are countries
+    assigned to world regions, or building types split into sub-types. Several levels are
+    possible, as the parent can have a parent itself.
+
+    >>> world_regions = Dimension(name="World region", letter="w", items=["EUR", "USA"])
+    >>> countries = Dimension(
+    ...     name="Country",
+    ...     letter="c",
+    ...     items=["DEU", "FRA", "USA"],
+    ...     parent=world_regions,
+    ...     parent_items=["EUR", "EUR", "USA"],
+    ... )
+
+    Items of the parent can be split into the items of other dimensions with :py:meth:`split`.
+    Arrays defined over related dimensions are aggregated and disaggregated automatically in
+    operations, see :py:meth:`flodym.FlodymArray.aggregate_to` and
+    :py:meth:`flodym.FlodymArray.disaggregate_to`.
     """
 
     name: str = Field(..., min_length=2)
@@ -40,12 +61,52 @@ class Dimension(PydanticBaseModel):
     """If given, a check is performed that all items have this datatype. Recommended for safety,
     especially in ambiguous cases such as calendar years (int or str)
     """
+    parent: Dimension | None = None
+    """Coarser dimension of which this dimension is a finer resolution."""
+    parent_items: list | None = None
+    """For each item, the item of the parent it belongs to. Every parent item must occur at least
+    once. Can be given without ``parent`` when reading the dimension, before the parent is
+    linked by :py:meth:`flodym.DataReader.read_dimensions`."""
+    sub_dims: dict[Any, Dimension] | None = None
+    """Only for dimensions created by :py:meth:`split`: The dimension each split parent item is
+    split into."""
 
     @model_validator(mode="after")
     def _items_have_datatype(self) -> Dimension:
         """If a datatype is specified, check that all items have this datatype."""
         if self.dtype is not None and any(not isinstance(i, self.dtype) for i in self.items):
             raise ValueError("All items must have the same datatype as specified in dtype.")
+        return self
+
+    @model_validator(mode="after")
+    def _check_parent(self) -> Dimension:
+        """Check that the parent items are consistent with the items and the parent."""
+        if self.parent is None:
+            if self.sub_dims is not None:
+                raise ValueError("sub_dims can only be given together with a parent.")
+            return self
+        if self.parent_items is None:
+            raise ValueError(f"Dimension '{self.name}' has a parent, but no parent_items.")
+        if len(self.parent_items) != len(self.items):
+            raise ValueError(
+                f"parent_items of dimension '{self.name}' must have the same length as its items."
+            )
+        if self.letter in [dim.letter for dim in self.ancestors]:
+            raise ValueError(
+                f"Dimension '{self.name}' must not have the same letter as one of its ancestors."
+            )
+        unknown_items = set(self.parent_items) - set(self.parent.items)
+        if unknown_items:
+            raise ValueError(
+                f"parent_items of dimension '{self.name}' are not items of the parent "
+                f"'{self.parent.name}': {sorted(map(str, unknown_items))}"
+            )
+        uncovered_items = set(self.parent.items) - set(self.parent_items)
+        if uncovered_items:
+            raise ValueError(
+                f"Items of parent '{self.parent.name}' are not assigned to any item of dimension "
+                f"'{self.name}': {sorted(map(str, uncovered_items))}"
+            )
         return self
 
     def __add__(self, other: Dimension | DimensionSet) -> DimensionSet:
@@ -71,7 +132,8 @@ class Dimension(PydanticBaseModel):
             list_str = f": {self.items!s}"
         else:
             list_str = f": ['{self.items[0]}', ..., '{self.items[-1]}']"
-        return base + item_base + type_info + list_str
+        parent_info = f"; parent '{self.parent.letter}'" if self.parent is not None else ""
+        return base + item_base + type_info + list_str + parent_info
 
     @classmethod
     def from_df(cls, df: pd.DataFrame, definition: DimensionDefinition) -> Dimension:
@@ -95,16 +157,25 @@ class Dimension(PydanticBaseModel):
         Performs checks on the array and transforms to list of items.
         A leading item equal to the dimension name is treated as header and removed.
 
+        If the definition has a :py:attr:`flodym.DimensionDefinition.parent`, the array must have
+        two columns: the items, and the parent item of each item. The parent items are stored in
+        :py:attr:`parent_items`; the parent is linked by
+        :py:meth:`flodym.DataReader.read_dimensions`.
+
         Args:
-            data: A numpy array where only one dimension exceeds size 1.
+            data: A numpy array where only one dimension exceeds size 1, or a two-column array if
+                the definition has a parent.
             definition: The definition object
 
         Returns:
             The dimension object.
 
         Raises:
-            ValueError: If more than one axis of the array has a size larger than one.
+            ValueError: If more than one axis of the array has a size larger than one, or if the
+                definition has a parent and the array does not have two columns.
         """
+        if definition.parent is not None:
+            return cls._from_np_with_parent_items(data, definition)
         if sum([s > 1 for s in data.shape]) > 1:
             raise ValueError(
                 f"Dimension data for {definition.name} must have only one row or column."
@@ -119,10 +190,204 @@ class Dimension(PydanticBaseModel):
             name=definition.name, letter=definition.letter, items=data, dtype=definition.dtype
         )
 
+    @classmethod
+    def _from_np_with_parent_items(
+        cls, data: np.ndarray, definition: DimensionDefinition
+    ) -> Dimension:
+        """Create a Dimension with unlinked parent items from a two-column numpy array.
+
+        A leading row whose first entry is the dimension name is treated as header and removed.
+
+        Raises:
+            ValueError: If the array does not have two columns.
+        """
+        if data.ndim != 2 or data.shape[1] != 2:
+            raise ValueError(
+                f"Dimension data for {definition.name} must have two columns: the items, and the "
+                f"items of the parent dimension '{definition.parent}' they belong to."
+            )
+        if data[0, 0] == definition.name:
+            data = data[1:]
+        items = [definition.dtype(item) for item in data[:, 0]]
+        parent_items = data[:, 1].tolist()
+        return cls(
+            name=definition.name,
+            letter=definition.letter,
+            items=items,
+            dtype=definition.dtype,
+            parent_items=parent_items,
+        )
+
+    @classmethod
+    def from_mapping(
+        cls,
+        name: str,
+        letter: str,
+        parent: Dimension,
+        mapping: dict[Any, Any],
+        dtype: type | None = None,
+    ) -> Dimension:
+        """Create a sub-dimension of ``parent`` from a mapping of items to parent items.
+
+        Args:
+            name: Name of the new dimension.
+            letter: Letter of the new dimension.
+            parent: The coarser dimension.
+            mapping: The parent item for each item of the new dimension, e.g.
+                ``{"DEU": "EUR", "FRA": "EUR", "USA": "USA"}``. The order of the keys is the
+                order of the items.
+            dtype: Datatype of the items.
+
+        Returns:
+            The new dimension.
+        """
+        return cls(
+            name=name,
+            letter=letter,
+            items=list(mapping.keys()),
+            dtype=dtype,
+            parent=parent,
+            parent_items=list(mapping.values()),
+        )
+
     @property
     def len(self) -> int:
         """The number of items in the dimension."""
         return len(self.items)
+
+    @property
+    def ancestors(self) -> list[Dimension]:
+        """The parent, the parent of the parent, and so on."""
+        ancestors = []
+        dim = self.parent
+        while dim is not None:
+            ancestors.append(dim)
+            dim = dim.parent
+        return ancestors
+
+    def split(
+        self,
+        name: str,
+        letter: str,
+        splitting: dict[Any, Dimension],
+        separator: str = "|",
+    ) -> Dimension:
+        """Create a sub-dimension by splitting some items into the items of other dimensions.
+
+        The name of a split item is the parent item and the sub-item, joined by ``separator``.
+        Items which are not split are kept.
+
+        **Example**
+
+        >>> building_types = Dimension(name="Building type", letter="b", items=["Com", "Res"])
+        >>> residential_types = Dimension(
+        ...     name="Residential type", letter="r", items=["Sin", "Mul"]
+        ... )
+        >>> sub_types = building_types.split(
+        ...     name="Building sub-type", letter="s", splitting={"Res": residential_types}
+        ... )
+        >>> sub_types.items
+        ['Com', 'Res|Sin', 'Res|Mul']
+
+        Args:
+            name: Name of the new dimension.
+            letter: Letter of the new dimension.
+            splitting: Dictionary of the items to split, and the dimension each is split into.
+            separator: String between parent item and sub-item in the new item names. Must not
+                occur in the sub-items.
+
+        Returns:
+            The new dimension, with this dimension as parent.
+
+        Raises:
+            ValueError: If a key of ``splitting`` is not an item, if a sub-item contains the
+                separator, or if the new item names are not unique.
+        """
+        unknown_items = set(splitting) - set(self.items)
+        if unknown_items:
+            raise ValueError(
+                f"Items to split are not items of dimension '{self.name}': "
+                f"{sorted(map(str, unknown_items))}"
+            )
+        items: list = []
+        parent_items: list = []
+        for item in self.items:
+            if item not in splitting:
+                items.append(item)
+                parent_items.append(item)
+                continue
+            for sub_item in splitting[item].items:
+                if separator in str(sub_item):
+                    raise ValueError(
+                        f"Item '{sub_item}' of dimension '{splitting[item].name}' must not "
+                        f"contain the separator '{separator}'."
+                    )
+                items.append(f"{item}{separator}{sub_item}")
+                parent_items.append(item)
+        if len(set(items)) != len(items):
+            raise ValueError(f"Items of the split dimension '{name}' are not unique: {items}")
+        return Dimension(
+            name=name,
+            letter=letter,
+            items=items,
+            dtype=str if self.dtype is str else None,
+            parent=self,
+            parent_items=parent_items,
+            sub_dims=dict(splitting),
+        )
+
+    def is_descendant_of(self, other: Dimension) -> bool:
+        """Check whether ``other`` is the parent, the parent of the parent, etc.
+
+        Dimensions are compared by letter.
+        """
+        return other.letter in [dim.letter for dim in self.ancestors]
+
+    def common_ancestor(self, other: Dimension) -> Dimension | None:
+        """Return the finest dimension that both this and ``other`` are or descend from.
+
+        Dimensions are compared by letter. If one of the two dimensions is an ancestor of the
+        other, it is returned itself.
+
+        Returns:
+            The common ancestor, or None if the dimensions are not related.
+        """
+        if other.letter == self.letter or self.is_descendant_of(other):
+            return other
+        if other.is_descendant_of(self):
+            return self
+        other_lineage_letters = [dim.letter for dim in other.ancestors]
+        for dim in self.ancestors:
+            if dim.letter in other_lineage_letters:
+                return dim
+        return None
+
+    def ancestor_items(self, ancestor: Dimension) -> list:
+        """Return, for each item, the item of an ancestor it belongs to.
+
+        Args:
+            ancestor: The ancestor dimension; it is identified by its letter.
+
+        Returns:
+            The ancestor items, in the order of the items of this dimension.
+
+        Raises:
+            ValueError: If ``ancestor`` is not an ancestor of this dimension, or if it is not
+                linked yet.
+        """
+        if self.parent is None or self.parent_items is None:
+            raise ValueError(f"Dimension '{self.name}' has no linked parent.")
+        current_items = self.parent_items
+        dim = self.parent
+        while dim.letter != ancestor.letter:
+            if dim.parent is None or dim.parent_items is None:
+                raise ValueError(
+                    f"Dimension '{ancestor.name}' is not an ancestor of dimension '{self.name}'."
+                )
+            to_parent = dict(zip(dim.items, dim.parent_items))
+            current_items = [to_parent[item] for item in current_items]
+            dim = dim.parent
+        return current_items
 
     def index(self, item: Any) -> int:
         """Return the index of an item in the dimension.
@@ -143,6 +408,22 @@ class Dimension(PydanticBaseModel):
     def as_dimset(self) -> DimensionSet:
         """Convert the Dimension to a DimensionSet containing only this Dimension."""
         return DimensionSet(dim_list=[self])
+
+    def _indices_in_ancestor(self, ancestor: Dimension) -> np.ndarray:
+        """For each item, the index of the ancestor item it belongs to, in ``ancestor.items``.
+
+        Raises:
+            ValueError: If items of the ancestor in the parent chain are missing in ``ancestor``.
+        """
+        ancestor_items = self.ancestor_items(ancestor)
+        index_of = {item: index for index, item in enumerate(ancestor.items)}
+        missing_items = set(ancestor_items) - set(index_of)
+        if missing_items:
+            raise ValueError(
+                f"Items {sorted(map(str, missing_items))} of the ancestor of '{self.name}' are "
+                f"missing in dimension '{ancestor.name}'."
+            )
+        return np.array([index_of[item] for item in ancestor_items], dtype=int)
 
 
 class DimensionSet(PydanticBaseModel):
