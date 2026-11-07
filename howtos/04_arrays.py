@@ -19,20 +19,20 @@
 # %%
 import numpy as np
 
-from flodym import Dimension, DimensionSet, FlodymArray
+import flodym as fd
 
 # Create a dimension set
-dims = DimensionSet(
+dims = fd.DimensionSet(
     dim_list=[
-        Dimension(name="Region", letter="r", items=["EU", "US", "MEX"]),
-        Dimension(name="Product", letter="p", items=["A", "B"]),
-        Dimension(name="Time", letter="t", items=[2020]),
+        fd.Dimension(name="Region", letter="r", items=["EU", "US", "MEX"]),
+        fd.Dimension(name="Product", letter="p", items=["A", "B"]),
+        fd.Dimension(name="Time", letter="t", items=[2020]),
     ]
 )
 
-flow_a = FlodymArray(dims=dims["t", "p"], values=0.2 * np.ones((1, 2)))
-flow_b = FlodymArray(dims=dims["r", "t"], values=0.1 * np.ones((3, 1)))
-parameter_a = FlodymArray(dims=dims["r", "p"], values=0.5 * np.ones((3, 2)))
+flow_a = fd.FlodymArray(dims=dims["t", "p"], values=0.2 * np.ones((1, 2)))
+flow_b = fd.FlodymArray(dims=dims["r", "t"], values=0.1 * np.ones((3, 1)))
+parameter_a = fd.FlodymArray(dims=dims["r", "p"], values=0.5 * np.ones((3, 2)))
 
 
 # %% [markdown]
@@ -47,7 +47,7 @@ parameter_a = FlodymArray(dims=dims["r", "p"], values=0.5 * np.ones((3, 2)))
 
 
 # %%
-def show_array(arr: FlodymArray):
+def show_array(arr: fd.FlodymArray):
     print(f"  dimensions: {arr.dims.letters}")
     print(f"  shape: {arr.dims.shape}")
     print(f"  name: {arr.name}")
@@ -155,7 +155,7 @@ show_array(flow_a)
 
 # %%
 # define and initialize values with zero
-predefined_flow = FlodymArray(name="predefined", dims=dims["r", "p"])
+predefined_flow = fd.FlodymArray(name="predefined", dims=dims["r", "p"])
 print("predefined_flow:")
 show_array(predefined_flow)
 
@@ -256,7 +256,7 @@ show_array(slice_a4)
 # If we want to access several items along one dimension, that creates a problem, as the dimension can't be dropped, but is changed, as it does not contain all items of the original one anymore. To cope with that, we have to create a new dimension object with a new name and letter, and pass it to the slice, along with the dimension letter we're taking a subset of:
 
 # %%
-regions_na = Dimension(name="RegionsNA", letter="n", items=["US", "MEX"])
+regions_na = fd.Dimension(name="RegionsNA", letter="n", items=["US", "MEX"])
 
 slice_b1 = flow_b[{"r": regions_na}]
 print("slice_a5:")
@@ -307,7 +307,7 @@ show_array(flow_b)
 # In this case, or if the zeros are intended, call `mark_set()`. `mark_unset()` reverts this, but keeps the values.
 
 # %%
-flow_c = FlodymArray(dims=dims["r", "t"])
+flow_c = fd.FlodymArray(dims=dims["r", "t"])
 print("Initialized without values:", flow_c.is_set)
 flow_c.values[0, ...] = 1.0
 print("After direct assignment to values:", flow_c.is_set)
@@ -321,11 +321,9 @@ print("After assignment via flow_c[...]:", flow_c.is_set)
 # functions are not checked.
 
 # %%
-import flodym
-
-with flodym.config.override(error_behaviors={"unset_array_used": "error"}):
+with fd.config.override(error_behaviors={"unset_array_used": "error"}):
     try:
-        2 * FlodymArray(dims=dims["r", "t"], name="unset_flow")
+        2 * fd.FlodymArray(dims=dims["r", "t"], name="unset_flow")
     except ValueError as error:
         print(error)
 

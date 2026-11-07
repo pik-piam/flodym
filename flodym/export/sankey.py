@@ -20,8 +20,8 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
     into several colored links along one dimension via ``flow_color_dict``.
 
     Example:
-        >>> from flodym.export import PlotlySankeyPlotter
-        >>> fig = PlotlySankeyPlotter(mfa=mfa).plot()
+        >>> import flodym.export as fde
+        >>> fig = fde.PlotlySankeyPlotter(mfa=mfa).plot()
         >>> fig.show()  # doctest: +SKIP
     """
 

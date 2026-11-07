@@ -44,8 +44,8 @@ class MFASystem(PydanticBaseModel):
     **Example**
     Define your MFA System:
 
-        >>> from flodym import MFASystem
-        >>> class CustomMFA(MFASystem):
+        >>> import flodym as fd
+        >>> class CustomMFA(fd.MFASystem):
         ...     def compute(self):
         ...         # do some computations on the CustomMFA attributes: stocks and flows
         ...         pass
