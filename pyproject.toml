@@ -79,6 +79,9 @@ ignore = [
     "E741", # ambiguous variable name
     "D105", # docstrings of magic methods
     "D107", # docstrings of __init__, arguments are documented in the class docstring
+    # mutable class defaults: pydantic copies them per instance, but ruff does not recognize
+    # subclasses of FlodymBaseModel as pydantic models
+    "RUF012",
 ]
 
 [tool.ruff.lint.pydocstyle]
