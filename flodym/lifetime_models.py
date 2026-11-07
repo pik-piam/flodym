@@ -57,9 +57,9 @@ class LifetimeModel(PydanticBaseModel):
     of the time period (start), in the middle (middle) or at the end (end).
     """
     n_pts_per_interval: int = 1
-    """Inflow into the stock is in reality quite uniform over time, while survival factors only
-    take into account a single point in time. This can be alleviated here by using numerical integration
-    over each inflow time period with n points. A value of 1 means that the inflow
+    """Inflow into the stock is in reality quite uniform over time, while the cumulative survival
+    only takes into account a single point in time. This can be alleviated here by using numerical
+    integration over each inflow time period with n points. A value of 1 means that the inflow
     is only evaluated once, depending on the inflow_at parameter. This is the default and should be used
     for long life times, e.g. >> 1 year.
     For n_pts > 1, the inflow is evaluated at n points in time within the time period.
@@ -85,11 +85,11 @@ class LifetimeModel(PydanticBaseModel):
     """
     hazard_factor_by_year: LifetimeArrayType | None = None
     """Period effect: multiply the hazard, i.e. the intensity of leaving the stock, in a year by
-    this factor, for all age-cohorts present in that year. The survival rate s in that year
-    becomes s ** factor. A factor of 1 has no effect, 0 means that nothing leaves the stock,
+    this factor, for all age-cohorts present in that year. The conditional survival s in that
+    year becomes s ** factor. A factor of 1 has no effect, 0 means that nothing leaves the stock,
     and values greater than 1 increase the outflow, e.g. through scrappage schemes.
     The effect does not depend on the length of the time step.
-    It has no effect on lifetime models with survival rates of only 0 and 1, like
+    It has no effect on lifetime models with conditional survival of only 0 and 1, like
     :py:class:`FixedLifetime`.
     For Weibull distributions, it is equivalent to ``lt_factor_by_year`` with
     hazard factor = lt_factor ** (-weibull_shape); for other distributions, it is not.
@@ -98,20 +98,20 @@ class LifetimeModel(PydanticBaseModel):
     removal_share_by_year: LifetimeArrayType | None = None
     """Period effect: share of the stock removed in a time step in addition to the regular
     outflow, independent of age, e.g. by a disaster or a phase-out policy (share 1).
-    The survival rate s in that time step becomes s * (1 - share). The share refers to the whole
-    time step, not to a unit of time. Of the age-cohort entering during the time step, only the
-    part entering before the removal is affected, assuming the removal is evenly distributed over
-    the time step and the inflow occurs as given by ``inflow_at`` and ``n_pts_per_interval``.
+    The conditional survival s in that time step becomes s * (1 - share). The share refers to the
+    whole time step, not to a unit of time. Of the age-cohort entering during the time step, only
+    the part entering before the removal is affected, assuming the removal is evenly distributed
+    over the time step and the inflow occurs as given by ``inflow_at`` and ``n_pts_per_interval``.
     Dimensions must be a subset of the lifetime model dimensions.
     """
-    _sf: np.ndarray | None = PrivateAttr(default=None)
-    _pdf: np.ndarray | None = PrivateAttr(default=None)
-    _survival_rate: np.ndarray | None = PrivateAttr(default=None)
+    _cumulative_survival: np.ndarray | None = PrivateAttr(default=None)
+    _outflow_pmf: np.ndarray | None = PrivateAttr(default=None)
+    _conditional_survival: np.ndarray | None = PrivateAttr(default=None)
     _t: UnevenTimeDim | None = PrivateAttr(default=None)
     _quad_points: list[float] | None = PrivateAttr(default=None)
-    """Intra-time step quadrature points for numerical integration of survival factors."""
+    """Intra-time step quadrature points for numerical integration of the cumulative survival."""
     _quad_weights: list[float] | None = PrivateAttr(default=None)
-    """Intra-time step quadrature weights for numerical integration of survival factors."""
+    """Intra-time step quadrature weights for numerical integration of the cumulative survival."""
     _scaled_prms: dict[str, np.ndarray] = PrivateAttr(default={})
 
     _prm_names: ClassVar[list[str]] = []
@@ -202,10 +202,12 @@ class LifetimeModel(PydanticBaseModel):
         """Names of the parameters which are changed by the lifetime factors."""
         return self._prm_names_to_scale
 
-    def _scale_prm(self, prm_name: str, value: np.ndarray, factor: np.ndarray) -> np.ndarray:
+    def _scale_prm(self, value: np.ndarray, factor: np.ndarray) -> np.ndarray:
         """Returns the parameter value for a lifetime extended by factor.
-        Must return a new array. Override for parameters which are not proportional to the
-        lifetime, such as rates.
+        Must return a new array.
+
+        The simple multiplication is overridden for parameters which are not proportional to the
+        lifetime, such as in Leaching.
         """
         return value * factor
 
@@ -214,7 +216,7 @@ class LifetimeModel(PydanticBaseModel):
         for prm_name in self._prm_names:
             value = getattr(self, prm_name)
             if self.lt_factor_by_cohort is not None and prm_name in names_to_scale:
-                value = self._scale_prm(prm_name, value, self.lt_factor_by_cohort)
+                value = self._scale_prm(value, self.lt_factor_by_cohort)
             self._scaled_prms[prm_name] = value
 
     @property
@@ -222,98 +224,133 @@ class LifetimeModel(PydanticBaseModel):
         return self.hazard_factor_by_year is not None or self.removal_share_by_year is not None
 
     @property
-    def sf(self):
-        """Survival factor by year and age-cohort: sf(t,c) is the share of the inflow of cohort c
-        still present at the end of year t. Zero for c > t. Shape (time, cohort, other dims).
+    def cumulative_survival(self) -> np.ndarray:
+        """Cumulative survival by year and age-cohort: cum_surv(t,c) is the share of the inflow of
+        cohort c still present at the end of year t. Zero for c > t.
+        Shape (time, cohort, other dims).
         """
-        if self._sf is None:
+        if self._cumulative_survival is None:
             if self._has_period_effects:
-                self._sf = self._sf_from_survival_rate(self.survival_rate)
+                self._cumulative_survival = self._cumulative_from_conditional_survival(
+                    self.conditional_survival
+                )
             else:
-                self._sf = self._compute_base_sf()
-        return self._sf
+                self._cumulative_survival = self._compute_base_cumulative_survival()
+        return self._cumulative_survival
 
-    def _compute_base_sf(self) -> np.ndarray:
-        """Survival factor of the lifetime distribution, including lifetime factors, but without
-        period effects."""
-        sf = np.zeros(self._shape_cohort)
+    @property
+    def sf(self) -> np.ndarray:
+        """Deprecated. Use :py:attr:`cumulative_survival` instead."""
+        warnings.warn(
+            "sf is deprecated since v2.0.0. It will be removed in v3.0.0. "
+            "Use cumulative_survival instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.cumulative_survival
+
+    def _compute_base_cumulative_survival(self) -> np.ndarray:
+        """Cumulative survival of the lifetime distribution, including lifetime factors, but
+        without period effects."""
+        cum_surv = np.zeros(self._shape_cohort)
         self._check_prms_set()
         self._scale_prms()
         self._quad_points, self._quad_weights = self._get_quad_points_and_weights()
         if self.lt_factor_by_year is not None:
-            self._compute_survival_factor_with_nurture(sf)
+            self._compute_cumulative_survival_with_nurture(cum_surv)
         else:
-            self._compute_survival_factor(sf)
-        return sf
+            self._compute_cumulative_survival(cum_surv)
+        return cum_surv
 
     @property
-    def pdf(self):
-        """Share of the inflow of cohort c leaving the stock in year t: pdf(t,c) =
-        sf(t-1,c) - sf(t,c) for c < t, 1 - sf(t,t) for c = t, and zero for c > t.
-        Shape (time, cohort, other dims).
+    def outflow_pmf(self) -> np.ndarray:
+        """Probability mass function of the outflow time: outflow_pmf(t,c) is the share of the
+        inflow of cohort c leaving the stock during year t. It is a share per time step, i.e. the
+        lifetime density integrated over the time step, not a density.
+        It equals cum_surv(t-1,c) - cum_surv(t,c) for c < t, 1 - cum_surv(t,t) for c = t, and
+        zero for c > t. Shape (time, cohort, other dims).
         """
-        if self._pdf is None:
-            self._pdf = np.zeros(self._shape_cohort)
-            self._compute_outflow_pdf()
-        return self._pdf
+        if self._outflow_pmf is None:
+            self._outflow_pmf = np.zeros(self._shape_cohort)
+            self._compute_outflow_pmf()
+        return self._outflow_pmf
 
     @property
-    def survival_rate(self):
-        """One-step survival rate by year and age-cohort: survival_rate(t,c) is the share of
-        cohort c present at the end of year t-1, or entering the stock during year t, which is
-        still present at the end of year t.
-        It equals sf(t,c) / sf(t-1,c) for c < t, sf(t,t) for c = t, and zero for c > t.
-        Period effects are applied to it, and sf is then computed from it.
+    def pdf(self) -> np.ndarray:
+        """Deprecated. Use :py:attr:`outflow_pmf` instead."""
+        warnings.warn(
+            "pdf is deprecated since v2.0.0. It will be removed in v3.0.0. "
+            "Use outflow_pmf instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.outflow_pmf
+
+    @property
+    def conditional_survival(self) -> np.ndarray:
+        """Conditional one-step survival by year and age-cohort: cond_surv(t,c) is the share of
+        cohort c present at the end of year t-1 which is still present at the end of year t.
+        For the newest cohort (c = t), it is the share of the inflow during year t which is still
+        present at the end of year t.
+        It equals cum_surv(t,c) / cum_surv(t-1,c) for c < t, cum_surv(t,t) for c = t, and zero
+        for c > t. Period effects are applied to it, and the cumulative survival is then computed
+        from it. Shape (time, cohort, other dims).
         """
-        if self._survival_rate is None:
+        if self._conditional_survival is None:
             if self._has_period_effects:
-                survival_rate = self._survival_rate_from_sf(self._compute_base_sf())
-                self._apply_period_effects(survival_rate)
-                self._survival_rate = survival_rate
+                cond_surv = self._conditional_from_cumulative_survival(
+                    self._compute_base_cumulative_survival()
+                )
+                self._apply_period_effects(cond_surv)
+                self._conditional_survival = cond_surv
             else:
-                self._survival_rate = self._survival_rate_from_sf(self.sf)
-        return self._survival_rate
+                self._conditional_survival = self._conditional_from_cumulative_survival(
+                    self.cumulative_survival
+                )
+        return self._conditional_survival
 
-    def _survival_rate_from_sf(self, sf: np.ndarray) -> np.ndarray:
-        survival_rate = np.zeros(self._shape_cohort)
+    def _conditional_from_cumulative_survival(self, cum_surv: np.ndarray) -> np.ndarray:
+        cond_surv = np.zeros(self._shape_cohort)
         # The share of cohort c present at the end of year t-1 which survives year t is
-        # sf(t,c) / sf(t-1,c). If sf(t-1,c) is zero, nothing is left to survive.
-        sf_prev = sf[:-1, ...]
-        np.divide(sf[1:, ...], sf_prev, out=survival_rate[1:, ...], where=sf_prev > 0)
-        # The newest cohort enters during year t, so its survival rate is sf(t,t)
+        # cum_surv(t,c) / cum_surv(t-1,c). If cum_surv(t-1,c) is zero, nothing is left to survive.
+        cum_surv_prev = cum_surv[:-1, ...]
+        np.divide(cum_surv[1:, ...], cum_surv_prev, out=cond_surv[1:, ...], where=cum_surv_prev > 0)
+        # The newest cohort enters during year t, so its conditional survival is cum_surv(t,t)
         t_diag_indices = self._t_diag_indices
-        survival_rate[t_diag_indices] = sf[t_diag_indices]
-        return survival_rate
+        cond_surv[t_diag_indices] = cum_surv[t_diag_indices]
+        return cond_surv
 
-    def _sf_from_survival_rate(self, survival_rate: np.ndarray) -> np.ndarray:
-        """sf(t,c) is the product of survival_rate(t',c) over t' = c...t, and zero for c > t."""
+    def _cumulative_from_conditional_survival(self, cond_surv: np.ndarray) -> np.ndarray:
+        """cum_surv(t,c) is the product of cond_surv(t',c) over t' = c...t, and zero for c > t."""
         upper_triangle = np.triu(np.ones((self._n_t, self._n_t), dtype=bool), k=1)
         upper_triangle = upper_triangle[(...,) + (np.newaxis,) * len(self._shape_no_t)]
-        sf = np.cumprod(np.where(upper_triangle, 1.0, survival_rate), axis=0)
-        sf[np.broadcast_to(upper_triangle, sf.shape)] = 0.0
-        return sf
+        cum_surv = np.cumprod(np.where(upper_triangle, 1.0, cond_surv), axis=0)
+        cum_surv[np.broadcast_to(upper_triangle, cum_surv.shape)] = 0.0
+        return cum_surv
 
-    def _apply_period_effects(self, survival_rate: np.ndarray):
-        """Applies hazard_factor_by_year and removal_share_by_year to survival_rate in place.
-        Row t of survival_rate contains the survival rates of all age-cohorts in year t."""
+    def _apply_period_effects(self, cond_surv: np.ndarray):
+        """Applies hazard_factor_by_year and removal_share_by_year to the conditional survival
+        cond_surv in place. Row t of cond_surv contains the values of all age-cohorts in year t."""
         if self.hazard_factor_by_year is not None:
             hazard_factor = self.hazard_factor_by_year[:, np.newaxis, ...]
             if np.min(hazard_factor) < 0:
                 raise ValueError("hazard_factor_by_year must not be negative.")
-            # zero rates stay zero, also for a hazard factor of zero
-            np.power(survival_rate, hazard_factor, out=survival_rate, where=survival_rate > 0)
+            # zero values stay zero, also for a hazard factor of zero
+            np.power(cond_surv, hazard_factor, out=cond_surv, where=cond_surv > 0)
         if self.removal_share_by_year is not None:
             share = self.removal_share_by_year
             if np.min(share) < 0 or np.max(share) > 1:
                 raise ValueError("removal_share_by_year must be between 0 and 1.")
             t_diag_indices = self._t_diag_indices
-            newest_cohort_rate = survival_rate[t_diag_indices].copy()
-            survival_rate *= 1.0 - share[:, np.newaxis, ...]
+            newest_cohort_cond_surv = cond_surv[t_diag_indices].copy()
+            cond_surv *= 1.0 - share[:, np.newaxis, ...]
             # The newest cohort is only affected if it enters before the removal, which is
             # assumed to be evenly distributed over the time step.
             quad_points, quad_weights = self._get_quad_points_and_weights()
             exposed_fraction = sum(w * (1.0 - p) for p, w in zip(quad_points, quad_weights))
-            survival_rate[t_diag_indices] = newest_cohort_rate * (1.0 - exposed_fraction * share)
+            cond_surv[t_diag_indices] = newest_cohort_cond_surv * (
+                1.0 - exposed_fraction * share
+            )
 
     @property
     def _t_diag_indices(self) -> tuple:
@@ -341,84 +378,91 @@ class LifetimeModel(PydanticBaseModel):
             raise ValueError("Cohort dimension must have the same items as the time dimension.")
         return time_dim + cohort_dim + self.dims.drop(self.time_letter)
 
-    def get_sf(self, cohort_dim: Dimension | None = None) -> FlodymArray:
-        """Survival factor sf as FlodymArray with dimensions (time, cohort, other dimensions).
+    def get_cumulative_survival(self, cohort_dim: Dimension | None = None) -> FlodymArray:
+        """:py:attr:`cumulative_survival` as FlodymArray with dimensions
+        (time, cohort, other dimensions).
 
         Args:
             cohort_dim: Cohort dimension with the same items as the time dimension. If not given,
                 a dimension with name "cohort" and letter "c" is used.
         """
         dims = self._get_dims_cohort(cohort_dim)
-        return FlodymArray(dims=dims, values=self.sf.copy(), name="survival_factor")
+        return FlodymArray(
+            dims=dims, values=self.cumulative_survival.copy(), name="cumulative_survival"
+        )
 
-    def get_survival_rate(self, cohort_dim: Dimension | None = None) -> FlodymArray:
-        """One-step survival rate as FlodymArray with dimensions (time, cohort, other dimensions).
-
-        Args:
-            cohort_dim: Cohort dimension with the same items as the time dimension. If not given,
-                a dimension with name "cohort" and letter "c" is used.
-        """
-        dims = self._get_dims_cohort(cohort_dim)
-        return FlodymArray(dims=dims, values=self.survival_rate.copy(), name="survival_rate")
-
-    def get_pdf(self, cohort_dim: Dimension | None = None) -> FlodymArray:
-        """Share of each age-cohort leaving the stock in each time step (pdf) as FlodymArray with
-        dimensions (time, cohort, other dimensions).
+    def get_conditional_survival(self, cohort_dim: Dimension | None = None) -> FlodymArray:
+        """:py:attr:`conditional_survival` as FlodymArray with dimensions
+        (time, cohort, other dimensions).
 
         Args:
             cohort_dim: Cohort dimension with the same items as the time dimension. If not given,
                 a dimension with name "cohort" and letter "c" is used.
         """
         dims = self._get_dims_cohort(cohort_dim)
-        return FlodymArray(dims=dims, values=self.pdf.copy(), name="pdf")
+        return FlodymArray(
+            dims=dims, values=self.conditional_survival.copy(), name="conditional_survival"
+        )
+
+    def get_outflow_pmf(self, cohort_dim: Dimension | None = None) -> FlodymArray:
+        """:py:attr:`outflow_pmf` as FlodymArray with dimensions
+        (time, cohort, other dimensions).
+
+        Args:
+            cohort_dim: Cohort dimension with the same items as the time dimension. If not given,
+                a dimension with name "cohort" and letter "c" is used.
+        """
+        dims = self._get_dims_cohort(cohort_dim)
+        return FlodymArray(dims=dims, values=self.outflow_pmf.copy(), name="outflow_pmf")
 
     def get_mean_lifetime_by_cohort(self, tail: Literal["constant_rate", "none"]) -> FlodymArray:
         """Mean time the items of each age-cohort remain in the stock, including the effects of
         lifetime factors, period effects and competing risks.
 
         The result has the dimensions of the lifetime model, where the time dimension denotes the
-        age-cohort, i.e. the time step of inflow. It is computed by integrating the survival
-        factor over time, interpolating linearly between the inflow time and the ends of the time
+        age-cohort, i.e. the time step of inflow. It is computed by integrating the cumulative
+        survival over time, interpolating linearly between the inflow time and the ends of the time
         steps. For smooth distributions, the resulting relative error is roughly
         (time step length / mean lifetime) ** 2 / 12, e.g. 0.1 % for yearly time steps and a mean
         lifetime of 10 years.
 
         Survival beyond the end of the time horizon is unknown, so the result for cohorts with
         a large share surviving at the end of the time horizon depends strongly on ``tail``.
-        This share can be checked with :py:meth:`get_sf`.
+        This share can be checked with :py:meth:`get_cumulative_survival`.
 
         Args:
             tail: Treatment of survival beyond the end of the time horizon.
-                ``"constant_rate"``: extrapolate assuming that the survival rate per unit of time
-                of the last time step persists. This is exact for an exponential lifetime, but
-                can be far off for other distributions, especially for young cohorts. If nothing
+                ``"constant_rate"``: extrapolate assuming that the conditional survival per unit
+                of time of the last time step persists. This is exact for an exponential lifetime,
+                but can be far off for other distributions, especially for young cohorts. If nothing
                 leaves the stock in the last time step, the result is infinite.
                 ``"none"``: ignore survival beyond the time horizon; the result is then a lower
                 bound.
         """
         if tail not in ("constant_rate", "none"):
             raise ValueError(f"tail must be 'constant_rate' or 'none', not '{tail}'.")
-        sf = self.sf
+        cum_surv = self.cumulative_survival
         expand = (slice(None),) + (np.newaxis,) * len(self._shape_no_t)
         interval_lengths = self._t.interval_lengths
         quad_points, quad_weights = self._get_quad_points_and_weights()
         mean_inflow_point = sum(w * p for p, w in zip(quad_points, quad_weights))
         # time from inflow to the end of the inflow time step, by cohort
         first_lengths = (1.0 - mean_inflow_point) * interval_lengths
-        newest_cohort_sf = sf[self._t_diag_indices]
-        mean_lifetime = (1.0 + newest_cohort_sf) / 2 * first_lengths[expand]
-        # later time steps t > c: trapezoid between sf(t-1,c) and sf(t,c)
-        trapezoids = (sf[:-1] + sf[1:]) / 2 * interval_lengths[1:][expand + (np.newaxis,)]
+        newest_cohort_cum_surv = cum_surv[self._t_diag_indices]
+        mean_lifetime = (1.0 + newest_cohort_cum_surv) / 2 * first_lengths[expand]
+        # later time steps t > c: trapezoid between cum_surv(t-1,c) and cum_surv(t,c)
+        step_lengths = interval_lengths[1:][expand + (np.newaxis,)]
+        trapezoids = (cum_surv[:-1] + cum_surv[1:]) / 2 * step_lengths
         later_steps = np.tril(np.ones((self._n_t - 1, self._n_t), dtype=bool))
         later_steps = later_steps[(...,) + (np.newaxis,) * len(self._shape_no_t)]
         mean_lifetime += np.where(later_steps, trapezoids, 0.0).sum(axis=0)
         if tail == "constant_rate":
-            sf_last = sf[-1]
+            cum_surv_last = cum_surv[-1]
             exposure_last = np.full(self._n_t, interval_lengths[-1])
             exposure_last[-1] = first_lengths[-1]
             with np.errstate(divide="ignore", invalid="ignore"):
-                hazard = -np.log(self.survival_rate[-1]) / exposure_last[expand]
-                tail_integral = np.where(sf_last > 0, sf_last / hazard, 0.0)
+                hazard = -np.log(self.conditional_survival[-1]) / exposure_last[expand]
+                tail_integral = np.where(cum_surv_last > 0, cum_surv_last / hazard, 0.0)
             mean_lifetime += tail_integral
         return FlodymArray(dims=self.dims, values=mean_lifetime, name="mean_lifetime_by_cohort")
 
@@ -443,26 +487,20 @@ class LifetimeModel(PydanticBaseModel):
     def _remaining_ages(self, i_t, quad_point):
         return self._tile(self._t.bounds[i_t + 1 :] - self._quad_point_time(i_t, quad_point))
 
-    def _compute_survival_factor(self, sf: np.ndarray):
-        """Survival table self.sf(m,n) denotes the share of an inflow in year n (age-cohort) still
-        present at the end of year m (after m-n years).
-        The computation is self.sf(m,n) = ProbDist.sf(m-n), where ProbDist is the appropriate
-        scipy function for the lifetime model chosen.
-        For lifetimes 0 the sf is also 0, meaning that the age-cohort leaves during the same year
-        of the inflow.
-        The method compute outflow_sf returns an array year-by-cohort of the surviving fraction of
-        a flow added to stock in year m (aka cohort m) in in year n. This value equals sf(n,m).
-        This is the only method for the inflow-driven model where the lifetime distribution directly
-        enters the computation.
-        All other stock variables are determined by mass balance.
-        The shape of the output sf array is NoofYears * NoofYears,
-        and the meaning is years by age-cohorts.
-        The result is written into sf.
+    def _compute_cumulative_survival(self, cum_surv: np.ndarray):
+        """Computes the cumulative survival without lifetime extension by year and writes it into
+        cum_surv. cum_surv(t,c) is the share of the inflow of cohort c still present at the end of
+        year t, i.e. the survival function of the lifetime distribution evaluated at the age at
+        the end of year t, averaged over the inflow points within year c.
+        For a lifetime of 0, it is also 0, meaning that the age-cohort leaves during the year of
+        inflow.
+        This is the only method for the inflow-driven model where the lifetime distribution
+        directly enters the computation. All other stock variables are determined by mass balance.
         """
         for i_c in range(0, self._n_t):  # cohort index
             for quad_point, quad_weight in zip(self._quad_points, self._quad_weights):
                 ages = self._remaining_ages(i_c, quad_point)
-                sf[i_c::, i_c, ...] += quad_weight * self._survival_by_cohort(ages, i_c)
+                cum_surv[i_c::, i_c, ...] += quad_weight * self._survival_by_cohort(ages, i_c)
 
     def _get_quad_points_and_weights(self):
         """Returns the quadrature points and weights for the inflow time periods."""
@@ -527,30 +565,30 @@ class LifetimeModel(PydanticBaseModel):
         self.reset_cached_arrays()
 
     def reset_cached_arrays(self):
-        self._sf = None
-        self._pdf = None
-        self._survival_rate = None
+        self._cumulative_survival = None
+        self._outflow_pmf = None
+        self._conditional_survival = None
 
-    def _compute_outflow_pdf(self):
-        """Returns an array year-by-cohort of the probability that an item
-        added to stock in year m (aka cohort m) leaves in in year n. This value equals pdf(n,m).
+    def _compute_outflow_pmf(self):
+        """Computes outflow_pmf(t,c), the probability that an item added to the stock in year c
+        (cohort c) leaves during year t, from the cumulative survival.
         """
-        sf = self.sf
+        cum_surv = self.cumulative_survival
         t_diag_indices = np.diag_indices(self._n_t) + (slice(None),) * len(self._shape_no_t)
-        self._pdf[t_diag_indices] = 1.0 - np.moveaxis(sf.diagonal(0, 0, 1), -1, 0)
+        self._outflow_pmf[t_diag_indices] = 1.0 - np.moveaxis(cum_surv.diagonal(0, 0, 1), -1, 0)
         for i_c in range(0, self._n_t):
-            self._pdf[i_c + 1 :, i_c, ...] = -1 * np.diff(sf[i_c:, i_c, ...], axis=0)
+            self._outflow_pmf[i_c + 1 :, i_c, ...] = -1 * np.diff(cum_surv[i_c:, i_c, ...], axis=0)
 
-    def _compute_survival_factor_with_nurture(self, sf: np.ndarray):
+    def _compute_cumulative_survival_with_nurture(self, cum_surv: np.ndarray):
         """
-        Compute the survival factor in presence of lifetime extension by year, i.e. the "nurture"
-        approach in Krych et al. 2024.
+        Compute the cumulative survival in presence of lifetime extension by year, i.e. the
+        "nurture" approach in Krych et al. 2024, and write it into cum_surv.
         Math:
         sf_e = plain survival function with extended lifetime
-        sf = resulting combined survival function based on previous survival
-        current_survival_rate = 1 - hazard_function = sf_e(t)/sf_e(t-1)
-        sf(t) = sf(t-1) * current_survival_rate(t)
-        sf(t) = sf(t-1) * sf_e(t)/sf_e(t-1)
+        cum_surv = resulting combined cumulative survival based on previous survival
+        cond_surv(t) = 1 - hazard_function = sf_e(t)/sf_e(t-1)
+        cum_surv(t) = cum_surv(t-1) * cond_surv(t)
+        cum_surv(t) = cum_surv(t-1) * sf_e(t)/sf_e(t-1)
         """
         factor = self.lt_factor_by_year
 
@@ -562,7 +600,7 @@ class LifetimeModel(PydanticBaseModel):
                 # apply factor per time step - broadcast to all age cohorts
                 # (The arrays in _scaled_prms can be the parameter arrays themselves, so
                 # assign new arrays instead of writing into them)
-                self._scaled_prms[name] = self._scale_prm(name, scaled_prms_orig[name], factor[i_t])
+                self._scaled_prms[name] = self._scale_prm(scaled_prms_orig[name], factor[i_t])
             # curr_survival calculates sf_e(t-1) ans sf_e(t) in one array
             # max(i_t, 1) omits prev time step for i_t = 0
             curr_time = self._t.bounds[max(i_t, 1) : i_t + 2]
@@ -574,15 +612,15 @@ class LifetimeModel(PydanticBaseModel):
                 curr_survival += quad_weight * self._survival_by_cohort(
                     curr_ages, slice(0, i_t + 1)
                 )
-            # main diagonal: sf(t) = sf_e(t)
-            sf[i_t, i_t, ...] = curr_survival[-1, i_t, ...]
+            # main diagonal: cum_surv(t) = sf_e(t)
+            cum_surv[i_t, i_t, ...] = curr_survival[-1, i_t, ...]
             if i_t > 0:
                 sf_e_prev = curr_survival[0, :i_t, ...]
                 sf_e = curr_survival[1, :i_t, ...]
-                sf_prev = sf[i_t - 1, :i_t, ...]
+                cum_surv_prev = cum_surv[i_t - 1, :i_t, ...]
                 # for small lifetimes, sf_e_prev can be zero, which means that nothing has survived
                 ratio = np.divide(sf_e, sf_e_prev, out=np.zeros_like(sf_e), where=sf_e_prev > 0)
-                sf[i_t, :i_t, ...] = sf_prev * ratio
+                cum_surv[i_t, :i_t, ...] = cum_surv_prev * ratio
 
 
 class FixedLifetime(LifetimeModel):
@@ -640,7 +678,7 @@ class Leaching(LifetimeModel):
     _prm_names: ClassVar[list[str]] = ["loss_rate"]
     _prm_names_to_scale: ClassVar[list[str]] = ["loss_rate"]
 
-    def _scale_prm(self, prm_name: str, value: np.ndarray, factor: np.ndarray) -> np.ndarray:
+    def _scale_prm(self, value: np.ndarray, factor: np.ndarray) -> np.ndarray:
         return 1.0 - (1.0 - value) ** (1.0 / factor)
 
     def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
@@ -815,31 +853,32 @@ class WeibullMeanStdLifetime(StandardDeviationLifetimeModel):
 
 
 class TabulatedLifetime(LifetimeModel):
-    """Lifetime model with the survival factor given directly by year and age-cohort, e.g. from
+    """Lifetime model with the cumulative survival given directly by year and age-cohort, e.g. from
     statistics or from an external model.
 
     As no distribution is known, lifetime factors cannot be used. Period effects can be used.
     inflow_at and n_pts_per_interval are only used for removal_share_by_year and
     :py:meth:`get_mean_lifetime_by_cohort`, and should match the inflow time assumed in the
-    given survival factor.
+    given cumulative survival.
     """
 
-    survival_factor: FlodymArray | np.ndarray | None = None
+    cumulative_survival_table: FlodymArray | np.ndarray | None = None
     """Share of the inflow of cohort c still present at the end of time step t.
     As FlodymArray, its dimensions must be the time dimension, a cohort dimension with the same
     items as the time dimension, and a subset of the other dimensions of the lifetime model, in
     any order. The cohort dimension is the one which is not part of the lifetime model.
-    For example, the output of :py:meth:`get_sf` of another lifetime model can be used.
+    For example, the output of :py:meth:`get_cumulative_survival` of another lifetime model can be
+    used.
     As np.ndarray, its shape must be broadcastable to (time, cohort, other dimensions).
     Values must be between 0 and 1, zero for cohorts after the time step (c > t), and must not
     increase over time for each cohort.
     """
 
     @model_validator(mode="after")
-    def _cast_survival_factor(self):
+    def _cast_cumulative_survival_table(self):
         if self.lt_factor_by_year is not None or self.lt_factor_by_cohort is not None:
             raise ValueError("Lifetime factors cannot be used with TabulatedLifetime.")
-        value = self.survival_factor
+        value = self.cumulative_survival_table
         if value is None:
             return self
         if isinstance(value, FlodymArray):
@@ -848,8 +887,8 @@ class TabulatedLifetime(LifetimeModel):
             ]
             if len(cohort_letters) != 1 or self.time_letter not in value.dims.letters:
                 raise ValueError(
-                    f"Dimensions of survival_factor ({value.dims.letters}) must be the time "
-                    "dimension, one cohort dimension, and a subset of the lifetime model "
+                    f"Dimensions of cumulative_survival_table ({value.dims.letters}) must be the "
+                    "time dimension, one cohort dimension, and a subset of the lifetime model "
                     f"dimensions ({self.dims.letters})."
                 )
             dims_cohort = self._get_dims_cohort(value.dims[cohort_letters[0]])
@@ -860,64 +899,67 @@ class TabulatedLifetime(LifetimeModel):
                 values[...] = value
             except ValueError:
                 raise ValueError(
-                    f"survival_factor (shape {value.shape}) cannot be broadcast to shape "
+                    f"cumulative_survival_table (shape {value.shape}) cannot be broadcast to shape "
                     f"{self._shape_cohort} (time, cohort, other dimensions)."
                 )
         else:
             raise ValueError(
-                f"survival_factor must be a FlodymArray or np.ndarray, but is {type(value)}."
+                "cumulative_survival_table must be a FlodymArray or np.ndarray, but is "
+                f"{type(value)}."
             )
-        self._check_survival_factor(values)
-        object.__setattr__(self, "survival_factor", values)
+        self._check_cumulative_survival_table(values)
+        object.__setattr__(self, "cumulative_survival_table", values)
         self.reset_cached_arrays()
         return self
 
-    def _check_survival_factor(self, values: np.ndarray):
+    def _check_cumulative_survival_table(self, values: np.ndarray):
         tolerance = 1e-12
         if np.min(values) < -tolerance or np.max(values) > 1 + tolerance:
-            raise ValueError("survival_factor must be between 0 and 1.")
+            raise ValueError("cumulative_survival_table must be between 0 and 1.")
         no_t_axes = (np.newaxis,) * len(self._shape_no_t)
         future_cohorts = np.triu(np.ones((self._n_t, self._n_t), dtype=bool), k=1)
         if np.any(np.where(future_cohorts[(...,) + no_t_axes], values, 0.0) != 0):
             raise ValueError(
-                "survival_factor must be zero for cohorts after the time step (c > t)."
+                "cumulative_survival_table must be zero for cohorts after the time step (c > t)."
             )
         # change from t-1 to t, for t > c
         later_steps = np.tril(np.ones((self._n_t - 1, self._n_t), dtype=bool))
         increase = np.where(later_steps[(...,) + no_t_axes], np.diff(values, axis=0), 0.0)
         if np.max(increase, initial=0.0) > tolerance:
-            raise ValueError("survival_factor must not increase over time for an age-cohort.")
+            raise ValueError(
+                "cumulative_survival_table must not increase over time for an age-cohort."
+            )
 
     def _check_prms_set(self):
-        if self.survival_factor is None:
-            raise ValueError("Lifetime parameter survival_factor must be set before use.")
+        if self.cumulative_survival_table is None:
+            raise ValueError("Lifetime parameter cumulative_survival_table must be set before use.")
 
-    def _compute_base_sf(self) -> np.ndarray:
+    def _compute_base_cumulative_survival(self) -> np.ndarray:
         self._check_prms_set()
-        return np.clip(self.survival_factor, 0.0, 1.0)
+        return np.clip(self.cumulative_survival_table, 0.0, 1.0)
 
     def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
-        raise NotImplementedError("TabulatedLifetime uses the given survival factor directly.")
+        raise NotImplementedError("TabulatedLifetime uses the given cumulative survival directly.")
 
 
 class CompetingRisksLifetime(LifetimeModel):
     """Combination of several lifetime models, which describe independent causes of leaving the
     stock, for example a product lifetime and a constant material loss (see :py:class:`Leaching`).
-    An item remains in the stock only if it survives all causes, so the survival factors, and
-    thereby the one-step survival rates, of the models are multiplied.
+    An item remains in the stock only if it survives all causes, so the cumulative survival, and
+    thereby the conditional survival, of the models are multiplied.
 
     dims and time_letter are taken from the first model if not given.
     Lifetime factors, inflow_at and n_pts_per_interval cannot be set here; set them in the
     individual models instead. Period effects (hazard_factor_by_year, removal_share_by_year)
     can be set here, and then apply to all causes together, or in the individual models.
     Changes to the parameters of the individual models are taken into account in the next
-    access of sf, pdf or survival_rate.
+    access of cumulative_survival, conditional_survival or outflow_pmf.
     """
 
     models: list[LifetimeModel]
     """Lifetime models to combine. All must have the same dimensions."""
 
-    _model_sfs: tuple[np.ndarray, ...] | None = PrivateAttr(default=None)
+    _model_cumulative_survivals: tuple[np.ndarray, ...] | None = PrivateAttr(default=None)
     """Survival factors of the individual models used in the cached arrays, to detect changes."""
 
     _fields_of_models: ClassVar[list[str]] = [
@@ -965,25 +1007,26 @@ class CompetingRisksLifetime(LifetimeModel):
 
     def reset_cached_arrays(self):
         super().reset_cached_arrays()
-        self._model_sfs = None
+        self._model_cumulative_survivals = None
 
     def _reset_if_models_changed(self):
-        """Resets the cached arrays if the survival factor of any model has changed since they
+        """Resets the cached arrays if the cumulative survival of any model has changed since they
         were computed, e.g. because its parameters were changed."""
-        model_sfs = tuple(model.sf for model in self.models)
-        if self._model_sfs is None or len(model_sfs) != len(self._model_sfs):
+        model_cum_survs = tuple(model.cumulative_survival for model in self.models)
+        previous = self._model_cumulative_survivals
+        if previous is None or len(model_cum_survs) != len(previous):
             changed = True
         else:
-            changed = any(new is not old for new, old in zip(model_sfs, self._model_sfs))
+            changed = any(new is not old for new, old in zip(model_cum_survs, previous))
         if changed:
             self.reset_cached_arrays()
-            self._model_sfs = model_sfs
+            self._model_cumulative_survivals = model_cum_survs
 
-    def _compute_base_sf(self) -> np.ndarray:
-        sf = self._model_sfs[0].copy()
-        for model_sf in self._model_sfs[1:]:
-            sf *= model_sf
-        return sf
+    def _compute_base_cumulative_survival(self) -> np.ndarray:
+        cum_surv = self._model_cumulative_survivals[0].copy()
+        for model_cum_surv in self._model_cumulative_survivals[1:]:
+            cum_surv *= model_cum_surv
+        return cum_surv
 
     def _get_quad_points_and_weights(self):
         """Inflow time within the time step, used for removal_share_by_year. Taken from the first
@@ -991,21 +1034,21 @@ class CompetingRisksLifetime(LifetimeModel):
         return self.models[0]._get_quad_points_and_weights()
 
     @property
-    def sf(self):
+    def cumulative_survival(self):
         self._reset_if_models_changed()
-        return super().sf
+        return super().cumulative_survival
 
     @property
-    def pdf(self):
+    def outflow_pmf(self):
         self._reset_if_models_changed()
-        return super().pdf
+        return super().outflow_pmf
 
     @property
-    def survival_rate(self):
+    def conditional_survival(self):
         self._reset_if_models_changed()
-        return super().survival_rate
+        return super().conditional_survival
 
     def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
         raise NotImplementedError(
-            "CompetingRisksLifetime computes its survival factor from the individual models."
+            "CompetingRisksLifetime computes its cumulative survival from the individual models."
         )

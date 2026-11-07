@@ -38,13 +38,15 @@ def test_relative_std_equals_absolute_std(lt_cls, factor_name):
     factor_kwargs = {} if factor_name is None else {factor_name: factor}
     rel = lt_cls(dims=dims, mean=mean, std=0.3, relative_std=True, **factor_kwargs)
     abs_ = lt_cls(dims=dims, mean=mean, std=mean * 0.3, **factor_kwargs)
-    np.testing.assert_allclose(rel.sf, abs_.sf, rtol=1e-12, atol=1e-14)
+    np.testing.assert_allclose(
+        rel.cumulative_survival, abs_.cumulative_survival, rtol=1e-12, atol=1e-14
+    )
 
 
 @pytest.mark.parametrize("cv", [0.1, 0.5, 1.0, 2.0])
 def test_weibull_mean_std_reproduces_moments(cv):
     lt = WeibullMeanStdLifetime(dims=dims, mean=mean, std=mean * cv)
-    lt.sf
+    lt.cumulative_survival
     shape = lt._weibull_shape
     scale = lt.mean / scipy.special.gamma(1 + 1 / shape)
     dist = scipy.stats.weibull_min(c=shape, scale=scale)
@@ -60,31 +62,35 @@ def test_weibull_mean_std_matches_weibull():
     dist = scipy.stats.weibull_min(c=shape, scale=scale)
     lt_ms = WeibullMeanStdLifetime(dims=dims, mean=dist.mean(), std=dist.std())
     lt = WeibullLifetime(dims=dims, weibull_shape=shape, weibull_scale=scale)
-    np.testing.assert_allclose(lt_ms.sf, lt.sf, rtol=1e-10, atol=1e-14)
+    np.testing.assert_allclose(
+        lt_ms.cumulative_survival, lt.cumulative_survival, rtol=1e-10, atol=1e-14
+    )
 
 
 def test_weibull_mean_std_raises_for_invalid_cv():
     lt = WeibullMeanStdLifetime(dims=dims, mean=mean, std=0.0)
     with pytest.raises(ValueError, match="Coefficient of variation"):
-        lt.sf
+        lt.cumulative_survival
 
 
 def test_exponential_and_leaching():
     rate = 0.1
     expo = ExponentialLifetime(dims=dims, mean=10.0, inflow_at="start")
     ages = np.arange(dims["t"].len) + 1.0
-    np.testing.assert_allclose(expo.sf[:, 0, 0], np.exp(-ages / 10.0))
+    np.testing.assert_allclose(expo.cumulative_survival[:, 0, 0], np.exp(-ages / 10.0))
 
     leach = Leaching(dims=dims, loss_rate=rate, inflow_at="start")
-    np.testing.assert_allclose(leach.sf[:, 0, 0], (1 - rate) ** ages)
-    np.testing.assert_allclose(leach.survival_rate[1:, 0, 0], 1 - rate)
+    np.testing.assert_allclose(leach.cumulative_survival[:, 0, 0], (1 - rate) ** ages)
+    np.testing.assert_allclose(leach.conditional_survival[1:, 0, 0], 1 - rate)
 
     # Leaching is an exponential lifetime, also when lifetime factors are applied
     expo_equiv_mean = -1 / np.log(1 - rate)
     for factor_name in ["lt_factor_by_cohort", "lt_factor_by_year"]:
         leach = Leaching(dims=dims, loss_rate=rate, **{factor_name: factor})
         expo = ExponentialLifetime(dims=dims, mean=expo_equiv_mean, **{factor_name: factor})
-        np.testing.assert_allclose(leach.sf, expo.sf, rtol=1e-12, atol=1e-15)
+        np.testing.assert_allclose(
+            leach.cumulative_survival, expo.cumulative_survival, rtol=1e-12, atol=1e-15
+        )
 
 
 def test_competing_risks():
@@ -92,27 +98,36 @@ def test_competing_risks():
     product = LogNormalLifetime(dims=dims, mean=mean, std=0.3, relative_std=True)
     combined = CompetingRisksLifetime(models=[product, leach])
     assert combined.dims.letters == product.dims.letters
-    np.testing.assert_allclose(combined.sf, product.sf * leach.sf)
+    np.testing.assert_allclose(
+        combined.cumulative_survival, product.cumulative_survival * leach.cumulative_survival
+    )
     lower_tri = np.tril(np.ones((dims["t"].len,) * 2, dtype=bool))
     np.testing.assert_allclose(
-        combined.survival_rate[lower_tri],
-        (product.survival_rate * leach.survival_rate)[lower_tri],
+        combined.conditional_survival[lower_tri],
+        (product.conditional_survival * leach.conditional_survival)[lower_tri],
     )
-    pdf_before = combined.pdf.copy()
+    outflow_pmf_before = combined.outflow_pmf.copy()
 
     # changing parameters of a model updates the combined model, for each accessed array
     leach.loss_rate = 0.2
-    assert not np.allclose(combined.pdf, pdf_before)
-    np.testing.assert_allclose(combined.sf, product.sf * leach.sf)
+    assert not np.allclose(combined.outflow_pmf, outflow_pmf_before)
+    np.testing.assert_allclose(
+        combined.cumulative_survival, product.cumulative_survival * leach.cumulative_survival
+    )
     product.mean = 20.0
     np.testing.assert_allclose(
-        combined.survival_rate[lower_tri],
-        (product.survival_rate * leach.survival_rate)[lower_tri],
+        combined.conditional_survival[lower_tri],
+        (product.conditional_survival * leach.conditional_survival)[lower_tri],
     )
 
     # replacing the models
     combined.models = [product, leach, ExponentialLifetime(dims=dims, mean=30.0)]
-    np.testing.assert_allclose(combined.sf, product.sf * leach.sf * combined.models[2].sf)
+    expected = (
+        product.cumulative_survival
+        * leach.cumulative_survival
+        * combined.models[2].cumulative_survival
+    )
+    np.testing.assert_allclose(combined.cumulative_survival, expected)
 
 
 def test_competing_risks_in_stock():
@@ -170,15 +185,17 @@ def test_hazard_factor_equals_lifetime_factor_for_weibull(test_dims):
     prms = dict(dims=test_dims, weibull_scale=10.0, weibull_shape=weibull_shape)
     extended = WeibullLifetime(lt_factor_by_year=lt_factor, **prms)
     hazard = WeibullLifetime(hazard_factor_by_year=hazard_factor, **prms)
-    np.testing.assert_allclose(hazard.survival_rate, extended.survival_rate, atol=1e-14)
-    np.testing.assert_allclose(hazard.sf, extended.sf, atol=1e-14)
-    np.testing.assert_allclose(hazard.pdf, extended.pdf, atol=1e-14)
+    np.testing.assert_allclose(
+        hazard.conditional_survival, extended.conditional_survival, atol=1e-14
+    )
+    np.testing.assert_allclose(hazard.cumulative_survival, extended.cumulative_survival, atol=1e-14)
+    np.testing.assert_allclose(hazard.outflow_pmf, extended.outflow_pmf, atol=1e-14)
 
 
 def test_hazard_factor_equals_lifetime_factor_for_exponential():
     extended = ExponentialLifetime(dims=dims, mean=10.0, lt_factor_by_year=year_factor)
     hazard = ExponentialLifetime(dims=dims, mean=10.0, hazard_factor_by_year=1 / year_factor)
-    np.testing.assert_allclose(hazard.sf, extended.sf, atol=1e-14)
+    np.testing.assert_allclose(hazard.cumulative_survival, extended.cumulative_survival, atol=1e-14)
 
 
 def test_hazard_factor():
@@ -186,9 +203,11 @@ def test_hazard_factor():
     neutral = LogNormalLifetime(
         dims=dims, mean=mean, std=0.3, relative_std=True, hazard_factor_by_year=1.0
     )
-    np.testing.assert_allclose(neutral.sf, plain.sf, rtol=1e-12, atol=1e-15)
+    np.testing.assert_allclose(
+        neutral.cumulative_survival, plain.cumulative_survival, rtol=1e-12, atol=1e-15
+    )
 
-    # no exits in year 2010: survival rates of 1 in that year, unchanged otherwise
+    # no exits in year 2010: conditional survival of 1 in that year, unchanged otherwise
     hazard_factor = FlodymArray(dims=dims["t",], values=np.ones(dims["t"].len))
     hazard_factor[{"t": 2010}] = 0.0
     moratorium = LogNormalLifetime(
@@ -196,24 +215,27 @@ def test_hazard_factor():
     )
     i_t = dims["t"].index(2010)
     lower_tri = np.tril(np.ones((dims["t"].len,) * 2, dtype=bool))
-    np.testing.assert_array_equal(moratorium.survival_rate[i_t, : i_t + 1], 1.0)
+    np.testing.assert_array_equal(moratorium.conditional_survival[i_t, : i_t + 1], 1.0)
     other_years = lower_tri.copy()
     other_years[i_t, :] = False
     np.testing.assert_allclose(
-        moratorium.survival_rate[other_years], plain.survival_rate[other_years]
+        moratorium.conditional_survival[other_years], plain.conditional_survival[other_years]
     )
     # rates of future cohorts stay zero
-    assert np.all(moratorium.survival_rate[~lower_tri] == 0.0)
+    assert np.all(moratorium.conditional_survival[~lower_tri] == 0.0)
 
     # more exits for a factor greater than one
     moratorium.hazard_factor_by_year = 2.0
-    plain_sf, sf = plain.sf[lower_tri], moratorium.sf[lower_tri]
-    partly_survived = (plain_sf > 1e-6) & (plain_sf < 1 - 1e-6)
-    assert np.all(sf[partly_survived] < plain_sf[partly_survived])
-    assert np.all(sf <= plain_sf)
+    plain_cum_surv = plain.cumulative_survival[lower_tri]
+    cum_surv = moratorium.cumulative_survival[lower_tri]
+    partly_survived = (plain_cum_surv > 1e-6) & (plain_cum_surv < 1 - 1e-6)
+    assert np.all(cum_surv[partly_survived] < plain_cum_surv[partly_survived])
+    assert np.all(cum_surv <= plain_cum_surv)
 
     with pytest.raises(ValueError, match="must not be negative"):
-        LogNormalLifetime(dims=dims, mean=mean, std=2.0, hazard_factor_by_year=-1.0).sf
+        LogNormalLifetime(
+            dims=dims, mean=mean, std=2.0, hazard_factor_by_year=-1.0
+        ).cumulative_survival
 
 
 @pytest.mark.parametrize("inflow_at, exposed_fraction", [("start", 1.0), ("middle", 0.5)])
@@ -227,18 +249,19 @@ def test_removal_share(inflow_at, exposed_fraction):
     for year, value in [(2005, 0.3), (2012, 1.0)]:
         i_t = dims["t"].index(year)
         np.testing.assert_allclose(
-            removed.survival_rate[i_t, :i_t], plain.survival_rate[i_t, :i_t] * (1 - value)
+            removed.conditional_survival[i_t, :i_t],
+            plain.conditional_survival[i_t, :i_t] * (1 - value),
         )
         np.testing.assert_allclose(
-            removed.survival_rate[i_t, i_t],
-            plain.survival_rate[i_t, i_t] * (1 - exposed_fraction * value),
+            removed.conditional_survival[i_t, i_t],
+            plain.conditional_survival[i_t, i_t] * (1 - exposed_fraction * value),
         )
     # phase-out in 2012: older cohorts are gone afterwards
     i_t = dims["t"].index(2012)
-    np.testing.assert_array_equal(removed.sf[i_t:, :i_t], 0.0)
+    np.testing.assert_array_equal(removed.cumulative_survival[i_t:, :i_t], 0.0)
 
     with pytest.raises(ValueError, match="between 0 and 1"):
-        LogNormalLifetime(removal_share_by_year=1.5, **prms).sf
+        LogNormalLifetime(removal_share_by_year=1.5, **prms).cumulative_survival
 
 
 def test_removal_share_in_stock():
@@ -270,15 +293,27 @@ def test_hazard_factor_on_competing_risks():
 
     combined = CompetingRisksLifetime(models=models(), hazard_factor_by_year=year_factor)
     separate = CompetingRisksLifetime(models=models(hazard_factor_by_year=year_factor))
-    np.testing.assert_allclose(combined.sf, separate.sf, rtol=1e-12, atol=1e-15)
+    np.testing.assert_allclose(
+        combined.cumulative_survival, separate.cumulative_survival, rtol=1e-12, atol=1e-15
+    )
+
+
+@pytest.mark.parametrize(
+    "old_name, new_name", [("sf", "cumulative_survival"), ("pdf", "outflow_pmf")]
+)
+def test_deprecated_array_names(old_name, new_name):
+    lifetime_model = LogNormalLifetime(dims=dims, mean=mean, std=0.3, relative_std=True)
+    with pytest.warns(DeprecationWarning, match=new_name):
+        values = getattr(lifetime_model, old_name)
+    np.testing.assert_array_equal(values, getattr(lifetime_model, new_name))
 
 
 def test_get_arrays():
     lifetime_model = LogNormalLifetime(dims=dims, mean=mean, std=0.3, relative_std=True)
     for getter, values in [
-        (lifetime_model.get_sf, lifetime_model.sf),
-        (lifetime_model.get_survival_rate, lifetime_model.survival_rate),
-        (lifetime_model.get_pdf, lifetime_model.pdf),
+        (lifetime_model.get_cumulative_survival, lifetime_model.cumulative_survival),
+        (lifetime_model.get_conditional_survival, lifetime_model.conditional_survival),
+        (lifetime_model.get_outflow_pmf, lifetime_model.outflow_pmf),
     ]:
         array = getter()
         assert array.dims.letters == ("t", "c", "p")
@@ -288,17 +323,23 @@ def test_get_arrays():
         assert np.any(values != 0.0)
 
     cohort_dim = Dimension(name="production year", letter="y", items=dims["t"].items)
-    assert lifetime_model.get_sf(cohort_dim=cohort_dim).dims.letters == ("t", "y", "p")
+    cum_surv = lifetime_model.get_cumulative_survival(cohort_dim=cohort_dim)
+    assert cum_surv.dims.letters == ("t", "y", "p")
     with pytest.raises(ValueError, match="must not be part of"):
-        lifetime_model.get_sf(cohort_dim=Dimension(name="other", letter="p", items=dims["t"].items))
+        lifetime_model.get_cumulative_survival(
+            cohort_dim=Dimension(name="other", letter="p", items=dims["t"].items)
+        )
     with pytest.raises(ValueError, match="same items"):
-        lifetime_model.get_sf(cohort_dim=Dimension(name="cohort", letter="c", items=[1, 2]))
+        lifetime_model.get_cumulative_survival(
+            cohort_dim=Dimension(name="cohort", letter="c", items=[1, 2])
+        )
 
 
 def test_tabulated_lifetime():
     reference = LogNormalLifetime(dims=dims, mean=mean, std=0.3, relative_std=True)
-    tabulated = TabulatedLifetime(dims=dims, survival_factor=reference.get_sf())
-    for name in ["sf", "survival_rate", "pdf"]:
+    cum_surv = reference.get_cumulative_survival()
+    tabulated = TabulatedLifetime(dims=dims, cumulative_survival_table=cum_surv)
+    for name in ["cumulative_survival", "conditional_survival", "outflow_pmf"]:
         np.testing.assert_allclose(getattr(tabulated, name), getattr(reference, name))
 
     # same stock results
@@ -310,31 +351,34 @@ def test_tabulated_lifetime():
         results.append(dsm.stock.values)
     np.testing.assert_allclose(results[1], results[0])
 
-    # survival factor without the product dimension, as FlodymArray and as np.ndarray
+    # cumulative survival without the product dimension, as FlodymArray and as np.ndarray
     single = LogNormalLifetime(dims=dims["t",], mean=8.0, std=2.0)
-    for survival_factor in [single.get_sf(), single.sf[..., np.newaxis]]:
-        tabulated = TabulatedLifetime(dims=dims, survival_factor=survival_factor)
-        np.testing.assert_allclose(tabulated.sf, single.sf[..., np.newaxis] * np.ones(2))
+    single_cum_surv = single.cumulative_survival[..., np.newaxis]
+    for cum_surv in [single.get_cumulative_survival(), single_cum_surv]:
+        tabulated = TabulatedLifetime(dims=dims, cumulative_survival_table=cum_surv)
+        np.testing.assert_allclose(tabulated.cumulative_survival, single_cum_surv * np.ones(2))
 
-    # period effects apply to tabulated survival factors as well
+    # period effects apply to tabulated cumulative survival as well
     reference.hazard_factor_by_year = year_factor
     tabulated = TabulatedLifetime(
         dims=dims,
-        survival_factor=LogNormalLifetime(
+        cumulative_survival_table=LogNormalLifetime(
             dims=dims, mean=mean, std=0.3, relative_std=True
-        ).get_sf(),
+        ).get_cumulative_survival(),
         hazard_factor_by_year=year_factor,
     )
-    np.testing.assert_allclose(tabulated.sf, reference.sf, rtol=1e-12, atol=1e-15)
+    np.testing.assert_allclose(
+        tabulated.cumulative_survival, reference.cumulative_survival, rtol=1e-12, atol=1e-15
+    )
 
 
 def test_tabulated_lifetime_invalid_input():
-    survival_factor = LogNormalLifetime(dims=dims, mean=mean, std=2.0).sf
-    too_large = survival_factor.copy()
+    cum_surv = LogNormalLifetime(dims=dims, mean=mean, std=2.0).cumulative_survival
+    too_large = cum_surv.copy()
     too_large[3, 2] = 1.5
-    future_cohort = survival_factor.copy()
+    future_cohort = cum_surv.copy()
     future_cohort[2, 3] = 0.5
-    increasing = survival_factor.copy()
+    increasing = cum_surv.copy()
     increasing[10, 2] = (increasing[9, 2, :] + 1) / 2
     for values, match in [
         (too_large, "between 0 and 1"),
@@ -342,9 +386,9 @@ def test_tabulated_lifetime_invalid_input():
         (increasing, "must not increase"),
     ]:
         with pytest.raises(ValueError, match=match):
-            TabulatedLifetime(dims=dims, survival_factor=values)
+            TabulatedLifetime(dims=dims, cumulative_survival_table=values)
     with pytest.raises(ValueError, match="Lifetime factors"):
-        TabulatedLifetime(dims=dims, survival_factor=survival_factor, lt_factor_by_year=factor)
+        TabulatedLifetime(dims=dims, cumulative_survival_table=cum_surv, lt_factor_by_year=factor)
     with pytest.raises(ValueError, match="must be set"):
         TabulatedLifetime(dims=dims)._check_prms_set()
 

@@ -471,19 +471,21 @@ def _initial_stock_for_cohort_tests():
 
 
 def test_inflow_driven_dsm_matches_survival_function():
-    """Time stepping gives the same cohorts as the direct product with sf and pdf."""
+    """Time stepping gives the same cohorts as the direct product with the cumulative survival
+    and the outflow pmf."""
     rng = np.random.default_rng(0)
     inflow = StockArray(dims=dims_cohort_tests, values=rng.random(dims_cohort_tests.shape))
     dsm = _dsm_for_cohort_tests(InflowDrivenDSM, inflow=inflow)
     dsm.compute()
 
-    sf, pdf = dsm.lifetime_model.sf, dsm.lifetime_model.pdf
+    cum_surv = dsm.lifetime_model.cumulative_survival
+    outflow_pmf = dsm.lifetime_model.outflow_pmf
     np.testing.assert_allclose(
-        dsm.get_stock_by_cohort().values, np.einsum("c...,tc...->tc...", inflow.values, sf)
+        dsm.get_stock_by_cohort().values, np.einsum("c...,tc...->tc...", inflow.values, cum_surv)
     )
     np.testing.assert_allclose(
         dsm.get_outflow_by_cohort().values,
-        np.einsum("c...,tc...->tc...", inflow.values, pdf),
+        np.einsum("c...,tc...->tc...", inflow.values, outflow_pmf),
         atol=1e-14,
     )
     np.testing.assert_allclose(dsm.inflow.values, inflow.values)
@@ -500,12 +502,12 @@ def test_inflow_driven_dsm_initial_stock_survival():
     dsm.compute()
 
     iiy = initial_year_index_tests
-    sf = dsm.lifetime_model.sf
+    cum_surv = dsm.lifetime_model.cumulative_survival
     stock_by_cohort = dsm.get_stock_by_cohort().values
     expected = np.einsum(
         "c...,tc...->tc...",
         initial_stock.values[: iiy + 1],
-        sf[iiy:, : iiy + 1] / sf[iiy, : iiy + 1],
+        cum_surv[iiy:, : iiy + 1] / cum_surv[iiy, : iiy + 1],
     )
     np.testing.assert_allclose(stock_by_cohort[iiy:, : iiy + 1], expected)
     assert np.all(stock_by_cohort[:iiy] == 0.0)
@@ -982,16 +984,16 @@ def _nurture_lifetime_model(lt_cls, **kwargs):
     return lt_cls(dims=dims, time_letter="t", lt_factor_by_year=factor, **prms, **kwargs)
 
 
-def _nurture_sf_per_cohort(lt):
-    """Reference: the nurture survival factor computed one cohort at a time."""
+def _nurture_cum_surv_per_cohort(lt):
+    """Reference: the nurture cumulative survival computed one cohort at a time."""
     n_t = lt._n_t
     names_to_scale = lt._get_prm_names_to_scale()
     prms_orig = {name: getattr(lt, name).copy() for name in names_to_scale}
     points, weights = lt._get_quad_points_and_weights()
-    sf = np.zeros(lt._shape_cohort)
+    cum_surv = np.zeros(lt._shape_cohort)
     for i_t in range(n_t):
         for name in names_to_scale:
-            lt._scaled_prms[name] = lt._scale_prm(name, prms_orig[name], lt.lt_factor_by_year[i_t])
+            lt._scaled_prms[name] = lt._scale_prm(prms_orig[name], lt.lt_factor_by_year[i_t])
         curr = np.zeros((min(2, i_t + 1), n_t) + lt._shape_no_t)
         for point, weight in zip(points, weights):
             for i_c in range(i_t + 1):
@@ -999,12 +1001,12 @@ def _nurture_sf_per_cohort(lt):
                     lt._t.bounds[max(i_t, 1) : i_t + 2] - lt._quad_point_time(i_c, point)
                 )
                 curr[:, i_c, ...] += weight * lt._survival_by_cohort(ages, i_c)
-        sf[i_t, i_t] = curr[-1, i_t]
+        cum_surv[i_t, i_t] = curr[-1, i_t]
         if i_t > 0:
             prev, now = curr[0, :i_t], curr[1, :i_t]
             ratio = np.divide(now, prev, out=np.zeros_like(now), where=prev > 0)
-            sf[i_t, :i_t] = sf[i_t - 1, :i_t] * ratio
-    return sf
+            cum_surv[i_t, :i_t] = cum_surv[i_t - 1, :i_t] * ratio
+    return cum_surv
 
 
 @pytest.mark.parametrize(
@@ -1025,16 +1027,16 @@ def _nurture_sf_per_cohort(lt):
 @pytest.mark.parametrize("n_pts", [1, 3])
 def test_nurture_matches_per_cohort_loop(lt_cls, kwargs, n_pts):
     lt = _nurture_lifetime_model(lt_cls, n_pts_per_interval=n_pts, **kwargs)
-    sf = lt.sf.copy()
-    np.testing.assert_allclose(sf, _nurture_sf_per_cohort(lt), rtol=1e-12, atol=1e-15)
+    cum_surv = lt.cumulative_survival.copy()
+    np.testing.assert_allclose(cum_surv, _nurture_cum_surv_per_cohort(lt), rtol=1e-12, atol=1e-15)
 
 
 def test_nurture_keeps_lifetime_parameters():
     lt = _nurture_lifetime_model(WeibullLifetime)
     scale = lt.weibull_scale.copy()
-    first = lt.sf.copy()
+    first = lt.cumulative_survival.copy()
     np.testing.assert_array_equal(lt.weibull_scale, scale)
 
     # recomputing, e.g. for a second scenario, starts from the same parameters
     lt.reset_cached_arrays()
-    np.testing.assert_array_equal(lt.sf, first)
+    np.testing.assert_array_equal(lt.cumulative_survival, first)
