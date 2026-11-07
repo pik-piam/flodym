@@ -116,9 +116,24 @@ Removed or changed interface:
 - ``StockDrivenDSM(solver=...)`` is removed. The ``solver`` argument is ignored, and
   ``StockDefinition.solver`` is deprecated and ignored. Both solvers gave the same results; the
   former default ``"manual"`` is used.
+- The arrays of lifetime models by year and age-cohort are renamed:
+
+  .. list-table::
+     :header-rows: 1
+
+     * - v1
+       - v2
+     * - ``lifetime_model.sf``
+       - ``lifetime_model.cumulative_survival``
+     * - ``lifetime_model.pdf``
+       - ``lifetime_model.outflow_pmf``
+
+  The old names still work, but emit a ``DeprecationWarning`` (see :ref:`v2-deprecations`).
+  ``outflow_pmf`` is the share of a cohort's inflow leaving in each time step, i.e. a probability
+  mass per time step, not a density.
 - ``LifetimeModel.compute_survival_factor()`` is now private. Use the property
-  ``lifetime_model.sf``, which is computed when needed, or ``lifetime_model.get_sf()``, which
-  returns a ``FlodymArray``.
+  ``lifetime_model.cumulative_survival``, which is computed when needed, or
+  ``lifetime_model.get_cumulative_survival()``, which returns a ``FlodymArray``.
 - ``get_stock_by_cohort()`` and ``get_outflow_by_cohort()`` log a warning if the stock has no
   ``cohort_dim``. They still return numpy arrays in this case. With ``cohort_dim`` (or
   ``StockDefinition.cohort_letter``), they return ``StockArray`` objects.
@@ -131,8 +146,8 @@ Only relevant for user-defined subclasses:
   ``_compute_inflow_manual`` and ``_compute_inflow_lapack`` of the dynamic stock models are
   removed. All compute modes use ``DynamicStockModel._compute_cohorts()``.
 - ``Stock._check_needed_arrays()`` now runs automatically before ``compute()`` in every subclass.
-- The private methods of lifetime models that compute the survival factor have changed
-  signatures. Subclasses that only implement ``_survival_by_cohort()`` are not affected.
+- The private methods of lifetime models that compute the cumulative survival have changed
+  names and signatures. Subclasses that only implement ``_survival_by_cohort()`` are not affected.
 
 
 Arrays: set and unset values
@@ -188,7 +203,9 @@ The following still work in v2, but emit a ``DeprecationWarning`` and will be re
 - ``Stock.check_stock_balance()`` and ``Stock.get_stock_balance()``;
 - ``StockDefinition.solver``;
 - ``LifetimeModel.set_prms()`` (deprecated since v1.1.0): assign the parameters directly, e.g.
-  ``lifetime_model.mean = 10``.
+  ``lifetime_model.mean = 10``;
+- ``LifetimeModel.sf`` and ``LifetimeModel.pdf``: use ``cumulative_survival`` and
+  ``outflow_pmf`` instead.
 
 The ``naming`` argument of ``make_empty_flows()`` is deprecated as well and will be removed in
 v3.0.0. It still works, but logs an info message instead of a warning. Set the global option
@@ -221,8 +238,9 @@ New features
   ``set_initial_stock()``; inflow by cohort (HOWTO 06).
 - **Lifetime models:** ``WeibullMeanStdLifetime``, ``ExponentialLifetime``, ``Leaching``,
   ``TabulatedLifetime``, ``CompetingRisksLifetime``; the option ``relative_std``; period effects
-  (``hazard_factor_by_year``, ``removal_share_by_year``); ``get_mean_lifetime_by_cohort()``,
-  ``get_sf()``, ``get_survival_rate()`` and ``get_pdf()``.
+  (``hazard_factor_by_year``, ``removal_share_by_year``); ``get_mean_lifetime_by_cohort()``;
+  the conditional one-step survival ``conditional_survival``; ``get_cumulative_survival()``,
+  ``get_conditional_survival()`` and ``get_outflow_pmf()``, which return ``FlodymArray`` objects.
 - **Set and unset arrays:** ``FlodymArray.is_set``, ``mark_set()`` and ``mark_unset()``.
 - **Attribute access:** ``mfa.flows.my_flow`` in addition to ``mfa.flows["my_flow"]``, also for
   stocks, processes and parameters (``flodym.AttributeDict``).
