@@ -1,7 +1,5 @@
 """Home to helper functions for working with `FlodymArray`s."""
 
-import numpy as np
-
 from .dimensions import Dimension
 from .flodym_arrays import FlodymArray
 
@@ -39,10 +37,8 @@ def flodym_array_stack(
         raise ValueError(f"Dimension {dimension.letter} already present in FlodymArrays to stack")
     flodym_array0 = flodym_arrays[0]
     extended_dimensions = flodym_array0.dims.append(dimension)
-    # no cast_to: values are overwritten below, and casting extensive arrays would be reported
-    values = np.zeros(extended_dimensions.shape, dtype=flodym_array0.values.dtype)
-    extended = FlodymArray(dims=extended_dimensions, values=values, name=flodym_array0.name)
-    extended._set_degree(flodym_array0._degree)
+    # values are overwritten below, so casting is not reported
+    extended = flodym_array0.cast_to(extended_dimensions, check_extensivity=False)
     for item, flodym_array in zip(dimension.items, flodym_arrays):
         extended[{dimension.letter: item}] = flodym_array
     if inplace:

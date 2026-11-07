@@ -304,6 +304,7 @@ show_array(flow_b)
 # - When setting the values of an existing array from an intensive array, the right-hand side is copied along missing dimensions.
 # - `sum_to()` and `sum_over()` of intensive arrays, `cast_to()` of extensive arrays, and adding arrays of different extensivity are reported
 #   according to `flodym.config.error_behaviors.extensivity` (default: `"warn"`).
+#   Where such a sum or cast is intended, pass `check_extensivity=False` to `sum_to()`, `sum_over()` or `cast_to()`.
 #
 # The flag is propagated through operations: The quotient of two extensive arrays is intensive,
 # the product of an extensive and an intensive array is extensive.

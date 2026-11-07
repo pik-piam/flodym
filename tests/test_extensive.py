@@ -197,6 +197,18 @@ def test_explicit_cast_not_reported(strict):
     make_array(("t",), E).cast_to(DIMS.get_subset(("t", "p")))
 
 
+def test_checks_can_be_switched_off(strict):
+    extensive = make_array(("t",), E)
+    cast = extensive.cast_to(DIMS.get_subset(("t", "r")), check_extensivity=False)
+    assert cast.extensive is True
+    extensive.cast_to(DIMS.get_subset(("t", "r")), inplace=True, check_extensivity=False)
+    summed = make_array(("t", "r"), I).sum_to(("t",), check_extensivity=False)
+    np.testing.assert_allclose(summed.values, 2.0)
+    assert summed.extensive is False
+    summed = make_array(("t", "r"), I).sum_over(("r",), check_extensivity=False)
+    np.testing.assert_allclose(summed.values, 2.0)
+
+
 def test_assignment_of_intensive_broadcasts(strict):
     target = make_array(("t", "r"), value=0.0)
     source = FlodymArray(dims=DIMS.get_subset(("r",)), values=np.array([0.2, 0.8]), extensive=I)

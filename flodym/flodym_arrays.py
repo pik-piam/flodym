@@ -109,7 +109,8 @@ class FlodymArray(PydanticBaseModel):
       ``foo`` which it does not have. Dimensions of ``bar`` which ``foo`` does not have are
       reported, since no correct reduction exists without weights.
     - :py:meth:`sum_to` and :py:meth:`sum_over` of a not extensive array, and
-      :py:meth:`cast_to` of a not intensive array are performed, but reported.
+      :py:meth:`cast_to` of a not intensive array are performed, but reported. Where this is
+      intended, pass ``check_extensivity=False`` to the method.
 
     Reports are handled according to ``flodym.config.error_behaviors.extensivity``.
 
@@ -440,15 +441,28 @@ class FlodymArray(PydanticBaseModel):
 
     @overload
     def cast_to(
-        self, target_dims: DimensionSet, inplace: Literal[False] = ...
+        self,
+        target_dims: DimensionSet,
+        inplace: Literal[False] = ...,
+        *,
+        check_extensivity: bool = ...,
     ) -> "FlodymArray": ...
     @overload
-    def cast_to(self: T, target_dims: DimensionSet, inplace: Literal[True]) -> T: ...
-    def cast_to(self, target_dims: DimensionSet, inplace: bool = False) -> "FlodymArray":
+    def cast_to(
+        self: T,
+        target_dims: DimensionSet,
+        inplace: Literal[True],
+        *,
+        check_extensivity: bool = ...,
+    ) -> T: ...
+    def cast_to(
+        self, target_dims: DimensionSet, inplace: bool = False, *, check_extensivity: bool = True
+    ) -> "FlodymArray":
         """Cast the FlodymArray to a new set of dimensions.
 
         Copying values along new dimensions is only correct for intensive quantities. Casting an
-        array which is not intensive (see :py:attr:`extensive`) is reported.
+        array which is not intensive (see :py:attr:`extensive`) is reported, unless
+        ``check_extensivity`` is False.
 
         Args:
             target_dims: New dimensions to cast the FlodymArray to. Must be given as a
@@ -456,6 +470,9 @@ class FlodymArray(PydanticBaseModel):
                 FlodymArray object.
             inplace: If True, modify the current FlodymArray in place. If False, return a new
                 FlodymArray object.
+            check_extensivity: Whether to report casting an array which is not intensive. Set
+                it to False where copying the values is intended, e.g. for values that are
+                overwritten afterwards.
 
         Returns:
             The FlodymArray cast to the new dimensions.
@@ -463,7 +480,8 @@ class FlodymArray(PydanticBaseModel):
         self._check_is_set("cast_to()")
         # dimension consistency checks are performed in cast_values_to
         values = self.cast_values_to(target_dims)
-        self._check_expansion(target_dims - self.dims, "cast_to()")
+        if check_extensivity:
+            self._check_expansion(target_dims - self.dims, "cast_to()")
         if inplace:
             self.dims = target_dims
             self.values = values
@@ -488,17 +506,22 @@ class FlodymArray(PydanticBaseModel):
         result_letters = self._tuple_to_letters(result_dims)
         return np.einsum(f"{self.dims.string}->{''.join(result_letters)}", self.values)
 
-    def sum_to(self, result_dims: tuple[str | Dimension, ...] = ()) -> "FlodymArray":
+    def sum_to(
+        self, result_dims: tuple[str | Dimension, ...] = (), *, check_extensivity: bool = True
+    ) -> "FlodymArray":
         """Return the FlodymArray summed to the given dimensions.
 
         Only the dimensions given in the result_dims tuple are left.
 
         Summation is only correct for extensive quantities. Summing over dimensions of an array
-        which is not extensive (see :py:attr:`extensive`) is reported.
+        which is not extensive (see :py:attr:`extensive`) is reported, unless
+        ``check_extensivity`` is False.
 
         Args:
             result_dims: Tuple of the dimensions to sum to. If not given, the sum over all
                 dimensions is returned.
+            check_extensivity: Whether to report summing an array which is not extensive. Set it
+                to False where the sum is intended, e.g. to check that shares sum to one.
 
         Returns:
             FlodymArray object with the summed values and the reduced dimensions.
@@ -506,22 +529,28 @@ class FlodymArray(PydanticBaseModel):
         self._check_is_set("sum_to()")
         result_letters = self._tuple_to_letters(result_dims)
         result_dims_set = self.dims.get_subset(result_letters)
-        self._check_reduction(self.dims - result_dims_set, "sum_to()")
+        if check_extensivity:
+            self._check_reduction(self.dims - result_dims_set, "sum_to()")
         return FlodymArray(
             dims=result_dims_set,
             values=self.sum_values_to(result_letters),
             name=self.name,
         )._with_degree(self._degree)
 
-    def sum_over(self, sum_over_dims: tuple[str | Dimension, ...] = ()) -> "FlodymArray":
+    def sum_over(
+        self, sum_over_dims: tuple[str | Dimension, ...] = (), *, check_extensivity: bool = True
+    ) -> "FlodymArray":
         """Return the FlodymArray summed over a given tuple of dimensions.
 
         Summation is only correct for extensive quantities. Summing over dimensions of an array
-        which is not extensive (see :py:attr:`extensive`) is reported.
+        which is not extensive (see :py:attr:`extensive`) is reported, unless
+        ``check_extensivity`` is False.
 
         Args:
             sum_over_dims: Tuple of the dimensions to sum over. If not given, no summation is
                 performed and the FlodymArray object is returned.
+            check_extensivity: Whether to report summing an array which is not extensive. Set it
+                to False where the sum is intended, e.g. to check that shares sum to one.
 
         Returns:
             FlodymArray object with the summed values and the reduced dimensions.
@@ -530,7 +559,8 @@ class FlodymArray(PydanticBaseModel):
         sum_over_dims = self._tuple_to_letters(sum_over_dims)
         result_dims = tuple([d for d in self.dims.letters if d not in sum_over_dims])
         result_dims_set = self.dims.get_subset(result_dims)
-        self._check_reduction(self.dims - result_dims_set, "sum_over()")
+        if check_extensivity:
+            self._check_reduction(self.dims - result_dims_set, "sum_over()")
         return FlodymArray(
             dims=result_dims_set,
             values=self.sum_values_over(sum_over_dims),
