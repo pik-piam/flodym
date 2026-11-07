@@ -145,6 +145,28 @@ def test_multi_level_aggregation(building, residential):
     np.testing.assert_allclose(total.disaggregate_to(level_2, weights=shares).values, flow.values)
 
 
+def test_assignment_across_several_levels(building, residential, time):
+    infra = fd.Dimension(name="Infrastructure", letter="i", items=["Infr", "Build"])
+    level_1 = infra.split(name="Level 1", letter="l", splitting={"Build": building})
+    level_2 = level_1.split(name="Level 2", letter="m", splitting={"Build|Res": residential})
+    flow = fd.FlodymArray(dims=level_2 + time, values=np.arange(1.0, 9.0).reshape(4, 2))
+    target_i = fd.FlodymArray(dims=time + infra)
+    target_i[...] = flow
+    np.testing.assert_allclose(target_i.values, [[1.0, 15.0], [2.0, 18.0]])
+    target_l = fd.FlodymArray(dims=level_1.as_dimset())
+    target_l[...] = flow
+    np.testing.assert_allclose(target_l.values, [3.0, 7.0, 26.0])
+    target_slice = fd.FlodymArray(dims=infra + time)
+    target_slice[{"t": 2030}] = flow[{"t": 2030}]
+    np.testing.assert_allclose(target_slice.values, [[0.0, 2.0], [0.0, 18.0]])
+    reordered_infra = fd.Dimension(name="Infrastructure", letter="i", items=["Build", "Infr"])
+    target_reordered = fd.FlodymArray(dims=reordered_infra.as_dimset())
+    target_reordered[...] = flow
+    np.testing.assert_allclose(target_reordered.values, [33.0, 3.0])
+    with pytest.raises(ValueError, match="coarser"):
+        flow[...] = target_i
+
+
 def test_aggregate_errors(production_s, building, residential):
     with pytest.raises(ValueError, match="no dimension"):
         production_s.aggregate_to(residential)
