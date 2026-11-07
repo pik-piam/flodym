@@ -177,11 +177,13 @@ def test_automatic_stock_check_enabled():
 
 def test_automatic_stock_check_error_behavior(caplog):
     stock = _inconsistent_stock()
-    with config.override(
-        checks={"mass_balance_after_compute": True}, error_behaviors={"mass_balance": "warn"}
+    with (
+        config.override(
+            checks={"mass_balance_after_compute": True}, error_behaviors={"mass_balance": "warn"}
+        ),
+        caplog.at_level(logging.WARNING),
     ):
-        with caplog.at_level(logging.WARNING):
-            stock.compute()
+        stock.compute()
     assert any("Mass balance check failed for stock" in r.getMessage() for r in caplog.records)
 
 
@@ -343,9 +345,8 @@ def test_check_flows(caplog):
 
     with pytest.raises(ValueError, match="NaN values"):
         mfa.check_flows(error_behavior="error")
-    with config.override(error_behaviors={"check_flows": "error"}):
-        with pytest.raises(ValueError):
-            mfa.check_flows()
+    with config.override(error_behaviors={"check_flows": "error"}), pytest.raises(ValueError):
+        mfa.check_flows()
     assert mfa.check_flows(exceptions=["shredder => sysenv", "landfills"]) is True
 
 
@@ -353,22 +354,25 @@ def test_mfa_system_deprecated_raise_error():
     mfa = _computed_example_mfa()
     mfa.flows["shredder => sysenv"].values[0, 0] = -1.0
 
-    with pytest.warns(DeprecationWarning, match="raise_error"):
-        with pytest.raises(ValueError):
-            mfa.check_flows(raise_error=True)
+    with pytest.warns(DeprecationWarning, match="raise_error"), pytest.raises(ValueError):
+        mfa.check_flows(raise_error=True)
     with pytest.warns(DeprecationWarning, match="raise_error"):
         assert mfa.check_flows([], False) is False
 
-    with pytest.warns(DeprecationWarning, match="raise_error"):
-        with pytest.raises(ValueError, match="process 'shredder'"):
-            mfa.check_mass_balance(None, True)
+    with (
+        pytest.warns(DeprecationWarning, match="raise_error"),
+        pytest.raises(ValueError, match="process 'shredder'"),
+    ):
+        mfa.check_mass_balance(None, True)
     with pytest.warns(DeprecationWarning, match="raise_error"):
         assert mfa.check_mass_balance(raise_error=False) is False
     with pytest.warns(DeprecationWarning, match="raise_error"):
         assert _computed_example_mfa().check_mass_balance(raise_error=True) is True
-    with pytest.warns(DeprecationWarning, match="raise_error"):
-        with pytest.raises(ValueError, match="Only one of"):
-            mfa.check_mass_balance(error_behavior="warn", raise_error=True)
+    with (
+        pytest.warns(DeprecationWarning, match="raise_error"),
+        pytest.raises(ValueError, match="Only one of"),
+    ):
+        mfa.check_mass_balance(error_behavior="warn", raise_error=True)
 
 
 def test_mfa_system_without_stocks_tolerance():
@@ -407,9 +411,11 @@ def test_error_messages_name_config_options():
         mfa.check_flows(error_behavior="error")
 
     stock = _inconsistent_stock()
-    with config.override(checks={"mass_balance_after_compute": True}):
-        with pytest.raises(ValueError, match=r"flodym\.config\.checks\.mass_balance_after_compute"):
-            stock.compute()
+    with (
+        config.override(checks={"mass_balance_after_compute": True}),
+        pytest.raises(ValueError, match=r"flodym\.config\.checks\.mass_balance_after_compute"),
+    ):
+        stock.compute()
 
 
 def test_mfa_system_uses_local_tolerances():

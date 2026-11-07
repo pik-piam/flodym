@@ -1,9 +1,9 @@
-from pydantic import BaseModel as PydanticBaseModel, model_validator, ConfigDict
-from typing import Optional
 import plotly.graph_objects as go
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import ConfigDict, model_validator
 
-from ..mfa_system import MFASystem
 from ..flodym_arrays import Flow
+from ..mfa_system import MFASystem
 from .helper import CustomNameDisplayer
 
 
@@ -12,24 +12,24 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
 
     mfa: MFASystem
     """MFA system to visualize."""
-    slice_dict: Optional[dict] = {}
+    slice_dict: dict | None = {}
     """for selection of a subset of the data; all other dimensions are summed over"""
-    node_color_dict: Optional[dict] = {"default": "gray"}
+    node_color_dict: dict | None = {"default": "gray"}
     """color of the nodes (processes and stocks)"""
-    flow_color_dict: Optional[dict] = {"default": "hsl(230,20,70)"}
+    flow_color_dict: dict | None = {"default": "hsl(230,20,70)"}
     """dictionary of colors for flows.
     Keys are flow names, values are either a single color or a tuple of the dimension names
     to split the flow by, and a color scheme as a list of colors. There must be a "default" key
     to resort to if a flow is not in the dictionary.
     """
-    exclude_processes: Optional[list[str]] = ["sysenv"]
+    exclude_processes: list[str] | None = ["sysenv"]
     """processes that won't show up in the plot; neither will flows to and from them"""
-    exclude_flows: Optional[list[str]] = []
+    exclude_flows: list[str] | None = []
     """flows that won't show up in the plot"""
 
     @model_validator(mode="after")
     def check_dims(self):
-        for dim_letter in self.slice_dict.keys():
+        for dim_letter in self.slice_dict:
             if dim_letter not in self.mfa.dims.letters:
                 raise ValueError(f"Dimension {dim_letter} given in slice_dict not in DimensionSet.")
         return self
@@ -72,7 +72,7 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
             else:
                 fallback_str = ""
             if not isinstance(self.node_color_dict[p.name], str):
-                raise ValueError(
+                raise TypeError(
                     f"Color for process {p.name}{fallback_str} must be a string, not a {type(self.node_color_dict[p.name])}."
                 )
         return self
@@ -82,7 +82,7 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
         if isinstance(color, str):
             return
         elif not isinstance(color, tuple):
-            raise ValueError(
+            raise TypeError(
                 f"In flow_color_dict, the value for flow {f.name}{fallback_str} must be either a color string or a tuple of dimension name and color list"
             )
 
@@ -95,7 +95,7 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
                 f"In flow_color_dict, first element of color tuple for flow {f.name}{fallback_str} must be a dimension in flow {f.name}"
             )
         if not isinstance(color[1], list):
-            raise ValueError(
+            raise TypeError(
                 f"In flow_color_dict, second element of color tuple for flow {f.name}{fallback_str} must be a list of colors"
             )
         if len(color[1]) < self.mfa.dims[color[0]].len:

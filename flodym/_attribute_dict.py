@@ -8,6 +8,8 @@ from typing import Any, TypeVar, get_args
 from pydantic import GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
 
+logger = logging.getLogger(__name__)
+
 ValueT = TypeVar("ValueT")
 
 _ARROW_PATTERN = re.compile(r"\s*=>\s*")
@@ -78,12 +80,12 @@ class AttributeDict(dict[str, ValueT]):
         alias_map = {}
         for alias, keys in keys_by_alias.items():
             if len(keys) > 1:
-                logging.warning(
+                logger.warning(
                     f"Keys {keys} all map to the attribute name '{alias}'. "
                     "They are excluded from attribute access; use [] instead."
                 )
             elif hasattr(type(self), alias):
-                logging.warning(
+                logger.warning(
                     f"The attribute name '{alias}' of key '{keys[0]}' is a dict attribute. "
                     "The key is excluded from attribute access; use [] instead."
                 )

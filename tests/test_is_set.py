@@ -6,12 +6,12 @@ import pytest
 from flodym import (
     Dimension,
     DimensionSet,
+    FixedLifetime,
     FlodymArray,
     InflowDrivenDSM,
     Parameter,
     SimpleFlowDrivenStock,
     StockArray,
-    FixedLifetime,
     config,
 )
 
@@ -80,9 +80,11 @@ class TestUnsetArrayUsed:
         assert not caplog.records
 
     def test_warn(self, caplog):
-        with config.override(error_behaviors={"unset_array_used": "warn"}):
-            with caplog.at_level(logging.WARNING):
-                2 * FlodymArray(dims=dims, name="foo")
+        with (
+            config.override(error_behaviors={"unset_array_used": "warn"}),
+            caplog.at_level(logging.WARNING),
+        ):
+            2 * FlodymArray(dims=dims, name="foo")
         assert "'foo'" in caplog.text
 
     @pytest.mark.usefixtures("unset_array_error")
@@ -123,9 +125,11 @@ class TestUnsetArrayUsed:
         assert config.error_behaviors.unset_array_used == "ignore"
 
     def test_override_validates(self):
-        with pytest.raises(ValueError):
-            with config.override(error_behaviors={"unset_array_used": "nonsense"}):
-                pass
+        with (
+            pytest.raises(ValueError),
+            config.override(error_behaviors={"unset_array_used": "nonsense"}),
+        ):
+            pass
         assert config.error_behaviors.unset_array_used == "ignore"
 
 

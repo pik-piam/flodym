@@ -4,20 +4,22 @@ as well as applications of the `FlodymArray` for specific model components.
 """
 
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from copy import copy, deepcopy
 from numbers import Number
-from typing import Any, Callable, Literal, Optional, SupportsFloat, TypeVar, Union, overload
+from typing import Any, Literal, Optional, SupportsFloat, TypeVar, Union, overload
 
 import numpy as np
 import pandas as pd
 from pydantic import (
     BaseModel as PydanticBaseModel,
+)
+from pydantic import (
     ConfigDict,
     Field,
+    ModelWrapValidatorHandler,
     field_validator,
     model_validator,
-    ModelWrapValidatorHandler,
 )
 from typing_extensions import Self
 
@@ -73,7 +75,7 @@ class FlodymArray(PydanticBaseModel):
     values: np.ndarray = Field(default=None, validate_default=True)
     """Values of the FlodymArray. Must have the same shape as the dimensions of the FlodymArray.
     If not given or None, an array of zeros is created."""
-    name: Optional[str] = "unnamed"
+    name: str | None = "unnamed"
     """Name of the FlodymArray."""
     _is_set: bool = False
     """Flag indicating whether the array has been set or not."""
@@ -95,19 +97,19 @@ class FlodymArray(PydanticBaseModel):
         return value
 
     @model_validator(mode="after")
-    def copy_dims(self: T) -> T:
+    def copy_dims(self) -> Self:
         """Ensure dims is always copied to avoid shared references."""
         self.dims = self.dims.copy()
         return self
 
     @model_validator(mode="after")
-    def validate_values(self: T) -> T:
+    def validate_values(self) -> Self:
         self._check_value_format()
         return self
 
     def _check_value_format(self) -> None:
         if not isinstance(self.values, np.ndarray):
-            raise ValueError("Values must be a numpy array.")
+            raise TypeError("Values must be a numpy array.")
         if self.values.shape != self.dims.shape:
             raise ValueError(
                 f"Values passed to {self.__class__.__name__} must have the same shape as the DimensionSet.\n"
@@ -125,7 +127,7 @@ class FlodymArray(PydanticBaseModel):
 
     @classmethod
     def from_dims_superset(
-        cls, dims_superset: DimensionSet, dim_letters: Optional[tuple] = None, **kwargs
+        cls, dims_superset: DimensionSet, dim_letters: tuple | None = None, **kwargs
     ) -> Self:
         """Create a FlodymArray object from a superset of dimensions, by specifying which
         dimensions to take.
@@ -145,7 +147,7 @@ class FlodymArray(PydanticBaseModel):
     def full(
         cls,
         dims: DimensionSet,
-        fill_value: Union[SupportsFloat, np.ndarray],
+        fill_value: SupportsFloat | np.ndarray,
         **kwargs,
     ) -> Self:
         """Create a FlodymArray filled with a constant value for the provided dimensions.
@@ -166,8 +168,8 @@ class FlodymArray(PydanticBaseModel):
     def full_like(
         cls,
         other: "FlodymArray",
-        fill_value: Union[SupportsFloat, np.ndarray],
-        dtype: Optional[Union[type, np.dtype]] = None,
+        fill_value: SupportsFloat | np.ndarray,
+        dtype: type | np.dtype | None = None,
         **kwargs,
     ) -> Self:
         """Create a FlodymArray filled with a constant value, matching another array's dimensions.
@@ -314,7 +316,7 @@ class FlodymArray(PydanticBaseModel):
         Returns:
             np.ndarray: The values of the FlodymArray cast to the new dimensions.
         """
-        assert all([d in target_dims.letters for d in self.dims.letters]), (
+        assert all(d in target_dims.letters for d in self.dims.letters), (
             "Target of cast must contain all "
             f"dimensions of the object! Source dims '{self.dims.string}' are not all contained in target dims "
             f"'{target_dims.string}'. Maybe use sum_values_to() before casting"
@@ -414,7 +416,7 @@ class FlodymArray(PydanticBaseModel):
         """
         return tuple(self._get_dim_letter(item) for item in dim_tuple)
 
-    def _get_dim_letter(self, dim: Union[str, Dimension]) -> str:
+    def _get_dim_letter(self, dim: str | Dimension) -> str:
         """Get the letter of a dimension, given either the letter or the name of the dimension, or the Dimension object.
 
         Args:
@@ -508,7 +510,7 @@ class FlodymArray(PydanticBaseModel):
         return FlodymArray(dims=dims_out, values=values_out)
 
     def apply(
-        self, func: Callable, kwargs: dict = {}, inplace: bool = False
+        self, func: Callable, kwargs: dict | None = None, inplace: bool = False
     ) -> Optional["FlodymArray"]:
         """Apply a function to the values of the FlodymArray.
 
@@ -521,12 +523,14 @@ class FlodymArray(PydanticBaseModel):
             FlodymArray: FlodymArray object with the values transformed by the function.
         """
         self._check_is_set("apply()")
+        if kwargs is None:
+            kwargs = {}
         if inplace:
             self.values = func(self.values, **kwargs)
             return None
         return FlodymArray(dims=self.dims, values=func(self.values, **kwargs))
 
-    def copy(self: T) -> T:
+    def copy(self) -> Self:
         """Return a copy of the FlodymArray.
 
         This method creates a new FlodymArray with deep copies of both the DimensionSet and the numpy
@@ -537,7 +541,7 @@ class FlodymArray(PydanticBaseModel):
         """
         return self.model_copy(update={"dims": self.dims.copy(), "values": self.values.copy()})
 
-    def to_class(self, array_class: type[T], name: Optional[str] = None, **kwargs) -> T:
+    def to_class(self, array_class: type[T], name: str | None = None, **kwargs) -> T:
         """Return an instance of a FlodymArray subclass with copied dimensions and values.
 
         Re-tags this array as a different FlodymArray (sub)class — e.g. converting a plain
@@ -566,7 +570,7 @@ class FlodymArray(PydanticBaseModel):
         return result
 
     @classmethod
-    def from_array(cls: type[T], array: "FlodymArray", name: Optional[str] = None, **kwargs) -> T:
+    def from_array(cls, array: "FlodymArray", name: str | None = None, **kwargs) -> Self:
         """Create an instance of this class from an existing FlodymArray, copying its dimensions
         and values.
 
@@ -662,7 +666,7 @@ class FlodymArray(PydanticBaseModel):
         self._is_set = True
 
     def to_df(
-        self, index: bool = True, dim_to_columns: Optional[str] = None, sparse: bool = False
+        self, index: bool = True, dim_to_columns: str | None = None, sparse: bool = False
     ) -> pd.DataFrame:
         """Export the FlodymArray to a pandas DataFrame.
 
@@ -764,11 +768,11 @@ class FlodymArray(PydanticBaseModel):
         """
         if isinstance(dim_letters, str):
             dim_letters = (dim_letters,)
-        assert all([d in self.dims.letters for d in dim_letters]), (
+        assert all(d in self.dims.letters for d in dim_letters), (
             "Dimensions to get share of must be in the object"
         )
 
-        if all([d in dim_letters for d in self.dims.letters]):
+        if all(d in dim_letters for d in self.dims.letters):
             return self / self.sum_values()
 
         return self / self.sum_over(sum_over_dims=dim_letters)
@@ -838,7 +842,7 @@ class FlodymArray(PydanticBaseModel):
     def __str__(self) -> str:
         base = f"{self.__class__.__name__} '{self.name}'"
         dims = f" with dims ({','.join(self.dims.letters)}) and shape {self.shape};"
-        values = f"\nValues:\n{str(self.values)}"
+        values = f"\nValues:\n{self.values!s}"
         return base + dims + values
 
 
@@ -901,7 +905,7 @@ class SubArrayHandler:
 
     def _get_key_single_item(self, item) -> str:
         if isinstance(item, slice):
-            raise ValueError(
+            raise TypeError(
                 "Numpy indexing of FlodymArrays is not supported. Details are given in the FlodymArray class "
                 "docstring."
             )
@@ -1011,7 +1015,7 @@ class SubArrayHandler:
     def _set_ids_single_dim(self, dim_letter, item_or_items) -> None:
         """Given either a single item name or a list of item names, return the corresponding item IDs, along one
         dimension 'dim_letter'."""
-        items_ids: Union[int, list[int]]
+        items_ids: int | list[int]
         if isinstance(item_or_items, Dimension):
             if item_or_items.is_subset(self.flodym_array.dims[dim_letter]):
                 items_ids = [
@@ -1036,12 +1040,12 @@ class _PrescribableArray(FlodymArray):
     :py:class:`Parameter` (see :py:attr:`flodym.FlowDefinition.prescribed` and
     :py:class:`flodym.StockDefinition`)."""
 
-    _prescribed: Union[str, FlodymArray, None] = None
+    _prescribed: str | FlodymArray | None = None
     """The array prescribing the values, or its parameter name before it is linked by
     :py:meth:`flodym.MFASystem.link_parameters`. Values are copied by
     :py:meth:`flodym.MFASystem.set_arrays_from_prescribed`."""
 
-    def _set_prescribed(self, prescribed: Union[str, FlodymArray, None]) -> None:
+    def _set_prescribed(self, prescribed: str | FlodymArray | None) -> None:
         """Set the prescribing array or its parameter name, or remove it by passing None.
         An array must have all dimensions of this array; further dimensions are summed over
         when the values are copied."""
@@ -1064,7 +1068,7 @@ class _PrescribableArray(FlodymArray):
         if self._prescribed is None:
             return
         if isinstance(self._prescribed, str):
-            raise ValueError(
+            raise TypeError(
                 f"Parameter '{self._prescribed}' prescribed for '{self.name}' is not linked. "
                 "Call MFASystem.link_parameters() first."
             )
@@ -1108,9 +1112,9 @@ class Flow(_PrescribableArray):
     def from_array(
         cls,
         array: "FlodymArray",
-        from_process: Optional[Process] = None,
-        to_process: Optional[Process] = None,
-        name: Optional[str] = None,
+        from_process: Process | None = None,
+        to_process: Process | None = None,
+        name: str | None = None,
     ) -> "Flow":
         """Create a Flow from an existing FlodymArray, copying its dimensions and values.
 
@@ -1156,8 +1160,6 @@ class StockArray(_PrescribableArray):
     StockArray's are used in the :py:class:`flodym.Stock` for the inflow, outflow and stock.
     """
 
-    pass
-
 
 class Parameter(FlodymArray):
     """Parameter's can be used when defining the :py:meth:`flodym.MFASystem.compute` of a specific MFA system,
@@ -1166,5 +1168,3 @@ class Parameter(FlodymArray):
 
     Parameter inherits all its functionality from :py:class:`FlodymArray`.
     """
-
-    pass

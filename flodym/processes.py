@@ -1,6 +1,7 @@
-from typing import TYPE_CHECKING, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Optional, Union
 
-from pydantic import BaseModel as PydanticBaseModel, PrivateAttr, model_validator
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import PrivateAttr, model_validator
 
 from ._checks import balance_failure, config_hint, report_balance_failures
 from ._process_compute import (
@@ -8,7 +9,6 @@ from ._process_compute import (
     Direction,
     ProcessSide,
     Side,
-    UnderdeterminedError as UnderdeterminedError,
     check_share_values,
     compute_process,
     compute_processes,
@@ -45,14 +45,14 @@ class Process(PydanticBaseModel):
     """Name of the process."""
     id: int
     """ID of the process."""
-    _inflows: Dict[str, "Flow"] = PrivateAttr(default_factory=dict)
-    _outflows: Dict[str, "Flow"] = PrivateAttr(default_factory=dict)
+    _inflows: dict[str, "Flow"] = PrivateAttr(default_factory=dict)
+    _outflows: dict[str, "Flow"] = PrivateAttr(default_factory=dict)
     _stock: Optional["Stock"] = PrivateAttr(default=None)
     # Shares and splitters hold parameter names until linked (see _link_parameters).
     # Before linking, share keys are given as in the definition: flow or process names.
-    _inflow_shares: Dict[str, Union["FlodymArray", str]] = PrivateAttr(default_factory=dict)
-    _outflow_shares: Dict[str, Union["FlodymArray", str]] = PrivateAttr(default_factory=dict)
-    _dimension_splitters: Dict[Direction, Union["FlodymArray", str]] = PrivateAttr(
+    _inflow_shares: dict[str, Union["FlodymArray", str]] = PrivateAttr(default_factory=dict)
+    _outflow_shares: dict[str, Union["FlodymArray", str]] = PrivateAttr(default_factory=dict)
+    _dimension_splitters: dict[Direction, Union["FlodymArray", str]] = PrivateAttr(
         default_factory=dict
     )
 
@@ -83,12 +83,12 @@ class Process(PydanticBaseModel):
             yield f"{direction}_dimension_splitter", _label(splitter)
 
     @property
-    def inflows(self) -> Dict[str, "Flow"]:
+    def inflows(self) -> dict[str, "Flow"]:
         """Inflows to the process, keyed by flow name."""
         return self._inflows
 
     @property
-    def outflows(self) -> Dict[str, "Flow"]:
+    def outflows(self) -> dict[str, "Flow"]:
         """Outflows from the process, keyed by flow name."""
         return self._outflows
 
@@ -198,8 +198,8 @@ class Process(PydanticBaseModel):
 
     def check_mass_balance(
         self,
-        tolerance: Optional[float] = None,
-        error_behavior: Optional[ErrorBehavior | str] = None,
+        tolerance: float | None = None,
+        error_behavior: ErrorBehavior | str | None = None,
         mass_change: Union["FlodymArray", float, None] = None,
     ) -> bool:
         """Check whether the mass balance of the process (see :py:meth:`get_mass_balance`) is
@@ -225,9 +225,9 @@ class Process(PydanticBaseModel):
 
     def _mass_balance_failure(
         self,
-        tolerance: Optional[float] = None,
+        tolerance: float | None = None,
         mass_change: Union["FlodymArray", float, None] = None,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Description of the failed mass balance check for an error message, or None if it
         passed. If no tolerance is given, :py:attr:`tolerance` is used, extended by the float
         precision of ``mass_change`` if given."""
@@ -243,7 +243,7 @@ class Process(PydanticBaseModel):
     # Shares and dimension splitters
 
     @property
-    def inflow_shares(self) -> Dict[str, Union["FlodymArray", str]]:
+    def inflow_shares(self) -> dict[str, Union["FlodymArray", str]]:
         """Shares of inflows in the total throughput of the process, keyed by flow name.
         Set them with :py:meth:`set_inflow_share`, or by a :py:class:`flodym.ProcessDefinition`.
         Shares from a definition are parameter names, keyed as in the definition, until they are
@@ -251,7 +251,7 @@ class Process(PydanticBaseModel):
         return dict(self._inflow_shares)
 
     @property
-    def outflow_shares(self) -> Dict[str, Union["FlodymArray", str]]:
+    def outflow_shares(self) -> dict[str, Union["FlodymArray", str]]:
         """Shares of outflows in the total throughput of the process, keyed by flow name.
         See :py:attr:`inflow_shares`."""
         return dict(self._outflow_shares)
@@ -354,7 +354,7 @@ class Process(PydanticBaseModel):
         check_share_values(self, share, f"Share of flow '{name}'")
         ProcessSide(self, side).shares[name] = share
 
-    def _rename_share_keys(self, new_keys: Dict[str, str]) -> None:
+    def _rename_share_keys(self, new_keys: dict[str, str]) -> None:
         """Rename the flow names under which shares are stored, keeping their order.
         Used by :py:meth:`flodym.MFASystem.relink` when flows are renamed.
 
@@ -379,7 +379,7 @@ class Process(PydanticBaseModel):
             if parameter_name is not None:
                 self._dimension_splitters[direction] = parameter_name
 
-    def _unlinked_parameter_names(self) -> List[str]:
+    def _unlinked_parameter_names(self) -> list[str]:
         """Names of the parameters of shares and dimension splitters which are not linked yet."""
         values = (
             list(self._inflow_shares.values())
@@ -388,7 +388,7 @@ class Process(PydanticBaseModel):
         )
         return [value for value in values if isinstance(value, str)]
 
-    def _link_parameters(self, parameters: Dict[str, "FlodymArray"]) -> None:
+    def _link_parameters(self, parameters: dict[str, "FlodymArray"]) -> None:
         """Replace the parameter names of shares and dimension splitters by the parameters.
         Share keys given as process names are resolved to flow names, so the process must be
         linked to its flows (see :py:meth:`flodym.MFASystem.relink`). Linked entries are kept."""
@@ -458,7 +458,7 @@ class Process(PydanticBaseModel):
 
     def compute(
         self,
-        on_underdetermined: Optional[ErrorBehavior | str] = None,
+        on_underdetermined: ErrorBehavior | str | None = None,
         compute_neighbors: bool = False,
     ) -> bool:
         """Compute the unknown in- and outflows of the process (and its stock, if any), from the
@@ -532,14 +532,14 @@ class Process(PydanticBaseModel):
             compute_processes(self._neighbors())
         return is_computed
 
-    def _neighbors(self) -> List["Process"]:
+    def _neighbors(self) -> list["Process"]:
         """Processes connected to this one by a flow, without duplicates."""
         neighbors = [f.from_process for f in self._inflows.values()]
         neighbors += [f.to_process for f in self._outflows.values()]
         return list({id(p): p for p in neighbors}.values())
 
 
-def make_processes(definitions: List[str | ProcessDefinition]) -> dict[str, Process]:
+def make_processes(definitions: list[str | ProcessDefinition]) -> dict[str, Process]:
     """Create a dictionary of processes from a list of process names or process definitions.
 
     Processes given as :py:class:`flodym.ProcessDefinition` with an ``id`` get that ID. IDs need

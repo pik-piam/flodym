@@ -43,6 +43,7 @@
 
 # %%
 import os
+
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -50,9 +51,9 @@ import plotly.express as px
 from flodym import (
     Dimension,
     DimensionSet,
+    InflowDrivenDSM,
     Parameter,
     StockArray,
-    InflowDrivenDSM,
 )
 from flodym.lifetime_models import NormalLifetime
 
@@ -85,7 +86,7 @@ relative_std = 0.3
 
 
 # %%
-years = sorted(list(steel_consumption["Time"].unique()))
+years = sorted(steel_consumption["Time"].unique())
 dimensions = DimensionSet(
     dim_list=[
         Dimension(letter="t", name="Time", dtype=np.int64, items=years),
