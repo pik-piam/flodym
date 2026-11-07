@@ -21,16 +21,18 @@
 # Here, inflow and/or outflow are given, and the stock is calculated as the cumulative sum over time of inflow minus outflow.
 
 # %%
-from flodym import Dimension, DimensionSet, SimpleFlowDrivenStock
+import flodym as fd
 
-dims = DimensionSet(
+dims = fd.DimensionSet(
     dim_list=[
-        Dimension(letter="t", name="Time", dtype=int, items=list(range(2000, 2011))),
-        Dimension(letter="p", name="Product", dtype=str, items=["Vehicles", "Buildings", "Other"]),
+        fd.Dimension(letter="t", name="Time", dtype=int, items=list(range(2000, 2011))),
+        fd.Dimension(
+            letter="p", name="Product", dtype=str, items=["Vehicles", "Buildings", "Other"]
+        ),
     ]
 )
 
-my_stock = SimpleFlowDrivenStock(dims=dims, name="in-use")
+my_stock = fd.SimpleFlowDrivenStock(dims=dims, name="in-use")
 
 # example output
 print("Inflow type:", type(my_stock.inflow))
@@ -76,14 +78,12 @@ my_stock.check_mass_balance()
 # %%
 import numpy as np
 
-from flodym import InflowDrivenDSM, NormalLifetime, Parameter
-
-my_dsm = InflowDrivenDSM(
+my_dsm = fd.InflowDrivenDSM(
     dims=dims,
     name="in-use-dsm",
-    lifetime_model=NormalLifetime,
+    lifetime_model=fd.NormalLifetime,
 )
-lifetime_mean = Parameter(dims=dims[("p",)], values=np.array([10, 20, 5]))
+lifetime_mean = fd.Parameter(dims=dims[("p",)], values=np.array([10, 20, 5]))
 my_dsm.inflow.values[...] = 0.1
 my_dsm.lifetime_model.set_prms(mean=lifetime_mean, std=0.3 * lifetime_mean)
 my_dsm.compute()
@@ -95,11 +95,9 @@ print("Stock values for Vehicles:", my_dsm.stock["Vehicles"].values)
 # In this example, let's also try passing the inflows to the Stock at initialization.
 
 # %%
-from flodym import StockArray
-
-lifetime_model = NormalLifetime(dims=dims, mean=lifetime_mean, std=0.3 * lifetime_mean)
-inflow = StockArray(dims=dims, name="in-use-dsm_inflows", values=0.1 * np.ones(dims.shape))
-my_dsm = InflowDrivenDSM(
+lifetime_model = fd.NormalLifetime(dims=dims, mean=lifetime_mean, std=0.3 * lifetime_mean)
+inflow = fd.StockArray(dims=dims, name="in-use-dsm_inflows", values=0.1 * np.ones(dims.shape))
+my_dsm = fd.InflowDrivenDSM(
     dims=dims,
     name="in-use-dsm",
     lifetime_model=lifetime_model,
@@ -115,21 +113,19 @@ print("Stock values for Vehicles:", my_dsm.stock["Vehicles"].values)
 # If you are working with definition objects for your MFA system, you can also use stock definitions:
 
 # %%
-from flodym import StockDefinition, make_empty_stocks, make_processes
-
 stock_defs = [
-    StockDefinition(
+    fd.StockDefinition(
         dim_letters=("t", "p"),
         name="in-use",
-        subclass=InflowDrivenDSM,
-        lifetime_model_class=NormalLifetime,
+        subclass=fd.InflowDrivenDSM,
+        lifetime_model_class=fd.NormalLifetime,
         process_name="use_phase",
     )
 ]
 
-processes = make_processes(["sysenv", "use_phase"])
+processes = fd.make_processes(["sysenv", "use_phase"])
 
-stocks = make_empty_stocks(stock_definitions=stock_defs, processes=processes, dims=dims)
+stocks = fd.make_empty_stocks(stock_definitions=stock_defs, processes=processes, dims=dims)
 
 # still zero, as not yet computed
 print("Stock values for Vehicles:", stocks["in-use"].stock["Vehicles"].values)
@@ -151,14 +147,12 @@ print("Stock values for Vehicles:", stocks["in-use"].stock["Vehicles"].values)
 # These inflows can be set to zero, and the stock recomputed inflow-driven:
 
 # %%
-from flodym import DynamicStockModel
-
 stock_values = np.array([1, 2, 3, 4, 5, 6, 6, 3, 2, 2, 2], dtype=float)[:, np.newaxis]
-my_dsm = DynamicStockModel(
+my_dsm = fd.DynamicStockModel(
     dims=dims,
     name="in-use-dsm",
-    lifetime_model=NormalLifetime(dims=dims, mean=lifetime_mean, std=0.3 * lifetime_mean),
-    stock=StockArray(dims=dims, values=stock_values * np.ones(dims.shape)),
+    lifetime_model=fd.NormalLifetime(dims=dims, mean=lifetime_mean, std=0.3 * lifetime_mean),
+    stock=fd.StockArray(dims=dims, values=stock_values * np.ones(dims.shape)),
 )
 my_dsm.compute_stock_driven()
 print("Smallest inflow, stock-driven:", my_dsm.inflow.values.min())
@@ -194,9 +188,7 @@ print("Stock values for Vehicles:", my_dsm.stock["Vehicles"].values)
 # mean, i.e. the coefficient of variation std / mean:
 
 # %%
-from flodym import LogNormalLifetime
-
-lifetime_model = LogNormalLifetime(dims=dims, mean=lifetime_mean, std=0.3, relative_std=True)
+lifetime_model = fd.LogNormalLifetime(dims=dims, mean=lifetime_mean, std=0.3, relative_std=True)
 
 # %% [markdown]
 # Several independent causes of leaving the stock can be combined with `CompetingRisksLifetime`,
@@ -206,15 +198,13 @@ lifetime_model = LogNormalLifetime(dims=dims, mean=lifetime_mean, std=0.3, relat
 # additionally lost from the stock every year, independent of the product age:
 
 # %%
-from flodym import CompetingRisksLifetime, Leaching
-
-lifetime_model = CompetingRisksLifetime(
+lifetime_model = fd.CompetingRisksLifetime(
     models=[
-        LogNormalLifetime(dims=dims, mean=lifetime_mean, std=0.3, relative_std=True),
-        Leaching(dims=dims, loss_rate=0.05),
+        fd.LogNormalLifetime(dims=dims, mean=lifetime_mean, std=0.3, relative_std=True),
+        fd.Leaching(dims=dims, loss_rate=0.05),
     ]
 )
-my_dsm = InflowDrivenDSM(dims=dims, lifetime_model=lifetime_model, inflow=inflow)
+my_dsm = fd.InflowDrivenDSM(dims=dims, lifetime_model=lifetime_model, inflow=inflow)
 my_dsm.compute()
 
 print("Stock values for Vehicles, with leaching:", my_dsm.stock["Vehicles"].values)
@@ -267,37 +257,35 @@ for tail in ["none", "constant_rate"]:
 # %%
 import numpy as np
 
-from flodym import Dimension, DimensionSet, FlodymArray, StockArray, StockDrivenDSM, WeibullLifetime
-
 YEARS = list(range(2025, 2071))
 
 # Initialize dimensions
 # The "extension type" dimension is used to handle different types of extension in one stock object.
 dim_list = [
-    Dimension(
+    fd.Dimension(
         name="time",
         letter="t",
         items=YEARS,
     ),
-    Dimension(
+    fd.Dimension(
         name="extension type",
         letter="p",
         items=["base", "extension by year", "extension by cohort"],
     ),
 ]
-dims = DimensionSet(dim_list=dim_list)
+dims = fd.DimensionSet(dim_list=dim_list)
 
 # Initialize the prescribed stock
 stock_over_time = 1 - np.exp(-0.1 * (np.array(YEARS) - 2025))
 stock_values = np.ndarray((len(YEARS), 3))
 stock_values[...] = stock_over_time[:, np.newaxis]
-stock = StockArray(dims=dims, values=stock_values)
+stock = fd.StockArray(dims=dims, values=stock_values)
 
 # Initialize prescribed extension factors
 # linear increase from 1 to 2 between 2030 and 2040, then constant at 2
 factor_np = 1 + np.clip((np.array(YEARS) - 2030) / 10, 0, 1)
 
-factor = FlodymArray(dims=dims)
+factor = fd.FlodymArray(dims=dims)
 factor[...] = 1.0
 
 factor_by_year = factor.copy()
@@ -306,7 +294,7 @@ factor_by_year["extension by year"] = factor_np
 factor_by_cohort = factor.copy()
 factor_by_cohort["extension by cohort"] = factor_np
 
-lifetime_model = WeibullLifetime(
+lifetime_model = fd.WeibullLifetime(
     dims=dims,
     time_letter="t",
     weibull_scale=10,
@@ -315,7 +303,7 @@ lifetime_model = WeibullLifetime(
     lt_factor_by_cohort=factor_by_cohort,
 )
 
-dsm = StockDrivenDSM(
+dsm = fd.StockDrivenDSM(
     dims=dims,
     stock=stock,
     lifetime_model=lifetime_model,
@@ -366,24 +354,24 @@ fig.show(renderer="notebook")
 # Both are applied to the conditional survival, from which the cumulative survival is computed.
 
 # %%
-dims = DimensionSet(
+dims = fd.DimensionSet(
     dim_list=[
-        Dimension(name="time", letter="t", items=YEARS),
-        Dimension(name="scenario", letter="s", items=["base", "scrappage scheme", "disaster"]),
+        fd.Dimension(name="time", letter="t", items=YEARS),
+        fd.Dimension(name="scenario", letter="s", items=["base", "scrappage scheme", "disaster"]),
     ]
 )
-stock = StockArray(dims=dims, values=stock_over_time[:, np.newaxis] * np.ones(dims.shape))
+stock = fd.StockArray(dims=dims, values=stock_over_time[:, np.newaxis] * np.ones(dims.shape))
 
 # triple exit intensity in 2035 and 2036
-hazard_factor = FlodymArray(dims=dims)
+hazard_factor = fd.FlodymArray(dims=dims)
 hazard_factor[...] = 1.0
 hazard_factor[{"s": "scrappage scheme", "t": [2035, 2036]}] = 3.0
 
 # a fifth of the stock is destroyed in 2040
-removal_share = FlodymArray(dims=dims)
+removal_share = fd.FlodymArray(dims=dims)
 removal_share[{"s": "disaster", "t": 2040}] = 0.2
 
-lifetime_model = LogNormalLifetime(
+lifetime_model = fd.LogNormalLifetime(
     dims=dims,
     mean=10,
     std=0.3,
@@ -391,7 +379,7 @@ lifetime_model = LogNormalLifetime(
     hazard_factor_by_year=hazard_factor,
     removal_share_by_year=removal_share,
 )
-dsm = StockDrivenDSM(dims=dims, stock=stock, lifetime_model=lifetime_model)
+dsm = fd.StockDrivenDSM(dims=dims, stock=stock, lifetime_model=lifetime_model)
 dsm.compute()
 
 fig = px.line(

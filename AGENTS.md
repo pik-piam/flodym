@@ -33,7 +33,7 @@ check the linter configuration. Running all hooks would also sync the notebooks 
 
 - `flodym`: the library itself
 - `flodym/export`: plotting, Sankey diagrams, process graphs and data writers
-- `examples`, `howtos`: jupytext notebooks, executed by the test suite
+- `examples`, `howtos`: jupytext notebooks. `tests/test_notebooks.py` executes their `.py` sources.
 - `tests`: pytest suite
 - `docs/source`: Sphinx documentation
 - `scripts`: helper scripts
@@ -85,5 +85,9 @@ files. Both are tracked in git, but the `.py` file is the source of truth.
   `"<old> is deprecated since v<X>. It will be removed in v3.0.0. Use <new> instead."`.
 - Changes that can affect existing models, including deprecations, belong in
   `docs/source/migration_v2.rst`.
+- In examples, howtos, docstring examples and docs, import flodym as `import flodym as fd` and
+  `import flodym.export as fde`, and access names as `fd.X` and `fde.X`, never via sub-modules
+  such as `flodym.lifetime_models`. `import flodym as fd` does not load `flodym.export`.
+  Exception: helpers from `flodym.example_objects` are imported directly.
 - `flodym/example_objects.py` provides a ready-made `ExampleMFA` for tests
 - use [Conventional Commits](https://www.conventionalcommits.org/) restricted to the types `feat`, `fix`, `docs`, and `chore`.

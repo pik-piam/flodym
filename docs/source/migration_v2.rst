@@ -75,13 +75,13 @@ Tolerances and error handling are set globally in ``flodym.config``, for example
 
 .. code-block:: python
 
-   import flodym
+   import flodym as fd
 
-   flodym.config.relative_tolerance = 1000           # default: 100 (times machine epsilon)
-   flodym.config.error_behaviors.mass_balance = "warn"  # default: "error"
+   fd.config.relative_tolerance = 1000           # default: 100 (times machine epsilon)
+   fd.config.error_behaviors.mass_balance = "warn"  # default: "error"
 
    # temporarily, within a block:
-   with flodym.config.override(error_behaviors={"mass_balance": "warn"}):
+   with fd.config.override(error_behaviors={"mass_balance": "warn"}):
        mfa.check_mass_balance()
 
 Renamed arguments and methods:
@@ -233,7 +233,8 @@ Public and private names
 
 Names that are only used inside flodym now start with an underscore. The public API consists of
 the names exported by ``flodym`` and ``flodym.export`` and documented in the API reference. Models
-that only use these are not affected.
+that only use these are not affected. The documentation accesses them as ``fd.X`` and ``fde.X``,
+after ``import flodym as fd`` and ``import flodym.export as fde``.
 
 *Action:* If a subclass overrides one of the validators below, e.g. to switch it off, rename the
 override as well. Otherwise, the flodym validator runs in addition to it.
