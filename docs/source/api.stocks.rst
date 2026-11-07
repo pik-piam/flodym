@@ -50,3 +50,20 @@ Stocks and Lifetime Models
    :inherited-members: BaseModel
 
 .. autofunction:: flodym.make_empty_stocks
+
+Base classes and types
+^^^^^^^^^^^^^^^^^^^^^^
+
+These appear in type hints and as base classes. They are not meant to be used directly.
+
+.. py:class:: flodym.StandardDeviationLifetimeModel
+
+   Base class of the lifetime models parametrized by ``mean`` and ``std``:
+   :py:class:`flodym.NormalLifetime`, :py:class:`flodym.FoldedNormalLifetime`,
+   :py:class:`flodym.LogNormalLifetime` and :py:class:`flodym.WeibullMeanStdLifetime`.
+
+.. py:data:: flodym.LifetimeArrayType
+
+   Types accepted for lifetime model parameters: a :py:class:`flodym.FlodymArray` with a subset of
+   the lifetime model dimensions, a numpy array broadcastable to the lifetime model shape, or a
+   number.

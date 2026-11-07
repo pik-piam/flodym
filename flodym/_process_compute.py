@@ -9,7 +9,7 @@ The computation is split into these parts:
   process can be computed, combines the two sides (and the stock, if any), and applies the
   dimension splitters. Processes with a stock are computed by the stock
   (``Stock._compute_process``), using the methods of :py:class:`ProcessComputation`.
-- :py:class:`_Snapshot` stores the arrays a computation may change, so that they are restored
+- :py:class:`Snapshot` stores the arrays a computation may change, so that they are restored
   if the computation fails.
 - :py:func:`compute_process` runs one computation with the checks before and after it, and
   :py:func:`compute_processes` computes as many processes as possible.
@@ -23,18 +23,20 @@ from typing import TYPE_CHECKING, Literal, Optional
 import numpy as np
 
 from ._checks import config_hint, max_abs, report_balance_failures
-from .config import ErrorBehavior, config, handle_error
+from ._config import ErrorBehavior, config, handle_error
 from .dimensions import DimensionSet
 
 if TYPE_CHECKING:
     from .flodym_arrays import FlodymArray, Flow
     from .processes import Process
+    from .stocks import Stock
 
 logger = logging.getLogger(__name__)
 
 Side = Literal["in", "out"]
 """Side of a process: ``"in"`` for its inflows, ``"out"`` for its outflows."""
 SIDES: tuple[Side, Side] = ("in", "out")
+"""Both sides of a process."""
 
 Direction = Literal["forward", "backward"]
 """Direction of a dimension splitter: ``"forward"`` splitters are used to compute outflows,
@@ -42,6 +44,7 @@ Direction = Literal["forward", "backward"]
 SPLITTER_SIDES: dict[Direction, Side] = {"forward": "out", "backward": "in"}
 """The side whose flows a dimension splitter of each direction is used for."""
 SPLITTER_DIRECTIONS: dict[Side, Direction] = {side: d for d, side in SPLITTER_SIDES.items()}
+"""The direction of the dimension splitter used for the flows of each side."""
 
 TotalMethod = Literal["sum", "share", "remainder"]
 """Ways to compute the total of a side from its flows, in order of preference
@@ -50,15 +53,19 @@ TOTAL_METHODS: tuple[TotalMethod, ...] = ("sum", "share", "remainder")
 
 
 class UnderdeterminedError(Exception):
-    """Raised by :py:meth:`flodym.Process.compute` if the process cannot be computed from the
-    given flows, shares and stock values, or if its stock type does not support the automatic
-    computation."""
+    """Raised by :py:meth:`flodym.Process.compute` if the process cannot be computed.
 
-    def __init__(self, process: "Process", message: str):
+    This is the case if the process cannot be computed from the given flows, shares and stock
+    values, or if its stock type does not support the automatic computation.
+    """
+
+    def __init__(self, process: "Process", message: str) -> None:
         self.process_name = process.name
+        """Name of the process."""
         self.reason = message
         """Explanation why the process cannot be computed."""
         self.short_message = f"Process '{process.name}' is underdetermined. Skip computation."
+        """One-line message, used when underdetermined processes are skipped."""
         super().__init__(
             f"Cannot compute process '{process.name}' (ID {process.id}), as it is "
             f"underdetermined.\n{message}" + config_hint("process_underdetermined")
@@ -66,14 +73,18 @@ class UnderdeterminedError(Exception):
 
 
 def share_tolerance(n_summed: int = 1) -> float:
-    """Tolerance for checks of dimensionless shares and dimension splitters, summed over
-    ``n_summed`` values."""
+    """Tolerance for checks of dimensionless shares and dimension splitters.
+
+    The checked quantity is a sum over ``n_summed`` values.
+    """
     return config.relative_tolerance * float(np.finfo(np.float64).eps) * max(1, n_summed)
 
 
 def check_share_values(process: "Process", share: "FlodymArray", label: str) -> None:
-    """Check that a share or dimension splitter is between zero and one, handling failures
-    according to ``config.error_behaviors.process_shares``."""
+    """Check that a share or dimension splitter is between zero and one.
+
+    Failures are handled according to ``config.error_behaviors.process_shares``.
+    """
     if config.error_behaviors.process_shares == ErrorBehavior.IGNORE:
         return
     tolerance = share_tolerance()
@@ -110,7 +121,7 @@ class ProcessSide:
     Flows count as known if they are set (see :py:attr:`flodym.FlodymArray.is_set`).
     """
 
-    def __init__(self, process: "Process", side: Side):
+    def __init__(self, process: "Process", side: Side) -> None:
         self.process = process
         self.side = side
         self.flows: dict[str, Flow] = process._inflows if side == "in" else process._outflows
@@ -147,8 +158,11 @@ class ProcessSide:
 
     @property
     def n_redundant_shares(self) -> int:
-        """Number of shares which give no information beyond the others: If all flows of the
-        side have shares, the last one follows from the others, as they sum to one."""
+        """Number of shares which give no information beyond the others.
+
+        If all flows of the side have shares, the last one follows from the others, as they sum
+        to one.
+        """
         return 1 if self.flows and len(self.shares) == len(self.flows) else 0
 
     def check_shares_linked(self) -> None:
@@ -163,7 +177,9 @@ class ProcessSide:
     # Computing the total from the flows ---------------------------------------------------------
 
     def total_method(self) -> TotalMethod | None:
-        """How the total of this side can be computed from its flows, or None if it cannot:
+        """How the total of this side can be computed from its flows.
+
+        None if it cannot. Otherwise, one of:
 
         - ``"sum"``: All flows are known; the total is their sum.
         - ``"share"``: A flow is known and has a share; the total is the flow divided by it.
@@ -185,6 +201,7 @@ class ProcessSide:
 
     def compute_total(self) -> "FlodymArray":
         """Compute the total of this side from its flows, see :py:meth:`total_method`.
+
         The total has the dimensions common to all flows used.
 
         Raises an UnderdeterminedError if the total cannot be computed, also if it is not
@@ -209,8 +226,11 @@ class ProcessSide:
         raise UnderdeterminedError(self.process, self.total_failure_message())
 
     def _total_from_share(self) -> Optional["FlodymArray"]:
-        """Total as a known flow divided by its share, or None if all shares of known flows have
-        zeros, so that the total is not determined everywhere."""
+        """Total as a known flow divided by its share.
+
+        None if all shares of known flows have zeros, so that the total is not determined
+        everywhere.
+        """
         usable = [n for n in self.both_known if not self.shares[n].dims - self.flows[n].dims]
         if not usable:
             name = self.both_known[0]
@@ -264,8 +284,10 @@ class ProcessSide:
     # Computing the flows from the total ---------------------------------------------------------
 
     def can_compute_flows(self) -> bool:
-        """Whether the unknown flows can be computed from a total, i.e. whether at most one
-        unknown flow has no share."""
+        """Whether the unknown flows can be computed from a total.
+
+        This is the case if at most one unknown flow has no share.
+        """
         return len(self.neither_known) <= 1
 
     def flows_failure_message(self) -> str:
@@ -306,8 +328,11 @@ class ProcessSide:
             )
 
     def compute_flows(self, total: "FlodymArray") -> None:
-        """Compute the unknown flows from the total: flows with a share as total times share, the
-        one flow without share (if any) as total minus all other flows."""
+        """Compute the unknown flows from the total.
+
+        Flows with a share are computed as total times share, the one flow without share (if any)
+        as total minus all other flows.
+        """
         self.check_flow_dims(total.dims)
         unknown = self.unknown
         # Computed flows are kept with the dimensions of the total until the remaining flow is
@@ -323,8 +348,10 @@ class ProcessSide:
     # Checks of the shares -----------------------------------------------------------------------
 
     def check_share_sums(self) -> None:
-        """Check that the shares are between zero and one and sum to at most one, or to exactly
-        one if all flows of the side have a share."""
+        """Check that the shares are between zero and one and sum to at most one.
+
+        If all flows of the side have a share, they must sum to exactly one.
+        """
         if not self.shares or config.error_behaviors.process_shares == ErrorBehavior.IGNORE:
             return
         for name, share in self.shares.items():
@@ -348,13 +375,15 @@ class ProcessSide:
             )
 
     def check_shares_fulfilled(self, total: "FlodymArray") -> None:
-        """Check that the flows fulfill their shares of the given total of this side, which may
-        not be the case if the process is overdetermined. Shares with dimensions the total does
-        not have are not checked."""
+        """Check that the flows fulfill their shares of the given total of this side.
+
+        This may not be the case if the process is overdetermined. Shares with dimensions the
+        total does not have are not checked.
+        """
         if config.error_behaviors.process_overdetermined == ErrorBehavior.IGNORE:
             return
         tolerance = self.process.tolerance
-        failures = []
+        failures: list[str] = []
         for name, share in self.shares.items():
             if share.dims - total.dims:
                 continue
@@ -383,7 +412,7 @@ class ProcessComputation:
     :py:meth:`compute_side`.
     """
 
-    def __init__(self, process: "Process"):
+    def __init__(self, process: "Process") -> None:
         process._check_parameters_linked()
         self.process = process
         self.sides: dict[Side, ProcessSide] = {side: ProcessSide(process, side) for side in SIDES}
@@ -394,9 +423,12 @@ class ProcessComputation:
     # Checks before the computation --------------------------------------------------------------
 
     def require_total(self, sides: Sequence[Side] = SIDES) -> list[Side]:
-        """Sides from which the total can be computed, sorted by the preference of their
-        method (see :py:data:`TOTAL_METHODS`). Raises an UnderdeterminedError if there is none."""
-        candidates = []
+        """Sides from which the total can be computed.
+
+        They are sorted by the preference of their method (see :py:data:`TOTAL_METHODS`).
+        Raises an UnderdeterminedError if there is none.
+        """
+        candidates: list[tuple[int, Side]] = []
         for side in sides:
             method = self.sides[side].total_method()
             if method is not None:
@@ -408,8 +440,10 @@ class ProcessComputation:
         return [side for _, side in sorted(candidates)]
 
     def require_flows(self, sides: Sequence[Side] = SIDES) -> None:
-        """Raise an UnderdeterminedError if the unknown flows of the given sides cannot be
-        computed from a total."""
+        """Raise an UnderdeterminedError if unknown flows cannot be computed from a total.
+
+        Only the unknown flows of the given sides are considered.
+        """
         failed = [self.sides[side] for side in sides if not self.sides[side].can_compute_flows()]
         if failed:
             message = "".join(side.flows_failure_message() for side in failed)
@@ -432,9 +466,12 @@ class ProcessComputation:
             self.compute_side(total, side)
 
     def compute_total(self, sides: Sequence[Side]) -> "FlodymArray":
-        """Total, computed from the flows of the first of the given sides from which this is
-        possible (see :py:meth:`require_total`). Raises an UnderdeterminedError if none."""
-        errors = []
+        """Total, computed from the flows of one of the given sides.
+
+        The first of the given sides from which this is possible is used (see
+        :py:meth:`require_total`). Raises an UnderdeterminedError if none.
+        """
+        errors: list[str] = []
         for side in self.require_total(sides):
             try:
                 return self.sides[side].compute_total()
@@ -443,16 +480,22 @@ class ProcessComputation:
         raise UnderdeterminedError(self.process, "".join(errors))
 
     def compute_side(self, total: "FlodymArray", side: Side) -> None:
-        """Compute the unknown flows of one side from the total of this side, which is extended
-        by the dimension splitter of the side if needed, and check the shares."""
+        """Compute the unknown flows of one side from the total of this side.
+
+        The total is extended by the dimension splitter of the side if needed. Afterwards, the
+        shares are checked.
+        """
         total = self.apply_dimension_splitter(total, side)
         self.sides[side].compute_flows(total)
         self.sides[side].check_shares_fulfilled(total)
 
     def apply_dimension_splitter(self, total: "FlodymArray", side: Side) -> "FlodymArray":
-        """Multiply the total with the dimension splitter of the given side (the forward splitter
-        for the outflows, the backward splitter for the inflows), if unknown flows of the side
-        have dimensions which the total does not have. Otherwise, return it unchanged."""
+        """Multiply the total with the dimension splitter of the given side, if needed.
+
+        The splitter is the forward splitter for the outflows and the backward splitter for the
+        inflows. It is needed if unknown flows of the side have dimensions which the total does not
+        have. Otherwise, the total is returned unchanged.
+        """
         direction = SPLITTER_DIRECTIONS[side]
         splitter = self.process._dimension_splitters.get(direction)
         unknown_flows = self.sides[side].unknown.values()
@@ -501,7 +544,7 @@ class ProcessComputation:
 
     # Checks after the computation ---------------------------------------------------------------
 
-    def check_result(self, was_overdetermined: bool, snapshot: "_Snapshot") -> None:
+    def check_result(self, was_overdetermined: bool, snapshot: "Snapshot") -> None:
         """Checks after a successful computation."""
         process = self.process
         if not process.is_computed:
@@ -526,9 +569,11 @@ class ProcessComputation:
         if was_overdetermined or config.checks.mass_balance_after_compute:
             check_process_mass_balance(process, overdetermined=was_overdetermined)
 
-    def _check_given_stock_arrays_kept(self, snapshot: "_Snapshot") -> None:
+    def _check_given_stock_arrays_kept(self, snapshot: "Snapshot") -> None:
         """Check that stock arrays which were set before the computation kept their values.
-        The stock computation overwrites them if the process is overdetermined."""
+
+        The stock computation overwrites them if the process is overdetermined.
+        """
         stock = self.process.stock
         if stock is None or config.error_behaviors.process_overdetermined == ErrorBehavior.IGNORE:
             return
@@ -552,8 +597,10 @@ class ProcessComputation:
 
 
 def check_process_mass_balance(process: "Process", overdetermined: bool = False) -> None:
-    """Check the mass balance of a process after a computation, handling failures according to
-    ``config.error_behaviors.mass_balance``."""
+    """Check the mass balance of a process after a computation.
+
+    Failures are handled according to ``config.error_behaviors.mass_balance``.
+    """
     hint = config_hint("mass_balance", tolerance=True)
     if overdetermined:
         hint = " The process is overdetermined, so the given values may be inconsistent." + hint
@@ -566,9 +613,11 @@ def check_process_mass_balance(process: "Process", overdetermined: bool = False)
 
 
 def check_completed_process(process: "Process") -> None:
-    """Check a process whose flows were all set by the computation of neighboring processes,
-    without computing it: Its mass balance and its shares, relative to the sum of the flows of
-    each side, must be fulfilled."""
+    """Check a process whose flows were all set by the computation of neighboring processes.
+
+    The process is not computed. Its mass balance and its shares, relative to the sum of the
+    flows of each side, must be fulfilled.
+    """
     check_process_mass_balance(process, overdetermined=True)
     for side in SIDES:
         process_side = ProcessSide(process, side)
@@ -592,11 +641,11 @@ def is_overdetermined(process: "Process") -> bool:
         # flows, shares and stock arrays, and the stock model
         n_unknowns = n_flows + 3
         n_equations = 2 + n_given + stock._n_equations
-        n_equations += sum(a.is_set for a in _stock_arrays(stock))
+        n_equations += sum(a.is_set for a in stock_arrays(stock))
     return n_equations > n_unknowns
 
 
-def _stock_arrays(stock) -> list["FlodymArray"]:
+def stock_arrays(stock: "Stock") -> list["FlodymArray"]:
     """Inflow, outflow, stock and, if present, inflow by cohort of a stock."""
     arrays = [stock.inflow, stock.outflow, stock.stock]
     inflow_by_cohort = getattr(stock, "inflow_by_cohort", None)
@@ -605,30 +654,37 @@ def _stock_arrays(stock) -> list["FlodymArray"]:
     return arrays
 
 
-class _Snapshot:
-    """Values and ``is_set`` flags of all arrays which a computation of a process may change:
-    its in- and outflows and the arrays of its stock. Used to restore them if the computation
-    fails."""
+class Snapshot:
+    """Values and ``is_set`` flags of all arrays which a computation of a process may change.
 
-    _STOCK_PRIVATE_ARRAYS = ("_stock_by_cohort", "_outflow_by_cohort")
+    These are its in- and outflows and the arrays of its stock. Used to restore them if the
+    computation fails.
+    """
 
-    def __init__(self, process: "Process"):
+    _stock_private_arrays = ("_stock_by_cohort", "_outflow_by_cohort")
+
+    def __init__(self, process: "Process") -> None:
         stock = process.stock
         self.stock = stock
-        stock_arrays = [] if stock is None else _stock_arrays(stock)
+        arrays_of_stock: list[FlodymArray] = [] if stock is None else stock_arrays(stock)
         flows = list(process.inflows.values()) + list(process.outflows.values())
-        self.arrays = [(a, a.values.copy(), a.is_set) for a in flows + stock_arrays]
+        self.arrays: list[tuple[FlodymArray, np.ndarray, bool]] = [
+            (a, a.values.copy(), a.is_set) for a in flows + arrays_of_stock
+        ]
         """Arrays with their values and ``is_set`` flags."""
-        self.given_stock_arrays = [(a, v) for a, v, was_set in self.arrays[len(flows) :] if was_set]
+        self.given_stock_arrays: list[tuple[FlodymArray, np.ndarray]] = [
+            (a, v) for a, v, was_set in self.arrays[len(flows) :] if was_set
+        ]
         """Stock arrays which were set, with their values."""
         # cohort arrays of dynamic stock models are replaced, not modified, so references suffice
-        self.stock_private = {
+        self.stock_private: dict[str, np.ndarray] = {
             name: getattr(stock, name)
-            for name in self._STOCK_PRIVATE_ARRAYS
+            for name in self._stock_private_arrays
             if hasattr(stock, name)
         }
 
     def restore(self) -> None:
+        """Restore the stored values and ``is_set`` flags."""
         for array, values, was_set in self.arrays:
             array.values = values
             if was_set:
@@ -671,7 +727,7 @@ def compute_process(
         p for p in process._neighbors() if p.id != 0 and p is not process and not p.is_computed
     ]
     was_overdetermined = is_overdetermined(process)
-    snapshot = _Snapshot(process)
+    snapshot = Snapshot(process)
     computation = ProcessComputation(process)
     try:
         computation.run()
@@ -694,9 +750,11 @@ def compute_process(
 
 
 def compute_processes(processes: Iterable["Process"]) -> None:
-    """Compute the given processes, and all processes which become computable as a consequence,
-    until no further process can be computed (see :py:meth:`flodym.Process.compute`).
-    Underdetermined processes are skipped with an info log message.
+    """Compute the given processes, and all processes which become computable as a consequence.
+
+    This continues until no further process can be computed (see
+    :py:meth:`flodym.Process.compute`). Underdetermined processes are skipped with an info log
+    message.
 
     The processes to try are kept in a queue, which initially contains the given processes. When
     a process is computed, its neighbors which are not computed yet are added to the queue, since

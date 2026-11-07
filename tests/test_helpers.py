@@ -6,7 +6,7 @@ from polyfactory.factories.pydantic_factory import ModelFactory
 from flodym import Dimension, DimensionSet, FlodymArray
 from flodym.flodym_array_helper import flodym_array_stack
 
-dimension_set = DimensionSet(
+DIMENSION_SET = DimensionSet(
     dim_list=[
         {"name": "time", "letter": "t", "items": [1990, 2000, 2010]},
         {"name": "place", "letter": "p", "items": ["World"]},
@@ -15,7 +15,7 @@ dimension_set = DimensionSet(
 
 
 class FlodymArrayFactory(ModelFactory[FlodymArray]):
-    dims = dimension_set
+    dims = DIMENSION_SET
     values = np.random.rand(3, 1)
 
 
@@ -25,8 +25,8 @@ def test_flodym_array_stack(new_dim_length):
     additional_dim = Dimension(name="extra", letter="x", items=list(range(new_dim_length)))
     stacked = flodym_array_stack(flodym_arrays, additional_dim)
 
-    assert stacked.shape[:-1] == dimension_set.shape
-    assert stacked.dims.dim_list[:-1] == dimension_set.dim_list
+    assert stacked.shape[:-1] == DIMENSION_SET.shape
+    assert stacked.dims.dim_list[:-1] == DIMENSION_SET.dim_list
 
     for i in range(new_dim_length):
         assert_array_equal(stacked.values[:, :, i], flodym_arrays[i].values)

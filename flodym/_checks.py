@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Union
 
 import numpy as np
 
-from .config import ErrorBehavior, handle_error
+from ._config import ErrorBehavior, handle_error
 
 if TYPE_CHECKING:
     from .flodym_arrays import FlodymArray
@@ -24,8 +24,8 @@ def config_hint(error_behavior: str, tolerance: bool = False, check: str | None 
     return " Configure with " + ", ".join(options) + "."
 
 
-def max_abs(array: Union["FlodymArray", float]) -> float:
-    """Largest absolute value of a FlodymArray or scalar. NaN if any value is NaN."""
+def max_abs(array: Union["FlodymArray", np.ndarray, float]) -> float:
+    """Largest absolute value of a FlodymArray, numpy array or scalar. NaN if any value is NaN."""
     values = np.asarray(getattr(array, "values", array))
     return float(np.max(np.abs(values), initial=0.0))
 
@@ -33,8 +33,10 @@ def max_abs(array: Union["FlodymArray", float]) -> float:
 def balance_failure(
     label: str, balance: Union["FlodymArray", float], tolerance: float
 ) -> str | None:
-    """Description of a failed mass balance check for use in an error message,
-    or None if the check passed. NaN errors fail the check."""
+    """Describe a failed mass balance check for use in an error message.
+
+    Returns None if the check passed. NaN errors fail the check.
+    """
     max_error = max_abs(balance)
     if max_error <= tolerance:
         return None
@@ -47,8 +49,17 @@ def report_balance_failures(
     hint: str,
     success_message: str,
 ) -> bool:
-    """Handle the results of one or several mass balance checks, given as returned by
-    :py:func:`balance_failure`. Returns whether all checks passed."""
+    """Handle the results of one or several mass balance checks.
+
+    Args:
+        failures: Results of the checks, as returned by :py:func:`balance_failure`.
+        error_behavior: What to do if any check failed.
+        hint: Appended to the error message, e.g. from :py:func:`config_hint`.
+        success_message: Logged at info level if all checks passed.
+
+    Returns:
+        Whether all checks passed.
+    """
     failed = [f for f in failures if f is not None]
     if failed:
         message = "Mass balance check failed for " + ", ".join(failed) + "." + hint

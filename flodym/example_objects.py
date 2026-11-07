@@ -1,4 +1,5 @@
-"""
+"""Ready-made example objects for tests and documentation.
+
 ODYM example by Stefan Pauliuk, adapted for flodym.
 Same as example2.
 """
@@ -21,7 +22,14 @@ from flodym import (
 
 
 class ExampleMFA(MFASystem):
-    def compute(self):
+    """Simple steel/copper/manganese recycling system.
+
+    It includes shredding, demolition, remelting and two flow-driven stocks (landfills and slag
+    piles).
+    """
+
+    def compute(self) -> None:
+        """Compute all flows and stocks from the parameters."""
         self.flows["sysenv => shredder"][...] = (
             self.parameters["eol machines"] * self.parameters["composition eol machines"]
         )
@@ -52,21 +60,17 @@ class ExampleMFA(MFASystem):
         self.stocks["slag piles"].compute()
 
 
-def _get_dims() -> DimensionSet:
-    return DimensionSet(
-        dim_list=[
-            Dimension(letter="t", name="Time", dtype=int, items=list(range(1980, 2011))),
-            Dimension(letter="e", name="Material", dtype=str, items=["Fe", "Cu", "Mn"]),
-        ]
-    )
-
-
 def get_example_array() -> FlodymArray:
+    """Return a FlodymArray over time and material, filled with random values."""
     dims = _get_dims()
     return FlodymArray(dims=dims, name="Example Array", values=np.random.random((31, 3)))
 
 
 def get_example_mfa() -> ExampleMFA:
+    """Return an :py:class:`ExampleMFA` with parameters set and flows and stocks still empty.
+
+    Call its ``compute()`` method to fill flows and stocks.
+    """
     dims = _get_dims()
 
     parameters = {
@@ -159,4 +163,14 @@ def get_example_mfa() -> ExampleMFA:
 
     return ExampleMFA(
         dims=dims, parameters=parameters, processes=processes, flows=flows, stocks=stocks
+    )
+
+
+def _get_dims() -> DimensionSet:
+    """Time (1980-2010) and material (Fe, Cu, Mn) dimensions of the example."""
+    return DimensionSet(
+        dim_list=[
+            Dimension(letter="t", name="Time", dtype=int, items=list(range(1980, 2011))),
+            Dimension(letter="e", name="Material", dtype=str, items=["Fe", "Cu", "Mn"]),
+        ]
     )

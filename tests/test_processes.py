@@ -111,6 +111,11 @@ def test_remove_links():
     assert list(a.inflows) == ["f2"]
     with pytest.raises(ValueError, match="No inflow"):
         a.remove_inflow("f1")
+    sysenv = mfa.processes["sysenv"]
+    sysenv.remove_outflow("f1")
+    assert list(sysenv.outflows) == ["f2"]
+    with pytest.raises(ValueError, match="No outflow"):
+        sysenv.remove_outflow("f1")
     a.remove_stock()
     assert a.stock is None
 

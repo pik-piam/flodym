@@ -1,8 +1,10 @@
+"""Dimensions and sets of dimensions over which flodym arrays are defined."""
+
 from __future__ import annotations
 
 from collections.abc import Iterator
 from copy import copy
-from typing import overload
+from typing import Any, Literal, overload
 
 import numpy as np
 import pandas as pd
@@ -20,7 +22,7 @@ class Dimension(PydanticBaseModel):
     **Example**
 
     >>> from flodym import Dimension
-    >>> regions = Dimension(name='Region', letter='r', items=['Earth', 'Moon', 'Sun'])
+    >>> regions = Dimension(name="Region", letter="r", items=["Earth", "Moon", "Sun"])
 
     The list of items can be loaded using a :py:class:`flodym.DataReader` object,
     or set directly, for example if a subset of an existing dimension is formed.
@@ -40,22 +42,48 @@ class Dimension(PydanticBaseModel):
     """
 
     @model_validator(mode="after")
-    def items_have_datatype(self):
+    def _items_have_datatype(self) -> Dimension:
         """If a datatype is specified, check that all items have this datatype."""
         if self.dtype is not None and any(not isinstance(i, self.dtype) for i in self.items):
             raise ValueError("All items must have the same datatype as specified in dtype.")
         return self
+
+    def __add__(self, other: Dimension | DimensionSet) -> DimensionSet:
+        """Addition operator to create a DimensionSet from two Dimensions.
+
+        If ``other`` is a DimensionSet, this Dimension is prepended to it.
+
+        Raises:
+            TypeError: If other is neither a Dimension nor a DimensionSet.
+        """
+        if isinstance(other, Dimension):
+            return DimensionSet(dim_list=[self, other])
+        elif isinstance(other, DimensionSet):
+            return self.as_dimset() + other
+        else:
+            raise TypeError("Can only add Dimension to Dimension or DimensionSet.")
+
+    def __str__(self) -> str:
+        base = f"Dimension '{self.name}' ('{self.letter}'); "
+        item_base = f"{self.len} items"
+        type_info = f" (type {self.dtype})" if self.dtype is not None else ""
+        if self.len <= 3:
+            list_str = f": {self.items!s}"
+        else:
+            list_str = f": ['{self.items[0]}', ..., '{self.items[-1]}']"
+        return base + item_base + type_info + list_str
 
     @classmethod
     def from_df(cls, df: pd.DataFrame, definition: DimensionDefinition) -> Dimension:
         """Create Dimension object from definition and a pandas DataFrame for the items.
 
         Args:
-            df (pd.DataFrame): A single-column or single-row data frame, which is transformed to the dimension items.
-            definition (DimensionDefinition): The definition of the dimension.
+            df: A single-column or single-row data frame, which is transformed to the dimension
+                items.
+            definition: The definition of the dimension.
 
         Returns:
-            Dimension: The dimension object.
+            The dimension object.
         """
         data = df.to_numpy()
         return cls.from_np(data, definition)
@@ -63,14 +91,19 @@ class Dimension(PydanticBaseModel):
     @classmethod
     def from_np(cls, data: np.ndarray, definition: DimensionDefinition) -> Dimension:
         """Create Dimension object from definition and a numpy array for the items.
+
         Performs checks on the array and transforms to list of items.
+        A leading item equal to the dimension name is treated as header and removed.
 
         Args:
-            data (np.ndarray): A numpy array where only one dimension exceeds size 1.
-            definition (DimensionDefinition): The definition object
+            data: A numpy array where only one dimension exceeds size 1.
+            definition: The definition object
 
         Returns:
-            Dimension: The dimension object.
+            The dimension object.
+
+        Raises:
+            ValueError: If more than one axis of the array has a size larger than one.
         """
         if sum([s > 1 for s in data.shape]) > 1:
             raise ValueError(
@@ -91,40 +124,25 @@ class Dimension(PydanticBaseModel):
         """The number of items in the dimension."""
         return len(self.items)
 
-    def index(self, item) -> int:
-        """Return the index of an item in the dimension."""
+    def index(self, item: Any) -> int:
+        """Return the index of an item in the dimension.
+
+        Raises:
+            ValueError: If the item is not in the dimension.
+        """
         return self.items.index(item)
 
-    def is_subset(self, other: Dimension):
+    def is_subset(self, other: Dimension) -> bool:
         """Check if the items of this dimension are a subset of the items of another dimension."""
         return set(self.items).issubset(other.items)
 
-    def is_superset(self, other: Dimension):
+    def is_superset(self, other: Dimension) -> bool:
         """Check if the items of this dimension are a superset of the items of another dimension."""
         return set(self.items).issuperset(other.items)
 
     def as_dimset(self) -> DimensionSet:
         """Convert the Dimension to a DimensionSet containing only this Dimension."""
         return DimensionSet(dim_list=[self])
-
-    def __add__(self, other: Dimension) -> DimensionSet:
-        """Addition operator to create a DimensionSet from two Dimensions."""
-        if isinstance(other, Dimension):
-            return DimensionSet(dim_list=[self, other])
-        elif isinstance(other, DimensionSet):
-            return self.as_dimset() + other
-        else:
-            raise TypeError("Can only add Dimension to Dimension or DimensionSet.")
-
-    def __str__(self):
-        base = f"Dimension '{self.name}' ('{self.letter}'); "
-        item_base = f"{self.len} items"
-        type_info = f" (type {self.dtype})" if self.dtype is not None else ""
-        if self.len <= 3:
-            list_str = f": {self.items!s}"
-        else:
-            list_str = f": ['{self.items[0]}', ..., '{self.items[-1]}']"
-        return base + item_base + type_info + list_str
 
 
 class DimensionSet(PydanticBaseModel):
@@ -133,23 +151,30 @@ class DimensionSet(PydanticBaseModel):
     **Example**
 
         >>> from flodym import Dimension, DimensionSet
-        >>> regions = Dimension(name='Region', letter='r', items=['Earth', 'Moon', 'Sun'])
-        >>> time = Dimension(name='Time', letter='t', items=[1990, 2000, 2010, 2020, 2030])
-        >>> dimensions = DimensionSet([regions, time])
+        >>> regions = Dimension(name="Region", letter="r", items=["Earth", "Moon", "Sun"])
+        >>> time = Dimension(name="Time", letter="t", items=[1990, 2000, 2010, 2020, 2030])
+        >>> dimensions = DimensionSet(dim_list=[regions, time])
 
     It is expected that DimensionSet instances are created via the :py:class:`flodym.DataReader`.
 
-        >>> from flodym import DataReader, DimensionDefinition, Dimension
+        >>> from flodym import DataReader, Dimension, DimensionDefinition, DimensionSet, Parameter
         >>> class MyDataReader(DataReader):
-        >>>    def read_dimension(self, dimension_definition: DimensionDefinition) -> Dimension:
-        >>>        if dimension_definition.letter == 't':
-        >>>            return Dimension(name='Time', letter='t', items=[1990, 2000, 2010, 2020, 2030])
-        >>>        elif dimension_definition.letter == 'r':
-        >>>            return Dimension(name='Region', letter='r', items=['Earth', 'Moon', 'Sun'])
-        >>>        raise ValueError('No data available for desired dimension')
+        ...     def read_dimension(self, dimension_definition: DimensionDefinition) -> Dimension:
+        ...         if dimension_definition.letter == "t":
+        ...             return Dimension(
+        ...                 name="Time", letter="t", items=[1990, 2000, 2010, 2020, 2030]
+        ...             )
+        ...         elif dimension_definition.letter == "r":
+        ...             return Dimension(name="Region", letter="r", items=["Earth", "Moon", "Sun"])
+        ...         raise ValueError("No data available for desired dimension")
+        ...
+        ...     def read_parameter_values(
+        ...         self, parameter_name: str, dims: DimensionSet
+        ...     ) -> Parameter:
+        ...         raise NotImplementedError("This reader only provides dimensions")
         >>> data_reader = MyDataReader()
-        >>> time_definition = DimensionDefinition(name='Time', letter='t', dtype=int)
-        >>> region_definition = DimensionDefinition(name='Region', letter='r', dtype=str)
+        >>> time_definition = DimensionDefinition(name="Time", letter="t", dtype=int)
+        >>> region_definition = DimensionDefinition(name="Region", letter="r", dtype=str)
         >>> definitions = [time_definition, region_definition]
         >>> dimensions = data_reader.read_dimensions(dimension_definitions=definitions)
 
@@ -159,7 +184,7 @@ class DimensionSet(PydanticBaseModel):
     """A list of Dimension objects defining the set"""
 
     @model_validator(mode="after")
-    def no_repeated_dimensions(self):
+    def _no_repeated_dimensions(self) -> DimensionSet:
         """Check that all dimensions have unique letters."""
         letters = self.letters
         if len(letters) != len(set(letters)):
@@ -167,24 +192,13 @@ class DimensionSet(PydanticBaseModel):
         return self
 
     @model_validator(mode="after")
-    def copy_dim_list(self):
-        """Ensure each DimensionSet has its own copy of the dim_list to avoid inplace operations
-        affecting other DimensionSets."""
+    def _copy_dim_list(self) -> DimensionSet:
+        """Ensure each DimensionSet has its own copy of the dim_list.
+
+        This avoids inplace operations affecting other DimensionSets.
+        """
         self.dim_list = copy(self.dim_list)
         return self
-
-    @classmethod
-    def empty(cls) -> DimensionSet:
-        """Return an empty DimensionSet."""
-        return cls(dim_list=[])
-
-    @property
-    def _full_mapping(self) -> dict[str, Dimension]:
-        """Contains mappings.
-
-        letter --> dim object and name --> dim object
-        """
-        return {dim.name: dim for dim in self.dim_list} | {dim.letter: dim for dim in self.dim_list}
 
     @overload
     def __getitem__(self, key: tuple[str, ...]) -> DimensionSet: ...
@@ -194,13 +208,21 @@ class DimensionSet(PydanticBaseModel):
         """Get a dimension by its name, letter or index with the [] operator.
 
         Args:
-            key (str, int, tuple): The name, letter or index of the dimension to get; If a tuple is passed, a subset of the dimensions is returned as a new DimensionSet.
+            key: The name, letter or index of the dimension to get; If a tuple is passed, a subset
+                of the dimensions is returned as a new DimensionSet.
+
+        Returns:
+            The selected dimension, or a DimensionSet if a tuple was
+            passed.
+
+        Raises:
+            TypeError: If the key is not a string, int or tuple.
 
         Example:
-        >>> dimensions['Region']
-        >>> dimensions['r']
+        >>> dimensions["Region"]
+        >>> dimensions["r"]
         >>> dimensions[0]
-        >>> dimensions['Region', 'Time']
+        >>> dimensions["Region", "Time"]
         """
         if isinstance(key, tuple):
             return self.get_subset(key)
@@ -215,54 +237,137 @@ class DimensionSet(PydanticBaseModel):
         return iter(self.dim_list)
 
     def __contains__(self, key: str | Dimension) -> bool:
+        """Check if a dimension name or letter is in the set; Dimensions are compared by letter."""
         if isinstance(key, Dimension):
             key = key.letter
         return key in self._full_mapping
 
-    def size(self, key: str) -> int:
-        """get the number of items in a dimension
+    def __len__(self) -> int:
+        """Return the number of dimensions in the set."""
+        return len(self.dim_list)
 
-        Args:
-            key (str): the name or letter of the dimension to get the size of
-        """
-        return self._full_mapping[key].len
+    def __bool__(self) -> bool:
+        """Return True if the set is not empty."""
+        return len(self.dim_list) > 0
+
+    def __str__(self) -> str:
+        base = f"DimensionSet ({','.join(self.letters)}) with shape {self.shape}:"
+        dim_strs = [
+            f"\n  '{dim.letter}': '{dim.name}' with length {dim.len}" for dim in self.dim_list
+        ]
+        return base + "".join(dim_strs)
+
+    @classmethod
+    def empty(cls) -> DimensionSet:
+        """Return an empty DimensionSet."""
+        return cls(dim_list=[])
+
+    @property
+    def ndim(self) -> int:
+        """The number of dimensions in the set."""
+        return len(self.dim_list)
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        """A tuple of the names of the dimensions in the set."""
+        return tuple([dim.name for dim in self.dim_list])
+
+    @property
+    def letters(self) -> tuple[str, ...]:
+        """A tuple of the letters of the dimensions in the set."""
+        return tuple([dim.letter for dim in self.dim_list])
+
+    @property
+    def string(self) -> str:
+        """The letters of the dimensions in the set concatenated to a single string."""
+        return "".join(self.letters)
 
     @property
     def shape(self) -> tuple[int, ...]:
-        """shape of the array that would be created with the dimensions in the set"""
+        """Shape of the array that would be created with the dimensions in the set."""
         return tuple(self.size(dim) for dim in self.letters)
 
     @property
     def total_size(self) -> int:
-        """size (total number of elements) of the array that would be created with the dimensions in the set"""
+        """Size (total number of elements) of an array created with the dimensions in the set."""
         return int(np.prod(self.shape))
+
+    @property
+    def _full_mapping(self) -> dict[str, Dimension]:
+        """Contains mappings.
+
+        letter --> dim object and name --> dim object
+        """
+        return {dim.name: dim for dim in self.dim_list} | {dim.letter: dim for dim in self.dim_list}
+
+    def size(self, key: str) -> int:
+        """Get the number of items in a dimension.
+
+        Args:
+            key: the name or letter of the dimension to get the size of
+
+        Returns:
+            The number of items in the dimension.
+        """
+        return self._full_mapping[key].len
+
+    def index(self, key: str) -> int:
+        """Return the index of a dimension in the set.
+
+        Args:
+            key: The name or letter of the dimension to get the index of
+
+        Returns:
+            The position of the dimension in the set.
+        """
+        dim = self._full_mapping[key]
+        return self.dim_list.index(dim)
 
     def copy(self) -> DimensionSet:
         """Return a copy of the DimensionSet."""
         return self.model_copy(update={"dim_list": copy(self.dim_list)})
 
-    def get_subset(self, dims: tuple | None = None) -> DimensionSet:
-        """Selects :py:class:`Dimension` objects from the object attribute dim_list,
+    def get_subset(self, dims: tuple[str, ...] | None = None) -> DimensionSet:
+        """Select a subset of the dimensions, given by their letters or names.
+
+        Selects :py:class:`Dimension` objects from the object attribute dim_list,
         according to the dims passed, which can be either letters or names.
         Returns a copy if dims are not given.
 
         Args:
-            dims (tuple, optional): A tuple of dimension letters or names to select. Defaults to None.
+            dims: A tuple of dimension letters or names to select. Defaults to None.
+
+        Returns:
+            A new DimensionSet with the selected dimensions in the given order.
         """
         subset = self.model_copy()
         if dims is not None:
             subset.dim_list = [self._full_mapping[dim_key] for dim_key in dims]
         return subset
 
-    def expand_by(self, added_dims: list[Dimension], inplace: bool = False) -> DimensionSet:
+    @overload
+    def expand_by(
+        self, added_dims: list[Dimension], inplace: Literal[False] = False
+    ) -> DimensionSet: ...
+    @overload
+    def expand_by(self, added_dims: list[Dimension], inplace: Literal[True]) -> None: ...
+    @overload
+    def expand_by(
+        self, added_dims: list[Dimension], inplace: bool = False
+    ) -> DimensionSet | None: ...
+    def expand_by(self, added_dims: list[Dimension], inplace: bool = False) -> DimensionSet | None:
         """Expands the DimensionSet by adding new dimensions to it.
 
         Args:
-            added_dims (list[Dimension]): A list of Dimension objects to add
-            inplace (bool, optional): If True, the operation is performed in place, otherwise a new DimensionSet is returned. Defaults to False.
+            added_dims: A list of Dimension objects to add
+            inplace: If True, the operation is performed in place, otherwise a new DimensionSet is
+                returned. Defaults to False.
 
         Returns:
             None if inplace=True, otherwise a new DimensionSet with the new dimensions added
+
+        Raises:
+            ValueError: If one of the added dimensions has a letter already present in the set.
         """
         if not all(dim.letter not in self.letters for dim in added_dims):
             raise ValueError(
@@ -276,25 +381,26 @@ class DimensionSet(PydanticBaseModel):
 
     extend = expand_by
 
-    def _check_additional_dim(self, new_dim: Dimension):
-        """Checks the new_dim is a Dimension and that it is not already in the DimensionSet."""
-        if not isinstance(new_dim, Dimension):
-            raise TypeError("new_dim must be a Dimension object.")
-        if new_dim in self:
-            raise ValueError(
-                "New dimension can't have same letter as any of those already in DimensionSet, "
-                "as that would create ambiguity."
-            )
-
+    @overload
+    def append(self, new_dim: Dimension, inplace: Literal[False] = False) -> DimensionSet: ...
+    @overload
+    def append(self, new_dim: Dimension, inplace: Literal[True]) -> None: ...
+    @overload
+    def append(self, new_dim: Dimension, inplace: bool = False) -> DimensionSet | None: ...
     def append(self, new_dim: Dimension, inplace: bool = False) -> DimensionSet | None:
         """Add a new dimension to the set at the end.
 
         Args:
-            new_dim (Dimension): The new dimension to add
-            inplace (bool, optional): If True, the operation is performed in place, otherwise a new DimensionSet is returned. Defaults to False.
+            new_dim: The new dimension to add
+            inplace: If True, the operation is performed in place, otherwise a new DimensionSet is
+                returned. Defaults to False.
 
         Returns:
             None if inplace=True, otherwise a new DimensionSet with the new dimension added
+
+        Raises:
+            TypeError: If new_dim is not a Dimension.
+            ValueError: If the letter of new_dim is already present in the set.
         """
         self._check_additional_dim(new_dim)
         if inplace:
@@ -303,15 +409,26 @@ class DimensionSet(PydanticBaseModel):
         else:
             return self + new_dim
 
+    @overload
+    def prepend(self, new_dim: Dimension, inplace: Literal[False] = False) -> DimensionSet: ...
+    @overload
+    def prepend(self, new_dim: Dimension, inplace: Literal[True]) -> None: ...
+    @overload
+    def prepend(self, new_dim: Dimension, inplace: bool = False) -> DimensionSet | None: ...
     def prepend(self, new_dim: Dimension, inplace: bool = False) -> DimensionSet | None:
         """Add a new dimension to the set at the beginning.
 
         Args:
-            new_dim (Dimension): The new dimension to add
-            inplace (bool, optional): If True, the operation is performed in place, otherwise a new DimensionSet is returned. Defaults to False.
+            new_dim: The new dimension to add
+            inplace: If True, the operation is performed in place, otherwise a new DimensionSet is
+                returned. Defaults to False.
 
         Returns:
             None if inplace=True, otherwise a new DimensionSet with the new dimension added
+
+        Raises:
+            TypeError: If new_dim is not a Dimension.
+            ValueError: If the letter of new_dim is already present in the set.
         """
         self._check_additional_dim(new_dim)
         if inplace:
@@ -320,16 +437,31 @@ class DimensionSet(PydanticBaseModel):
         else:
             return new_dim + self
 
+    @overload
+    def insert(
+        self, index: int, new_dim: Dimension, inplace: Literal[False] = False
+    ) -> DimensionSet: ...
+    @overload
+    def insert(self, index: int, new_dim: Dimension, inplace: Literal[True]) -> None: ...
+    @overload
+    def insert(
+        self, index: int, new_dim: Dimension, inplace: bool = False
+    ) -> DimensionSet | None: ...
     def insert(self, index: int, new_dim: Dimension, inplace: bool = False) -> DimensionSet | None:
         """Insert a new dimension to the set at the given index.
 
         Args:
-            index (int): The index at which to insert the new dimension
-            new_dim (Dimension): The new dimension to add
-            inplace (bool, optional): If True, the operation is performed in place, otherwise a new DimensionSet is returned. Defaults to False.
+            index: The index at which to insert the new dimension
+            new_dim: The new dimension to add
+            inplace: If True, the operation is performed in place, otherwise a new DimensionSet is
+                returned. Defaults to False.
 
         Returns:
             None if inplace=True, otherwise a new DimensionSet with the new dimension added
+
+        Raises:
+            TypeError: If new_dim is not a Dimension.
+            ValueError: If the letter of new_dim is already present in the set.
         """
         self._check_additional_dim(new_dim)
         if inplace:
@@ -340,12 +472,19 @@ class DimensionSet(PydanticBaseModel):
             dim_list.insert(index, new_dim)
             return DimensionSet(dim_list=dim_list)
 
+    @overload
+    def drop(self, key: str, inplace: Literal[False] = False) -> DimensionSet: ...
+    @overload
+    def drop(self, key: str, inplace: Literal[True]) -> None: ...
+    @overload
+    def drop(self, key: str, inplace: bool = False) -> DimensionSet | None: ...
     def drop(self, key: str, inplace: bool = False) -> DimensionSet | None:
         """Remove a dimension from the set.
 
         Args:
-            key (str): The name, index or letter of the dimension to drop
-            inplace (bool, optional): If True, the operation is performed in place, otherwise a new DimensionSet is returned. Defaults to False.
+            key: The name or letter of the dimension to drop
+            inplace: If True, the operation is performed in place, otherwise a new DimensionSet is
+                returned. Defaults to False.
 
         Returns:
             None if inplace=True, otherwise a new DimensionSet with the dimension removed
@@ -361,16 +500,30 @@ class DimensionSet(PydanticBaseModel):
 
     remove = drop
 
-    def replace(self, key: str, new_dim: Dimension, inplace: bool = False):
+    @overload
+    def replace(
+        self, key: str, new_dim: Dimension, inplace: Literal[False] = False
+    ) -> DimensionSet: ...
+    @overload
+    def replace(self, key: str, new_dim: Dimension, inplace: Literal[True]) -> None: ...
+    @overload
+    def replace(
+        self, key: str, new_dim: Dimension, inplace: bool = False
+    ) -> DimensionSet | None: ...
+    def replace(self, key: str, new_dim: Dimension, inplace: bool = False) -> DimensionSet | None:
         """Replace a dimension in the set with a new one.
 
         Args:
-            key (str): The name, index or letter of the dimension to replace
-            new_dim (Dimension): The new dimension to replace the old one
-            inplace (bool, optional): If True, the operation is performed in place, otherwise a new DimensionSet is returned. Defaults to False.
+            key: The name or letter of the dimension to replace
+            new_dim: The new dimension to replace the old one
+            inplace: If True, the operation is performed in place, otherwise a new DimensionSet is
+                returned. Defaults to False.
 
         Returns:
             None if inplace=True, otherwise a new DimensionSet with the dimension replaced
+
+        Raises:
+            ValueError: If the letter of new_dim is already present in the set.
         """
         if new_dim.letter in self.letters:
             raise ValueError(
@@ -385,8 +538,12 @@ class DimensionSet(PydanticBaseModel):
             dim_list[self.index(key)] = new_dim
             return DimensionSet(dim_list=dim_list)
 
-    def prepare_other(self, other: DimensionSet | Dimension) -> DimensionSet:
-        """Check that the other object is a DimensionSet or Dimension, and convert if necessary."""
+    def _prepare_other(self, other: DimensionSet | Dimension) -> DimensionSet:
+        """Check that the other object is a DimensionSet or Dimension, and convert if necessary.
+
+        Raises:
+            TypeError: If other is neither a DimensionSet nor a Dimension.
+        """
         if isinstance(other, DimensionSet):
             return other
         elif isinstance(other, Dimension):
@@ -398,12 +555,12 @@ class DimensionSet(PydanticBaseModel):
         """Get the intersection of two DimensionSets.
 
         Args:
-            other (DimensionSet): The other DimensionSet to intersect with
+            other: The other DimensionSet or Dimension to intersect with
 
         Returns:
-            DimensionSet: The intersection of the two DimensionSets
+            The intersection of the two DimensionSets
         """
-        other = self.prepare_other(other)
+        other = self._prepare_other(other)
         intersection_letters = tuple(letter for letter in self.letters if letter in other.letters)
         return self.get_subset(intersection_letters)
 
@@ -415,12 +572,12 @@ class DimensionSet(PydanticBaseModel):
         """Get the union of two DimensionSets.
 
         Args:
-            other (DimensionSet): The other DimensionSet to unite with
+            other: The other DimensionSet or Dimension to unite with
 
         Returns:
-            DimensionSet: The union of the two DimensionSets
+            The union of the two DimensionSets
         """
-        other = self.prepare_other(other)
+        other = self._prepare_other(other)
         added_dims = [dim for dim in other.dim_list if dim.letter not in self.letters]
         return self.expand_by(added_dims)
 
@@ -429,7 +586,11 @@ class DimensionSet(PydanticBaseModel):
         return self.union_with(other)
 
     def __add__(self, other: DimensionSet | Dimension) -> DimensionSet:
-        """Addition operator for two DimensionSets (alias for union)."""
+        """Addition operator for two DimensionSets (union of non-overlapping sets).
+
+        Raises:
+            ValueError: If the two sets share a dimension.
+        """
         if self & other:
             raise ValueError("Dimensions of DimensionSets overlap. Use union '|' operator instead.")
         return self.union_with(other)
@@ -438,12 +599,12 @@ class DimensionSet(PydanticBaseModel):
         """Get the set difference of two DimensionSets.
 
         Args:
-            other (DimensionSet): The other DimensionSet to compare with
+            other: The other DimensionSet or Dimension to compare with
 
         Returns:
-            DimensionSet: The difference of the two DimensionSets
+            The difference of the two DimensionSets
         """
-        other = self.prepare_other(other)
+        other = self._prepare_other(other)
         difference_letters = tuple(letter for letter in self.letters if letter not in other.letters)
         return self.get_subset(difference_letters)
 
@@ -451,50 +612,16 @@ class DimensionSet(PydanticBaseModel):
         """Difference operator for two DimensionSets."""
         return self.difference_with(other)
 
-    def __xor__(self, other: DimensionSet | Dimension) -> DimensionSet:
+    def __xor__(self, other: DimensionSet) -> DimensionSet:
         """Symmetric difference operator for two DimensionSets."""
         return (self - other) | (other - self)
 
-    @property
-    def ndim(self):
-        """the number of dimensions in the set"""
-        return len(self.dim_list)
-
-    def __len__(self) -> int:
-        """Return the number of dimensions in the set."""
-        return len(self.dim_list)
-
-    def __bool__(self) -> bool:
-        """Return True if the set is not empty."""
-        return len(self.dim_list) > 0
-
-    @property
-    def names(self):
-        """A tuple of the names of the dimensions in the set."""
-        return tuple([dim.name for dim in self.dim_list])
-
-    @property
-    def letters(self) -> tuple[str, ...]:
-        """A tuple of the letters of the dimensions in the set."""
-        return tuple([dim.letter for dim in self.dim_list])
-
-    @property
-    def string(self):
-        """The letters of the dimensions in the set concatenated to a single string."""
-        return "".join(self.letters)
-
-    def index(self, key: str) -> int:
-        """Return the index of a dimension in the set.
-
-        Args:
-            key (str): The name or letter of the dimension to get the index of
-        """
-        dim = self._full_mapping[key]
-        return self.dim_list.index(dim)
-
-    def __str__(self):
-        base = f"DimensionSet ({','.join(self.letters)}) with shape {self.shape}:"
-        dim_strs = [
-            f"\n  '{dim.letter}': '{dim.name}' with length {dim.len}" for dim in self.dim_list
-        ]
-        return base + "".join(dim_strs)
+    def _check_additional_dim(self, new_dim: Dimension) -> None:
+        """Checks the new_dim is a Dimension and that it is not already in the DimensionSet."""
+        if not isinstance(new_dim, Dimension):
+            raise TypeError("new_dim must be a Dimension object.")
+        if new_dim in self:
+            raise ValueError(
+                "New dimension can't have same letter as any of those already in DimensionSet, "
+                "as that would create ambiguity."
+            )
