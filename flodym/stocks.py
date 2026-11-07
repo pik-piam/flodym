@@ -635,9 +635,7 @@ class DynamicStockModel(Stock):
         return older_inflow_by_cohort
 
     @staticmethod
-    def _check_consistent_with_survival(
-        values: np.ndarray, cum_surv: np.ndarray, passed_as: str
-    ):
+    def _check_consistent_with_survival(values: np.ndarray, cum_surv: np.ndarray, passed_as: str):
         if np.any((values > 0) & (cum_surv == 0)):
             raise ValueError(
                 f"The given {passed_as} is inconsistent with the lifetime model: survival function "
@@ -843,9 +841,7 @@ class DynamicStockModel(Stock):
         # where the sum is the surviving stock of the older cohorts.
         cond_surv = self.lifetime_model.conditional_survival[i_t, : i_t + 1, ...]
         surviving_stock = (present_by_cohort * cond_surv).sum(axis=0)
-        newest_cohort_inflow = (self.stock.values[i_t, ...] - surviving_stock) / cond_surv[
-            i_t, ...
-        ]
+        newest_cohort_inflow = (self.stock.values[i_t, ...] - surviving_stock) / cond_surv[i_t, ...]
         if self._is_initial_year(i_t):
             # use the maximum of prescribed and initial stock
             newest_cohort_inflow = np.maximum(newest_cohort_inflow, 0.0)

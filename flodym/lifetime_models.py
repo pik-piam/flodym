@@ -348,9 +348,7 @@ class LifetimeModel(PydanticBaseModel):
             # assumed to be evenly distributed over the time step.
             quad_points, quad_weights = self._get_quad_points_and_weights()
             exposed_fraction = sum(w * (1.0 - p) for p, w in zip(quad_points, quad_weights))
-            cond_surv[t_diag_indices] = newest_cohort_cond_surv * (
-                1.0 - exposed_fraction * share
-            )
+            cond_surv[t_diag_indices] = newest_cohort_cond_surv * (1.0 - exposed_fraction * share)
 
     @property
     def _t_diag_indices(self) -> tuple:
