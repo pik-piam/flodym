@@ -815,7 +815,7 @@ requires-dist = [
     { name = "pickle4", specifier = ">=0.0.1" },
     { name = "plotly", specifier = ">=5.18.0" },
     { name = "polyfactory", marker = "extra == 'tests'", specifier = ">=2.16.2" },
-    { name = "pydantic", specifier = ">=2.8.2" },
+    { name = "pydantic", specifier = ">=2.11" },
     { name = "pytest", marker = "extra == 'tests'", specifier = ">=8.3.2" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "scipy", specifier = ">=1.11.0" },

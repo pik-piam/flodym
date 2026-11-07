@@ -3,8 +3,7 @@
 from typing import Any
 
 import plotly.graph_objects as go
-from pydantic import BaseModel as PydanticBaseModel
-from pydantic import ConfigDict, model_validator
+from pydantic import model_validator
 from typing_extensions import Self
 
 from ..flodym_arrays import Flow
@@ -13,7 +12,7 @@ from ..processes import Process
 from ._helper import CustomNameDisplayer
 
 
-class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
+class PlotlySankeyPlotter(CustomNameDisplayer):
     """Plot the flows of an MFA system as a plotly Sankey diagram.
 
     Flow values are summed over all dimensions not selected in ``slice_dict``. Flows can be split
@@ -24,8 +23,6 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
         >>> fig = fde.PlotlySankeyPlotter(mfa=mfa).plot()
         >>> fig.show()  # doctest: +SKIP
     """
-
-    model_config = ConfigDict(arbitrary_types_allowed=True, protected_namespaces=())
 
     mfa: MFASystem
     """MFA system to visualize."""

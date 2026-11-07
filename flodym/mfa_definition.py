@@ -15,13 +15,12 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from pydantic import (
-    BaseModel as PydanticBaseModel,
-)
 from typing_extensions import Self
 
+from ._base_model import FlodymBaseModel
 
-class DimensionDefinition(PydanticBaseModel):
+
+class DimensionDefinition(FlodymBaseModel):
     """Define the model dimensions.
 
     **Examples**
@@ -30,8 +29,6 @@ class DimensionDefinition(PydanticBaseModel):
         >>> time_definition = fd.DimensionDefinition(name="Time", letter="t", dtype=int)
         >>> region_definition = fd.DimensionDefinition(name="Region", letter="r", dtype=str)
     """
-
-    model_config = ConfigDict(protected_namespaces=())
 
     name: str = Field(..., min_length=2)
     """Name of the dimension, with at least two characters."""
@@ -43,10 +40,8 @@ class DimensionDefinition(PydanticBaseModel):
     """Data type of the dimension items, e.g. ``int`` or ``str``."""
 
 
-class _DefinitionWithDimLetters(PydanticBaseModel):
+class _DefinitionWithDimLetters(FlodymBaseModel):
     """Base class for any definition that contains dimension letters."""
-
-    model_config = ConfigDict(protected_namespaces=())
 
     dim_letters: tuple[str, ...]
     """Letters of the dimensions that the object is defined on."""
@@ -103,11 +98,11 @@ class StockDefinition(_DefinitionWithDimLetters):
     computation mode (see :py:meth:`flodym.DynamicStockModel.compute`).
     """
 
+    model_config = ConfigDict(validate_by_name=True)
+
     name: str = "undefined stock"
     """Name of the stock."""
-    process_name: str | None = Field(
-        default=None, validation_alias=AliasChoices("process", "process_name")
-    )
+    process_name: str | None = Field(default=None, alias="process")
     """Name of the process to which the stock is connected."""
     time_letter: str = "t"
     """Letter of the time dimension, to ensure it's the first appearing in dim_letters."""
@@ -204,7 +199,7 @@ class ParameterDefinition(_DefinitionWithDimLetters):
     """Name of the parameter."""
 
 
-class ProcessDefinition(PydanticBaseModel):
+class ProcessDefinition(FlodymBaseModel):
     """Define a process.
 
     A process can be defined optionally with an explicit ID and with parameters used by
@@ -242,13 +237,11 @@ class ProcessDefinition(PydanticBaseModel):
     (see :py:meth:`flodym.Process.compute`). It must sum to one over the added dimensions."""
 
 
-class MFADefinition(PydanticBaseModel):
+class MFADefinition(FlodymBaseModel):
     """All the information needed to define an MFA system.
 
     It is compiled of lists of definition objects.
     """
-
-    model_config = ConfigDict(protected_namespaces=())
 
     dimensions: list[DimensionDefinition]
     """List of definitions of dimensions used in the model."""

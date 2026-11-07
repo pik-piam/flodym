@@ -6,10 +6,10 @@ Home to the :py:class:`flodym.Process` class and :py:func:`flodym.make_processes
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any, Literal, Optional, Union
 
-from pydantic import BaseModel as PydanticBaseModel
 from pydantic import PrivateAttr, model_validator
 from typing_extensions import Self
 
+from ._base_model import FlodymBaseModel
 from ._checks import balance_failure, config_hint, report_balance_failures
 from ._config import ErrorBehavior, config
 from ._process_compute import (
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from .stocks import Stock
 
 
-class Process(PydanticBaseModel):
+class Process(FlodymBaseModel):
     """Processes serve as nodes for the MFA system layout definition.
 
     Flows are defined between two processes. Stocks are connected to a process.

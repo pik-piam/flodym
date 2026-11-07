@@ -12,10 +12,10 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, ClassVar, Concatenate, ParamSpec, TypeVar
 
 import numpy as np
-from pydantic import BaseModel as PydanticBaseModel
-from pydantic import ConfigDict, field_validator, model_validator
+from pydantic import field_validator, model_validator
 from typing_extensions import Self
 
+from ._base_model import FlodymBaseModel
 from ._checks import balance_failure, config_hint, report_balance_failures
 from ._config import ErrorBehavior, config, handle_error
 from ._process_compute import UnderdeterminedError
@@ -92,7 +92,7 @@ def _free_cohort_letter(used_letters: tuple[str, ...]) -> str:
     raise ValueError("No free letter for the cohort dimension.")
 
 
-class Stock(PydanticBaseModel):
+class Stock(FlodymBaseModel):
     """Stock objects are components of an MFASystem, where materials can accumulate over time.
 
     They consist of three :py:class:`flodym.FlodymArray` objects:
@@ -102,8 +102,6 @@ class Stock(PydanticBaseModel):
     The subclasses allows computations using a lifetime distribution function,
     which is necessary if not both inflow and outflow are known.
     """
-
-    model_config = ConfigDict(protected_namespaces=(), arbitrary_types_allowed=True)
 
     dims: DimensionSet
     """Dimensions of the stock, inflow, and outflow arrays. Time must be the first dimension."""
