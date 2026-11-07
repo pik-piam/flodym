@@ -130,9 +130,7 @@ colorful_flows = [f for f in mfa.flows.values() if "Material" in f.dims.names]
 colors.update({f.name: ("Material", qualitative.Dark24) for f in colorful_flows})
 
 # plot
-plotter = fde.PlotlySankeyPlotter(
-    mfa=mfa, split_flows_by="Material", slice_dict={"t": 2000}, flow_color_dict=colors
-)
+plotter = fde.PlotlySankeyPlotter(mfa=mfa, slice_dict={"t": 2000}, flow_color_dict=colors)
 fig = plotter.plot()
 fig.show(renderer="notebook")
 

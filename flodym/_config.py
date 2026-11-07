@@ -6,8 +6,9 @@ from contextlib import contextmanager
 from enum import Enum
 from typing import Annotated, Any
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
+from ._base_model import FlodymBaseModel
 from .flow_naming import process_names_with_arrow
 
 logger = logging.getLogger(__name__)
@@ -59,7 +60,7 @@ def handle_error(
         pass
 
 
-class Checks(BaseModel, validate_assignment=True):
+class Checks(FlodymBaseModel, validate_assignment=True):
     """Which checks to perform automatically during computation."""
 
     mass_balance_after_compute: bool = False
@@ -72,7 +73,7 @@ class Checks(BaseModel, validate_assignment=True):
     violated."""
 
 
-class ErrorBehaviors(BaseModel, validate_assignment=True):
+class ErrorBehaviors(FlodymBaseModel, validate_assignment=True):
     """What to do if a check fails."""
 
     unset_array_used: ErrorBehavior = ErrorBehavior.IGNORE
@@ -115,7 +116,7 @@ class ErrorBehaviors(BaseModel, validate_assignment=True):
     added."""
 
 
-class Config(BaseModel, validate_assignment=True):
+class Config(FlodymBaseModel, validate_assignment=True):
     """Configuration class for Flodym."""
 
     checks: Checks = Checks()
