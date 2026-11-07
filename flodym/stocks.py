@@ -562,8 +562,8 @@ class DynamicStockModel(Stock):
           the prescribed stock.
 
         In every year t, the amount present by cohort is the stock by cohort at the end of year
-        t-1 plus both parts of the inflow by cohort during year t. Multiplied with the one-step
-        survival rate of the lifetime model, it gives the stock by cohort at the end of year t.
+        t-1 plus both parts of the inflow by cohort during year t. Multiplied with the conditional
+        survival of the lifetime model, it gives the stock by cohort at the end of year t.
         The remainder is the outflow by cohort during year t.
 
         All amounts within this routine are over the whole period of a time step, not annual.
@@ -575,7 +575,7 @@ class DynamicStockModel(Stock):
             use_inflow_by_cohort: Whether ``inflow_by_cohort`` is part of the older inflow by
                 cohort.
         """
-        survival_rate = self.lifetime_model.survival_rate
+        cond_surv = self.lifetime_model.conditional_survival
         # shape (t, c, ...): inflow by cohort, known before the time stepping
         older_inflow_by_cohort = self._older_inflow_by_cohort()
         if use_inflow_by_cohort:
@@ -597,7 +597,7 @@ class DynamicStockModel(Stock):
             )
             present_by_cohort[i_t, i_t, ...] += newest_cohort_inflow[i_t, ...]
             self._stock_by_cohort[i_t, existing, ...] = (
-                present_by_cohort[i_t, existing, ...] * survival_rate[i_t, existing, ...]
+                present_by_cohort[i_t, existing, ...] * cond_surv[i_t, existing, ...]
             )
         inflow_whole_period = newest_cohort_inflow + older_inflow_by_cohort.sum(axis=1)
         # what is present during year t, but not left at its end, leaves during year t
@@ -619,22 +619,24 @@ class DynamicStockModel(Stock):
             return older_inflow_by_cohort
         iiy = self._initial_year_index
         self._check_consistent_with_survival(
-            self._initial_stock_by_cohort, self.lifetime_model.sf[iiy, ...], "initial_stock"
+            self._initial_stock_by_cohort,
+            self.lifetime_model.cumulative_survival[iiy, ...],
+            "initial_stock",
         )
         # The initial stock enters during the initial year, such that after the losses of that
         # year, the stock by cohort at the end of the initial year equals the initial stock.
-        survival_rate = self.lifetime_model.survival_rate[iiy, ...]
+        cond_surv = self.lifetime_model.conditional_survival[iiy, ...]
         np.divide(
             self._initial_stock_by_cohort,
-            survival_rate,
+            cond_surv,
             out=older_inflow_by_cohort[iiy, ...],
-            where=survival_rate > 0,
+            where=cond_surv > 0,
         )
         return older_inflow_by_cohort
 
     @staticmethod
-    def _check_consistent_with_survival(values: np.ndarray, sf: np.ndarray, passed_as: str):
-        if np.any((values > 0) & (sf == 0)):
+    def _check_consistent_with_survival(values: np.ndarray, cum_surv: np.ndarray, passed_as: str):
+        if np.any((values > 0) & (cum_surv == 0)):
             raise ValueError(
                 f"The given {passed_as} is inconsistent with the lifetime model: survival function "
                 f"is zero for some time/cohort combinations of the {passed_as}, which means that "
@@ -750,12 +752,14 @@ class DynamicStockModel(Stock):
         Only valid without initial stock and inflow by cohort."""
         inflow_whole_period = self._to_whole_period(self.inflow.values)
         self._stock_by_cohort = np.einsum(
-            "c...,tc...->tc...", inflow_whole_period, self.lifetime_model.sf
+            "c...,tc...->tc...",
+            inflow_whole_period,
+            self.lifetime_model.cumulative_survival,
         )
         self._outflow_by_cohort = np.einsum(
             "c...,tc...,t->tc...",
             inflow_whole_period,
-            self.lifetime_model.pdf,
+            self.lifetime_model.outflow_pmf,
             1.0 / self._t.interval_lengths,
         )
         self.stock.values[...] = self._stock_by_cohort.sum(axis=1)
@@ -784,7 +788,9 @@ class DynamicStockModel(Stock):
         """
         self._check_inflow_by_cohort_known()
         self._check_consistent_with_survival(
-            self.inflow_by_cohort.values, self.lifetime_model.sf, "inflow_by_cohort"
+            self.inflow_by_cohort.values,
+            self.lifetime_model.cumulative_survival,
+            "inflow_by_cohort",
         )
         self._compute_cohorts(self._no_newest_cohort_inflow, use_inflow_by_cohort=True)
 
@@ -826,18 +832,16 @@ class DynamicStockModel(Stock):
         """
         # Maths behind implementation:
         # Solve square linear equation system
-        #   sf * inflow = stock
-        # where sf is a lower triangular matrix (since year >= cohort)
+        #   cum_surv * inflow = stock
+        # where cum_surv is a lower triangular matrix (since year >= cohort)
         # => in every row i:
-        #   sum_{j=1...i} (sf_i,j inflow_j) = stock_i
+        #   sum_{j=1...i} (cum_surv_i,j inflow_j) = stock_i
         # solve for inflow_i:
-        #   inflow_i = ( stock_i - sum_{j=1...i-1}(sf_i,j * inflow_j) ) / sf_ii
+        #   inflow_i = ( stock_i - sum_{j=1...i-1}(cum_surv_i,j * inflow_j) ) / cum_surv_ii
         # where the sum is the surviving stock of the older cohorts.
-        survival_rate = self.lifetime_model.survival_rate[i_t, : i_t + 1, ...]
-        surviving_stock = (present_by_cohort * survival_rate).sum(axis=0)
-        newest_cohort_inflow = (self.stock.values[i_t, ...] - surviving_stock) / survival_rate[
-            i_t, ...
-        ]
+        cond_surv = self.lifetime_model.conditional_survival[i_t, : i_t + 1, ...]
+        surviving_stock = (present_by_cohort * cond_surv).sum(axis=0)
+        newest_cohort_inflow = (self.stock.values[i_t, ...] - surviving_stock) / cond_surv[i_t, ...]
         if self._is_initial_year(i_t):
             # use the maximum of prescribed and initial stock
             newest_cohort_inflow = np.maximum(newest_cohort_inflow, 0.0)

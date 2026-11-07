@@ -34,4 +34,19 @@ Stocks and Lifetime Models
 .. autopydantic_model:: flodym::WeibullLifetime
    :inherited-members: BaseModel
 
+.. autopydantic_model:: flodym::WeibullMeanStdLifetime
+   :inherited-members: BaseModel
+
+.. autopydantic_model:: flodym::ExponentialLifetime
+   :inherited-members: BaseModel
+
+.. autopydantic_model:: flodym::Leaching
+   :inherited-members: BaseModel
+
+.. autopydantic_model:: flodym::TabulatedLifetime
+   :inherited-members: BaseModel
+
+.. autopydantic_model:: flodym::CompetingRisksLifetime
+   :inherited-members: BaseModel
+
 .. autofunction:: flodym.make_empty_stocks

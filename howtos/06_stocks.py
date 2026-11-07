@@ -173,6 +173,80 @@ print("Stock values for Vehicles:", my_dsm.stock["Vehicles"].values)
 # To recompute, use the explicit methods above.
 
 # %% [markdown]
+# ## Lifetime models
+#
+# The following lifetime models are available:
+# - `FixedLifetime`: all items of a cohort leave the stock at the age `mean`.
+# - `NormalLifetime`, `FoldedNormalLifetime`, `LogNormalLifetime`: distributions with `mean` and
+#   standard deviation `std`.
+# - `WeibullLifetime`: Weibull distribution with `weibull_scale` and `weibull_shape`.
+# - `WeibullMeanStdLifetime`: Weibull distribution with `mean` and `std`, from which shape and
+#   scale are computed internally.
+# - `ExponentialLifetime`: constant hazard rate, i.e. the same share of the remaining items leaves
+#   per time unit, independent of their age. Parameter `mean`.
+# - `Leaching`: the same, but parametrized by `loss_rate`, the share of the stock leaving per
+#   time unit (e.g. per year).
+# - `TabulatedLifetime`: the cumulative survival is given directly by year and age-cohort, e.g.
+#   from statistics or from an external model, as `cumulative_survival_table`.
+#
+# For the models with `mean` and `std`, setting `relative_std=True` makes `std` relative to the
+# mean, i.e. the coefficient of variation std / mean:
+
+# %%
+from flodym import LogNormalLifetime
+
+lifetime_model = LogNormalLifetime(dims=dims, mean=lifetime_mean, std=0.3, relative_std=True)
+
+# %% [markdown]
+# Several independent causes of leaving the stock can be combined with `CompetingRisksLifetime`,
+# which takes a list of lifetime models with the same dimensions.
+# The cumulative survival of the models is multiplied.
+# For example, items can reach the end of their product lifetime, while some material is
+# additionally lost from the stock every year, independent of the product age:
+
+# %%
+from flodym import CompetingRisksLifetime, Leaching
+
+lifetime_model = CompetingRisksLifetime(
+    models=[
+        LogNormalLifetime(dims=dims, mean=lifetime_mean, std=0.3, relative_std=True),
+        Leaching(dims=dims, loss_rate=0.05),
+    ]
+)
+my_dsm = InflowDrivenDSM(dims=dims, lifetime_model=lifetime_model, inflow=inflow)
+my_dsm.compute()
+
+print("Stock values for Vehicles, with leaching:", my_dsm.stock["Vehicles"].values)
+
+# %% [markdown]
+# A lifetime model provides three arrays by year t and age-cohort c:
+# - `cumulative_survival`: the share of the inflow of cohort c still present at the end of year t.
+# - `conditional_survival`: the share of cohort c present at the end of year t-1 which is still
+#   present at the end of year t.
+# - `outflow_pmf`: the share of the inflow of cohort c leaving the stock during year t, i.e. the
+#   probability mass function of the outflow time.
+#
+# They can be retrieved as `FlodymArray`s with `get_cumulative_survival()`,
+# `get_conditional_survival()` and `get_outflow_pmf()`. By default, the cohort dimension has the
+# letter `c`; a different one can be passed as `cohort_dim`.
+#
+# `get_mean_lifetime_by_cohort()` returns the mean time the items of each cohort stay in the
+# stock, including all effects described in this how-to. As survival beyond the end of the time
+# horizon is unknown, `tail` must be chosen: `"none"` ignores it (lower bound), and
+# `"constant_rate"` extrapolates with the conditional survival of the last time step.
+
+# %%
+cumulative_survival = lifetime_model.get_cumulative_survival()
+print("Dimensions of the cumulative survival:", cumulative_survival.dims.letters)
+
+# With the short time horizon of this example, a large share of cohort 2000 is still present at
+# the end, so the two options for the tail differ strongly.
+print("Share of cohort 2000 present in 2010:", cumulative_survival[{"t": 2010, "c": 2000}].values)
+for tail in ["none", "constant_rate"]:
+    mean_lifetime = lifetime_model.get_mean_lifetime_by_cohort(tail=tail)
+    print(f"Mean lifetime of cohort 2000, tail '{tail}':", mean_lifetime[{"t": 2000}].values)
+
+# %% [markdown]
 # ## Lifetime extension
 #
 # Lifetime extension can by modeled. To this end, a time-dependent extension factor can be specified.
@@ -249,9 +323,10 @@ dsm = StockDrivenDSM(
 dsm.compute()
 
 # %% [markdown]
-# The visualization shows how the extension by cohort immediately reduces the outflow,
-# While for the extension by year, the outflow is only reduced after newly produced cohorts with
-# the extended lifetimes have reached the end of their lifetime.
+# The visualization shows how the extension by year immediately reduces the outflow, as it
+# applies to all items in the stock. For the extension by cohort, the outflow is only reduced
+# gradually, as only newly produced cohorts have the extended lifetimes, and their outflow
+# becomes relevant only as they age.
 
 # %%
 import plotly.express as px
@@ -271,6 +346,59 @@ fig = px.line(
     x="time",
     color="extension type",
     title="Stock Outflow by Extension Type",
+)
+fig.show(renderer="notebook")
+
+# %% [markdown]
+# ## Period effects
+#
+# Period effects change the outflow in a given year for all age-cohorts present in that year.
+# Two kinds are available as attributes of all lifetime models:
+# - `hazard_factor_by_year`: multiplies the hazard, i.e. the intensity of leaving the stock.
+#   The conditional survival s in that year becomes s ** factor. A factor of 1 has no effect,
+#   0 means no outflow (e.g. a demolition moratorium), and values greater than 1 increase the
+#   outflow (e.g. a scrappage scheme). For Weibull distributions, this is equivalent to
+#   `lt_factor_by_year` with hazard factor = lt_factor ** (-weibull_shape).
+# - `removal_share_by_year`: a share of the stock removed in a time step in addition to the
+#   regular outflow, independent of age, e.g. by a disaster, or by a phase-out policy (share 1).
+#
+# Both are applied to the conditional survival, from which the cumulative survival is computed.
+
+# %%
+dims = DimensionSet(
+    dim_list=[
+        Dimension(name="time", letter="t", items=YEARS),
+        Dimension(name="scenario", letter="s", items=["base", "scrappage scheme", "disaster"]),
+    ]
+)
+stock = StockArray(dims=dims, values=stock_over_time[:, np.newaxis] * np.ones(dims.shape))
+
+# triple exit intensity in 2035 and 2036
+hazard_factor = FlodymArray(dims=dims)
+hazard_factor[...] = 1.0
+hazard_factor[{"s": "scrappage scheme", "t": [2035, 2036]}] = 3.0
+
+# a fifth of the stock is destroyed in 2040
+removal_share = FlodymArray(dims=dims)
+removal_share[{"s": "disaster", "t": 2040}] = 0.2
+
+lifetime_model = LogNormalLifetime(
+    dims=dims,
+    mean=10,
+    std=0.3,
+    relative_std=True,
+    hazard_factor_by_year=hazard_factor,
+    removal_share_by_year=removal_share,
+)
+dsm = StockDrivenDSM(dims=dims, stock=stock, lifetime_model=lifetime_model)
+dsm.compute()
+
+fig = px.line(
+    dsm.outflow.to_df().reset_index(),
+    y="value",
+    x="time",
+    color="scenario",
+    title="Stock outflow with period effects",
 )
 fig.show(renderer="notebook")
 
