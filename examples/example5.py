@@ -59,20 +59,7 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 
-from flodym import (
-    DataReader,
-    Dimension,
-    DimensionDefinition,
-    DimensionSet,
-    FlowDefinition,
-    InflowDrivenDSM,
-    MFADefinition,
-    MFASystem,
-    Parameter,
-    ParameterDefinition,
-    StockDefinition,
-)
-from flodym.lifetime_models import NormalLifetime
+import flodym as fd
 
 # %% [markdown]
 # ## 2. Define the data requirements, flows, stocks and MFA system equations
@@ -81,45 +68,51 @@ from flodym.lifetime_models import NormalLifetime
 
 # %%
 dimension_definitions = [
-    DimensionDefinition(letter="t", name="time", dtype=int),
-    DimensionDefinition(letter="r", name="region", dtype=str),
-    DimensionDefinition(letter="m", name="material", dtype=str),
-    DimensionDefinition(letter="w", name="waste", dtype=str),
+    fd.DimensionDefinition(letter="t", name="time", dtype=int),
+    fd.DimensionDefinition(letter="r", name="region", dtype=str),
+    fd.DimensionDefinition(letter="m", name="material", dtype=str),
+    fd.DimensionDefinition(letter="w", name="waste", dtype=str),
 ]
 
 process_names = ["sysenv", "market", "use", "waste", "scrap"]
 
 parameter_definitions = [
-    ParameterDefinition(name="vehicle lifetime", dim_letters=("r",)),
-    ParameterDefinition(name="vehicle material content", dim_letters=("m",)),
-    ParameterDefinition(name="vehicle new registration", dim_letters=("t", "r")),
-    ParameterDefinition(name="vehicle stock", dim_letters=("r",)),
-    ParameterDefinition(name="eol recovery rate", dim_letters=("m", "w")),
+    fd.ParameterDefinition(name="vehicle lifetime", dim_letters=("r",)),
+    fd.ParameterDefinition(name="vehicle material content", dim_letters=("m",)),
+    fd.ParameterDefinition(name="vehicle new registration", dim_letters=("t", "r")),
+    fd.ParameterDefinition(name="vehicle stock", dim_letters=("r",)),
+    fd.ParameterDefinition(name="eol recovery rate", dim_letters=("m", "w")),
 ]
 
 flow_definitions = [
-    FlowDefinition(from_process_name="sysenv", to_process_name="market", dim_letters=("t", "r")),
-    FlowDefinition(from_process_name="market", to_process_name="use", dim_letters=("t", "m", "r")),
-    FlowDefinition(from_process_name="use", to_process_name="waste", dim_letters=("t", "m", "r")),
-    FlowDefinition(from_process_name="waste", to_process_name="scrap", dim_letters=("t", "w", "m")),
-    FlowDefinition(from_process_name="waste", to_process_name="sysenv", dim_letters=("t", "m")),
-    FlowDefinition(
+    fd.FlowDefinition(from_process_name="sysenv", to_process_name="market", dim_letters=("t", "r")),
+    fd.FlowDefinition(
+        from_process_name="market", to_process_name="use", dim_letters=("t", "m", "r")
+    ),
+    fd.FlowDefinition(
+        from_process_name="use", to_process_name="waste", dim_letters=("t", "m", "r")
+    ),
+    fd.FlowDefinition(
+        from_process_name="waste", to_process_name="scrap", dim_letters=("t", "w", "m")
+    ),
+    fd.FlowDefinition(from_process_name="waste", to_process_name="sysenv", dim_letters=("t", "m")),
+    fd.FlowDefinition(
         from_process_name="scrap", to_process_name="sysenv", dim_letters=("t", "w", "m")
     ),
 ]
 
 stock_definitions = [
-    StockDefinition(
+    fd.StockDefinition(
         name="in use",
         process="use",
         dim_letters=("t", "r"),
-        subclass=InflowDrivenDSM,
-        lifetime_model_class=NormalLifetime,
+        subclass=fd.InflowDrivenDSM,
+        lifetime_model_class=fd.NormalLifetime,
         time_letter="t",
     )
 ]
 
-mfa_definition = MFADefinition(
+mfa_definition = fd.MFADefinition(
     dimensions=dimension_definitions,
     processes=process_names,
     flows=flow_definitions,
@@ -129,7 +122,7 @@ mfa_definition = MFADefinition(
 
 
 # %%
-class VehicleMFA(MFASystem):
+class VehicleMFA(fd.MFASystem):
     """We just need to define the compute method with our system equations,
     as all the other things we need are inherited from the MFASystem class."""
 
@@ -177,7 +170,7 @@ class VehicleMFA(MFASystem):
 
 
 # %%
-class CustomDataReader(DataReader):
+class CustomDataReader(fd.DataReader):
     """The methods `read_dimensions` and `read_parameters` are already defined in the parent
     DataReader class, and loop over the methods `read_dimension` and `read_parameter_values`
     that we specify for our usecase here.
@@ -187,7 +180,7 @@ class CustomDataReader(DataReader):
         self.data_directory = data_directory
         self.years = years
 
-    def read_dimension(self, dimension_definition: DimensionDefinition) -> Dimension:
+    def read_dimension(self, dimension_definition: fd.DimensionDefinition) -> fd.Dimension:
         if (dim_name := dimension_definition.name) == "region":
             data = pd.read_excel(
                 join(self.data_directory, "example5_vehicle_lifetime.xlsx"), "Data"
@@ -207,14 +200,14 @@ class CustomDataReader(DataReader):
             data.sort()
         elif dimension_definition.name == "time":
             data = self.years
-        return Dimension(
+        return fd.Dimension(
             name=dimension_definition.name,
             letter=dimension_definition.letter,
             dtype=dimension_definition.dtype,
             items=data,
         )
 
-    def read_parameter_values(self, parameter_name: str, dims: DimensionSet) -> Parameter:
+    def read_parameter_values(self, parameter_name: str, dims: fd.DimensionSet) -> fd.Parameter:
         data = pd.read_excel(
             join(self.data_directory, f"example5_{parameter_name.replace(' ', '_')}.xlsx"), "Data"
         )
@@ -241,7 +234,7 @@ class CustomDataReader(DataReader):
             data = data.set_index(["waste", "material"])
             data = data.reindex(waste_material_combinations).reset_index()
             data = data.fillna(0)
-        return Parameter.from_df(dims=dims, df=data)
+        return fd.Parameter.from_df(dims=dims, df=data)
 
 
 # %% [markdown]

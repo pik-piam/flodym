@@ -21,8 +21,8 @@ class Dimension(PydanticBaseModel):
 
     **Example**
 
-    >>> from flodym import Dimension
-    >>> regions = Dimension(name="Region", letter="r", items=["Earth", "Moon", "Sun"])
+    >>> import flodym as fd
+    >>> regions = fd.Dimension(name="Region", letter="r", items=["Earth", "Moon", "Sun"])
 
     The list of items can be loaded using a :py:class:`flodym.DataReader` object,
     or set directly, for example if a subset of an existing dimension is formed.
@@ -150,31 +150,35 @@ class DimensionSet(PydanticBaseModel):
 
     **Example**
 
-        >>> from flodym import Dimension, DimensionSet
-        >>> regions = Dimension(name="Region", letter="r", items=["Earth", "Moon", "Sun"])
-        >>> time = Dimension(name="Time", letter="t", items=[1990, 2000, 2010, 2020, 2030])
-        >>> dimensions = DimensionSet(dim_list=[regions, time])
+        >>> import flodym as fd
+        >>> regions = fd.Dimension(name="Region", letter="r", items=["Earth", "Moon", "Sun"])
+        >>> time = fd.Dimension(name="Time", letter="t", items=[1990, 2000, 2010, 2020, 2030])
+        >>> dimensions = fd.DimensionSet(dim_list=[regions, time])
 
     It is expected that DimensionSet instances are created via the :py:class:`flodym.DataReader`.
 
-        >>> from flodym import DataReader, Dimension, DimensionDefinition, DimensionSet, Parameter
-        >>> class MyDataReader(DataReader):
-        ...     def read_dimension(self, dimension_definition: DimensionDefinition) -> Dimension:
+        >>> import flodym as fd
+        >>> class MyDataReader(fd.DataReader):
+        ...     def read_dimension(
+        ...         self, dimension_definition: fd.DimensionDefinition
+        ...     ) -> fd.Dimension:
         ...         if dimension_definition.letter == "t":
-        ...             return Dimension(
+        ...             return fd.Dimension(
         ...                 name="Time", letter="t", items=[1990, 2000, 2010, 2020, 2030]
         ...             )
         ...         elif dimension_definition.letter == "r":
-        ...             return Dimension(name="Region", letter="r", items=["Earth", "Moon", "Sun"])
+        ...             return fd.Dimension(
+        ...                 name="Region", letter="r", items=["Earth", "Moon", "Sun"]
+        ...             )
         ...         raise ValueError("No data available for desired dimension")
         ...
         ...     def read_parameter_values(
-        ...         self, parameter_name: str, dims: DimensionSet
-        ...     ) -> Parameter:
+        ...         self, parameter_name: str, dims: fd.DimensionSet
+        ...     ) -> fd.Parameter:
         ...         raise NotImplementedError("This reader only provides dimensions")
         >>> data_reader = MyDataReader()
-        >>> time_definition = DimensionDefinition(name="Time", letter="t", dtype=int)
-        >>> region_definition = DimensionDefinition(name="Region", letter="r", dtype=str)
+        >>> time_definition = fd.DimensionDefinition(name="Time", letter="t", dtype=int)
+        >>> region_definition = fd.DimensionDefinition(name="Region", letter="r", dtype=str)
         >>> definitions = [time_definition, region_definition]
         >>> dimensions = data_reader.read_dimensions(dimension_definitions=definitions)
 

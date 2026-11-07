@@ -45,8 +45,8 @@ def make_empty_flows(
 
     The names of flows without ``name_override`` are generated from the processes they connect,
     using the function given in the global config option :py:attr:`flodym.Config.flow_naming`
-    (default: :py:func:`flodym.flow_naming.process_names_with_arrow`). It can be changed, e.g. by
-    ``flodym.config.flow_naming = flodym.flow_naming.process_ids``, or temporarily by
+    (default: :py:func:`flodym.process_names_with_arrow`). It can be changed, e.g. by
+    ``flodym.config.flow_naming = flodym.process_ids``, or temporarily by
     ``with flodym.config.override(flow_naming=...):``.
 
     If several flows without name_override get the same generated name, e.g. because they connect

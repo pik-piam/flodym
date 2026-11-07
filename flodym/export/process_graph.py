@@ -148,8 +148,8 @@ class GraphvizProcessGraphPlotter(ProcessGraphPlotter):
     system binaries (the ``dot`` executable).
 
     Example:
-        >>> from flodym.export import GraphvizProcessGraphPlotter
-        >>> dot = GraphvizProcessGraphPlotter(mfa=mfa).plot()
+        >>> import flodym.export as fde
+        >>> dot = fde.GraphvizProcessGraphPlotter(mfa=mfa).plot()
         >>> dot.render("system_structure", format="png")
     """
 
@@ -227,8 +227,8 @@ class PlotlyProcessGraphPlotter(ProcessGraphPlotter):
         within each layer horizontally.
 
     Example:
-        >>> from flodym.export import PlotlyProcessGraphPlotter
-        >>> fig = PlotlyProcessGraphPlotter(mfa=mfa).plot()
+        >>> import flodym.export as fde
+        >>> fig = fde.PlotlyProcessGraphPlotter(mfa=mfa).plot()
         >>> fig.show()  # doctest: +SKIP
     """
 

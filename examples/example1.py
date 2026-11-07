@@ -40,16 +40,8 @@ import numpy as np
 import plotly.express as px
 from plotly.subplots import make_subplots
 
-from flodym import (
-    Dimension,
-    DimensionSet,
-    FlowDefinition,
-    MFASystem,
-    Parameter,
-    Process,
-    make_empty_flows,
-)
-from flodym.export import PlotlyProcessGraphPlotter
+import flodym as fd
+import flodym.export as fde
 
 # %% [markdown]
 # ## 2. Load data
@@ -57,17 +49,17 @@ from flodym.export import PlotlyProcessGraphPlotter
 # For the sake of simplicity, the parameters show a linear increase over time.
 
 # %%
-time = Dimension(name="Time", letter="t", items=list(range(1980, 2011)))
-elements = Dimension(
+time = fd.Dimension(name="Time", letter="t", items=list(range(1980, 2011)))
+elements = fd.Dimension(
     name="Elements",
     letter="e",
     items=["single material"],
 )
-dimensions = DimensionSet(dim_list=[time, elements])
+dimensions = fd.DimensionSet(dim_list=[time, elements])
 
 parameters = {
-    "D": Parameter(name="inflow", dims=dimensions, values=np.arange(0, 31).reshape(31, 1)),
-    "alpha": Parameter(
+    "D": fd.Parameter(name="inflow", dims=dimensions, values=np.arange(0, 31).reshape(31, 1)),
+    "alpha": fd.Parameter(
         name="recovery rate",
         dims=dimensions,
         values=np.arange(2, 33).reshape(31, 1) / 34,
@@ -75,9 +67,9 @@ parameters = {
 }
 
 processes = {
-    "sysenv": Process(name="sysenv", id=0),
-    "process 1": Process(name="process 1", id=1),
-    "process 2": Process(name="process 2", id=2),
+    "sysenv": fd.Process(name="sysenv", id=0),
+    "process 1": fd.Process(name="process 1", id=1),
+    "process 2": fd.Process(name="process 2", id=2),
 }
 
 # %%
@@ -96,24 +88,24 @@ fig.show(renderer="notebook")
 
 # %%
 flow_definitions = [
-    FlowDefinition(
+    fd.FlowDefinition(
         from_process_name="sysenv", to_process_name="process 1", dim_letters=("t", "e")
     ),  # input
-    FlowDefinition(
+    fd.FlowDefinition(
         from_process_name="process 1",
         to_process_name="process 2",
         dim_letters=("t", "e"),
     ),  # consumption
-    FlowDefinition(
+    fd.FlowDefinition(
         from_process_name="process 2", to_process_name="sysenv", dim_letters=("t", "e")
     ),  # output
-    FlowDefinition(
+    fd.FlowDefinition(
         from_process_name="process 2",
         to_process_name="process 1",
         dim_letters=("t", "e"),
     ),  # recovered material
 ]
-flows = make_empty_flows(processes=processes, flow_definitions=flow_definitions, dims=dimensions)
+flows = fd.make_empty_flows(processes=processes, flow_definitions=flow_definitions, dims=dimensions)
 
 
 # %% [markdown]
@@ -124,7 +116,7 @@ flows = make_empty_flows(processes=processes, flow_definitions=flow_definitions,
 
 
 # %%
-class SimpleMFA(MFASystem):
+class SimpleMFA(fd.MFASystem):
     def compute(self):
         # the elipsis slice [...] ensures the dimensionality of the flow is not changed
         self.flows["sysenv => process 1"][...] = self.parameters["D"]
@@ -147,7 +139,7 @@ mfa_example = SimpleMFA(
 # We can visualize the structure of the system:
 
 # %%
-graph_plotter = PlotlyProcessGraphPlotter(mfa=mfa_example)
+graph_plotter = fde.PlotlyProcessGraphPlotter(mfa=mfa_example)
 fig = graph_plotter.plot()
 fig.show(renderer="notebook")
 
