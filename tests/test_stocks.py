@@ -23,9 +23,10 @@ from flodym import (
     WeibullLifetime,
     WeibullMeanStdLifetime,
     make_empty_stocks,
+    make_processes,
 )
 
-dim_list = [
+DIM_LIST = [
     Dimension(
         name="time",
         letter="t",
@@ -40,17 +41,17 @@ dim_list = [
     ),
 ]
 
-dims = DimensionSet(dim_list=dim_list)
+DIMS = DimensionSet(dim_list=DIM_LIST)
 
 
 def test_stocks():
     inflow_values = np.exp(-(np.linspace(-2, 2, 201) ** 2))
     inflow_values = np.stack([inflow_values, inflow_values]).T
-    inflow = StockArray(dims=dims, values=inflow_values)
+    inflow = StockArray(dims=DIMS, values=inflow_values)
 
-    lifetime_model = LogNormalLifetime(dims=dims, time_letter="t", mean=60, std=25)
+    lifetime_model = LogNormalLifetime(dims=DIMS, time_letter="t", mean=60, std=25)
     inflow_driven_dsm = InflowDrivenDSM(
-        dims=dims,
+        dims=DIMS,
         inflow=inflow,
         lifetime_model=lifetime_model,
         time_letter="t",
@@ -59,7 +60,7 @@ def test_stocks():
     stock_fda = inflow_driven_dsm.stock
 
     stock_driven_dsm = StockDrivenDSM(
-        dims=dims,
+        dims=DIMS,
         stock=stock_fda,
         lifetime_model=lifetime_model,
         time_letter="t",
@@ -71,9 +72,9 @@ def test_stocks():
 
 def test_simple_stock_copy():
     """Copying a base (flow-driven) stock yields independent dims and arrays."""
-    inflow = StockArray(dims=dims, values=np.ones((dims["t"].len, 2)))
-    outflow = StockArray(dims=dims, values=np.zeros((dims["t"].len, 2)))
-    stock = SimpleFlowDrivenStock(dims=dims, inflow=inflow, outflow=outflow, time_letter="t")
+    inflow = StockArray(dims=DIMS, values=np.ones((DIMS["t"].len, 2)))
+    outflow = StockArray(dims=DIMS, values=np.zeros((DIMS["t"].len, 2)))
+    stock = SimpleFlowDrivenStock(dims=DIMS, inflow=inflow, outflow=outflow, time_letter="t")
     stock.compute()
 
     stock_copy = stock.copy()
@@ -111,9 +112,9 @@ def test_dynamic_stock_copy():
     """Copying a dynamic stock yields independent arrays and an independent lifetime model."""
     inflow_values = np.exp(-(np.linspace(-2, 2, 201) ** 2))
     inflow_values = np.stack([inflow_values, inflow_values]).T
-    inflow = StockArray(dims=dims, values=inflow_values)
-    lifetime_model = LogNormalLifetime(dims=dims, time_letter="t", mean=60, std=25)
-    dsm = InflowDrivenDSM(dims=dims, inflow=inflow, lifetime_model=lifetime_model, time_letter="t")
+    inflow = StockArray(dims=DIMS, values=inflow_values)
+    lifetime_model = LogNormalLifetime(dims=DIMS, time_letter="t", mean=60, std=25)
+    dsm = InflowDrivenDSM(dims=DIMS, inflow=inflow, lifetime_model=lifetime_model, time_letter="t")
     dsm.compute()
 
     dsm_copy = dsm.copy()
@@ -191,29 +192,29 @@ def get_stocks_by_quadrature(mean, std):
     inflow_values = np.exp(-(np.linspace(-2, 2, 201) ** 2))
     inflow_values = np.stack([inflow_values, inflow_values]).T
     inflow_values = np.ones_like(inflow_values)
-    inflow = StockArray(dims=dims, values=inflow_values)
+    inflow = StockArray(dims=DIMS, values=inflow_values)
 
     lifetime_models = {
         "ltm_start": LogNormalLifetime(
-            dims=dims, time_letter="t", mean=mean, std=std, inflow_at="start"
+            dims=DIMS, time_letter="t", mean=mean, std=std, inflow_at="start"
         ),
         "ltm_end": LogNormalLifetime(
-            dims=dims, time_letter="t", mean=mean, std=std, inflow_at="end"
+            dims=DIMS, time_letter="t", mean=mean, std=std, inflow_at="end"
         ),
         "ltm_middle": LogNormalLifetime(
-            dims=dims, time_letter="t", mean=mean, std=std, inflow_at="middle"
+            dims=DIMS, time_letter="t", mean=mean, std=std, inflow_at="middle"
         ),
         "ltm_2": LogNormalLifetime(
-            dims=dims, time_letter="t", mean=mean, std=std, n_pts_per_interval=2
+            dims=DIMS, time_letter="t", mean=mean, std=std, n_pts_per_interval=2
         ),
         "ltm_6": LogNormalLifetime(
-            dims=dims, time_letter="t", mean=mean, std=std, n_pts_per_interval=6
+            dims=DIMS, time_letter="t", mean=mean, std=std, n_pts_per_interval=6
         ),
     }
     stocks = {}
     for name, lifetime_model in lifetime_models.items():
         inflow_driven_dsm = InflowDrivenDSM(
-            dims=dims,
+            dims=DIMS,
             inflow=inflow,
             lifetime_model=lifetime_model,
             time_letter="t",
@@ -224,7 +225,10 @@ def get_stocks_by_quadrature(mean, std):
 
 
 def test_unequal_time_steps():
-    """Unequal time step lengths should not influence the development of the stock apart from numerical errors."""
+    """Unequal time step lengths should not influence the development of the stock.
+
+    Deviations due to numerical errors are allowed.
+    """
     # case with all years
     t_all = Dimension(
         name="time",
@@ -437,23 +441,23 @@ def test_stock_driven_dsm_with_initial_stock():
     dsm.check_mass_balance()
 
 
-time_items_cohort_tests = list(range(2000, 2021))
-dims_cohort_tests = DimensionSet(
+TIME_ITEMS_COHORT_TESTS = list(range(2000, 2021))
+DIMS_COHORT_TESTS = DimensionSet(
     dim_list=[
-        Dimension(name="time", letter="t", items=time_items_cohort_tests, dtype=int),
+        Dimension(name="time", letter="t", items=TIME_ITEMS_COHORT_TESTS, dtype=int),
         Dimension(name="product", letter="p", items=["A", "B"], dtype=str),
     ]
 )
-cohort_dim_tests = Dimension(name="cohort", letter="c", items=time_items_cohort_tests, dtype=int)
-initial_year_tests = 2005
-initial_year_index_tests = time_items_cohort_tests.index(initial_year_tests)
+COHORT_DIM_TESTS = Dimension(name="cohort", letter="c", items=TIME_ITEMS_COHORT_TESTS, dtype=int)
+INITIAL_YEAR_TESTS = 2005
+INITIAL_YEAR_INDEX_TESTS = TIME_ITEMS_COHORT_TESTS.index(INITIAL_YEAR_TESTS)
 
 
 def _dsm_for_cohort_tests(dsm_cls, **kwargs):
-    lifetime_model = LogNormalLifetime(dims=dims_cohort_tests, time_letter="t", mean=8, std=3)
+    lifetime_model = LogNormalLifetime(dims=DIMS_COHORT_TESTS, time_letter="t", mean=8, std=3)
     return dsm_cls(
-        dims=dims_cohort_tests,
-        cohort_dim=cohort_dim_tests,
+        dims=DIMS_COHORT_TESTS,
+        cohort_dim=COHORT_DIM_TESTS,
         lifetime_model=lifetime_model,
         time_letter="t",
         **kwargs,
@@ -462,10 +466,10 @@ def _dsm_for_cohort_tests(dsm_cls, **kwargs):
 
 def _initial_stock_for_cohort_tests():
     initial_stock_dims = DimensionSet(
-        dim_list=[cohort_dim_tests] + list(dims_cohort_tests.drop("t", inplace=False).dim_list)
+        dim_list=[COHORT_DIM_TESTS] + list(DIMS_COHORT_TESTS.drop("t", inplace=False).dim_list)
     )
     initial_stock = StockArray(dims=initial_stock_dims, name="initial_stock")
-    for i in range(initial_year_index_tests + 1):
+    for i in range(INITIAL_YEAR_INDEX_TESTS + 1):
         initial_stock.values[i, :] = [10.0 - i, 5.0 + i]
     return initial_stock
 
@@ -474,7 +478,7 @@ def test_inflow_driven_dsm_matches_survival_function():
     """Time stepping gives the same cohorts as the direct product with the cumulative survival
     and the outflow pmf."""
     rng = np.random.default_rng(0)
-    inflow = StockArray(dims=dims_cohort_tests, values=rng.random(dims_cohort_tests.shape))
+    inflow = StockArray(dims=DIMS_COHORT_TESTS, values=rng.random(DIMS_COHORT_TESTS.shape))
     dsm = _dsm_for_cohort_tests(InflowDrivenDSM, inflow=inflow)
     dsm.compute()
 
@@ -496,12 +500,12 @@ def test_inflow_driven_dsm_initial_stock_survival():
     according to the survival function afterwards."""
     dsm = _dsm_for_cohort_tests(InflowDrivenDSM)
     initial_stock = _initial_stock_for_cohort_tests()
-    dsm.set_initial_stock(initial_stock, initial_year_tests)
-    dsm.inflow.values[initial_year_index_tests + 1 :, ...] = 2.0
+    dsm.set_initial_stock(initial_stock, INITIAL_YEAR_TESTS)
+    dsm.inflow.values[INITIAL_YEAR_INDEX_TESTS + 1 :, ...] = 2.0
     dsm.inflow.mark_set()
     dsm.compute()
 
-    iiy = initial_year_index_tests
+    iiy = INITIAL_YEAR_INDEX_TESTS
     cum_surv = dsm.lifetime_model.cumulative_survival
     stock_by_cohort = dsm.get_stock_by_cohort().values
     expected = np.einsum(
@@ -518,9 +522,9 @@ def test_stock_driven_dsm_initial_stock_reproduces_stock():
     """With an initial stock, the prescribed stock after the initial year is the total stock."""
     dsm = _dsm_for_cohort_tests(StockDrivenDSM)
     initial_stock = _initial_stock_for_cohort_tests()
-    dsm.set_initial_stock(initial_stock, initial_year_tests)
-    iiy = initial_year_index_tests
-    n_after = len(time_items_cohort_tests) - iiy - 1
+    dsm.set_initial_stock(initial_stock, INITIAL_YEAR_TESTS)
+    iiy = INITIAL_YEAR_INDEX_TESTS
+    n_after = len(TIME_ITEMS_COHORT_TESTS) - iiy - 1
     dsm.stock.values[iiy + 1 :, :] = 80.0 + 2.0 * np.arange(n_after)[:, np.newaxis]
     prescribed_stock = dsm.stock.values.copy()
     dsm.stock.mark_set()
@@ -532,8 +536,8 @@ def test_stock_driven_dsm_initial_stock_reproduces_stock():
     dsm.check_mass_balance()
 
 
-dims_with_cohort_tests = DimensionSet(
-    dim_list=[dims_cohort_tests["t"], cohort_dim_tests, dims_cohort_tests["p"]]
+DIMS_WITH_COHORT_TESTS = DimensionSet(
+    dim_list=[DIMS_COHORT_TESTS["t"], COHORT_DIM_TESTS, DIMS_COHORT_TESTS["p"]]
 )
 
 
@@ -541,16 +545,16 @@ def _driving_array_for_cohort_tests(driven_by: str) -> StockArray:
     rng = np.random.default_rng(1)
     if driven_by == "inflow_by_cohort":
         # inflow only into cohorts which already exist
-        values = rng.random(dims_with_cohort_tests.shape)
-        values *= np.tri(len(time_items_cohort_tests))[:, :, np.newaxis]
-        return StockArray(dims=dims_with_cohort_tests, values=values)
-    values = rng.random(dims_cohort_tests.shape)
+        values = rng.random(DIMS_WITH_COHORT_TESTS.shape)
+        values *= np.tri(len(TIME_ITEMS_COHORT_TESTS))[:, :, np.newaxis]
+        return StockArray(dims=DIMS_WITH_COHORT_TESTS, values=values)
+    values = rng.random(DIMS_COHORT_TESTS.shape)
     if driven_by == "stock":
         values = np.cumsum(values, axis=0)
-    return StockArray(dims=dims_cohort_tests, values=values)
+    return StockArray(dims=DIMS_COHORT_TESTS, values=values)
 
 
-_explicit_compute_methods = {
+_EXPLICIT_COMPUTE_METHODS = {
     "inflow": "compute_inflow_driven",
     "stock": "compute_stock_driven",
     "inflow_by_cohort": "compute_inflow_by_cohort_driven",
@@ -560,7 +564,7 @@ _explicit_compute_methods = {
 @pytest.mark.parametrize("driven_by", ["inflow", "stock", "inflow_by_cohort"])
 def test_compute_chooses_mode_like_explicit_method(driven_by):
     results = []
-    for method in _explicit_compute_methods[driven_by], "compute":
+    for method in _EXPLICIT_COMPUTE_METHODS[driven_by], "compute":
         dsm = _dsm_for_cohort_tests(
             DynamicStockModel, **{driven_by: _driving_array_for_cohort_tests(driven_by)}
         )
@@ -622,9 +626,9 @@ def test_recompute():
 def test_stock_driven_then_corrected_inflow_driven():
     """Compute stock-driven, set negative inflows to zero, and recompute inflow-driven."""
     stock_values = _driving_array_for_cohort_tests("stock").values
-    stock_values[10:] -= 3.0 * np.arange(len(time_items_cohort_tests) - 10)[:, np.newaxis]
+    stock_values[10:] -= 3.0 * np.arange(len(TIME_ITEMS_COHORT_TESTS) - 10)[:, np.newaxis]
     dsm = _dsm_for_cohort_tests(
-        DynamicStockModel, stock=StockArray(dims=dims_cohort_tests, values=stock_values)
+        DynamicStockModel, stock=StockArray(dims=DIMS_COHORT_TESTS, values=stock_values)
     )
     dsm.compute_stock_driven()
     assert np.any(dsm.inflow.values < 0)
@@ -633,7 +637,7 @@ def test_stock_driven_then_corrected_inflow_driven():
     dsm.compute_inflow_driven()
 
     reference = _dsm_for_cohort_tests(
-        InflowDrivenDSM, inflow=StockArray(dims=dims_cohort_tests, values=corrected_inflow)
+        InflowDrivenDSM, inflow=StockArray(dims=DIMS_COHORT_TESTS, values=corrected_inflow)
     )
     reference.compute()
     np.testing.assert_allclose(dsm.inflow.values, corrected_inflow)
@@ -647,10 +651,10 @@ def test_stock_driven_then_inflow_driven_with_initial_stock(included_in_inflow):
     initial stock. With included_in_inflow=True, recomputing inflow-driven reproduces the stock."""
     dsm = _dsm_for_cohort_tests(DynamicStockModel)
     dsm.set_initial_stock(
-        _initial_stock_for_cohort_tests(), initial_year_tests, included_in_inflow=included_in_inflow
+        _initial_stock_for_cohort_tests(), INITIAL_YEAR_TESTS, included_in_inflow=included_in_inflow
     )
-    iiy = initial_year_index_tests
-    n_after = len(time_items_cohort_tests) - iiy - 1
+    iiy = INITIAL_YEAR_INDEX_TESTS
+    n_after = len(TIME_ITEMS_COHORT_TESTS) - iiy - 1
     dsm.stock.values[iiy + 1 :, :] = 80.0 + 2.0 * np.arange(n_after)[:, np.newaxis]
     dsm.compute_stock_driven()
     stock_driven_stock = dsm.stock.values.copy()
@@ -679,13 +683,13 @@ def test_user_subclass_of_dynamic_stock_model_marks_set():
 
 @pytest.mark.parametrize(
     "time_items",
-    [time_items_cohort_tests, [2000, 2001, 2003, 2004, 2007, 2010, 2011, 2015, 2020]],
+    [TIME_ITEMS_COHORT_TESTS, [2000, 2001, 2003, 2004, 2007, 2010, 2011, 2015, 2020]],
     ids=["equal_time_steps", "unequal_time_steps"],
 )
 def test_inflow_by_cohort_driven_dsm_matches_inflow_driven_dsm(time_items):
     """Compares the vectorized inflow-driven computation with the time stepping."""
     time_dim = Dimension(name="time", letter="t", items=time_items, dtype=int)
-    dims_test = DimensionSet(dim_list=[time_dim, dims_cohort_tests["p"]])
+    dims_test = DimensionSet(dim_list=[time_dim, DIMS_COHORT_TESTS["p"]])
     cohort_dim = Dimension(name="cohort", letter="c", items=time_items, dtype=int)
     rng = np.random.default_rng(2)
     inflow_values = rng.random(dims_test.shape)
@@ -1040,3 +1044,24 @@ def test_nurture_keeps_lifetime_parameters():
     # recomputing, e.g. for a second scenario, starts from the same parameters
     lt.reset_cached_arrays()
     np.testing.assert_array_equal(lt.cumulative_survival, first)
+
+
+def test_process_id_and_to_stock_type():
+    time_dims = DimensionSet(dim_list=[DIMS["t"]])
+    processes = make_processes(["sysenv", "a"])
+    stock = SimpleFlowDrivenStock(
+        dims=time_dims,
+        inflow=StockArray(dims=time_dims, values=np.ones(time_dims.shape)),
+        outflow=StockArray(dims=time_dims, values=np.zeros(time_dims.shape)),
+        process=processes["a"],
+        name="s",
+    )
+    assert stock.process_id == processes["a"].id
+
+    dsm = stock.to_stock_type(InflowDrivenDSM, lifetime_model=FixedLifetime(dims=time_dims, mean=3))
+    assert isinstance(dsm, InflowDrivenDSM)
+    assert dsm.name == "s"
+    assert dsm.process is processes["a"]
+    assert np.array_equal(dsm.inflow.values, stock.inflow.values)
+    dsm.compute()
+    assert_almost_equal(dsm.stock.values[:5], [1.0, 2.0, 3.0, 3.0, 3.0])

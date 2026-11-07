@@ -6,13 +6,14 @@ import pytest
 from flodym import (
     Dimension,
     DimensionSet,
+    ErrorBehavior,
     InflowDrivenDSM,
     NormalLifetime,
     SimpleFlowDrivenStock,
     StockArray,
     config,
 )
-from flodym.config import ErrorBehavior, handle_error
+from flodym._config import handle_error
 from flodym.example_objects import get_example_mfa
 
 

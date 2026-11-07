@@ -1,21 +1,27 @@
+"""Export MFA systems to pickle files, csv files, or plain dictionaries."""
+
 import logging
 import os
 import pickle
 from collections.abc import Callable
+from typing import Any, Literal
+
+import numpy as np
+import pandas as pd
 
 from ..flodym_arrays import FlodymArray
 from ..mfa_system import MFASystem
-from .helper import to_valid_file_name
+from ._helper import to_valid_file_name
 
 logger = logging.getLogger(__name__)
 
 
-def export_mfa_to_pickle(mfa: MFASystem, export_path: str):
+def export_mfa_to_pickle(mfa: MFASystem, export_path: str) -> None:
     """Write an MFA system to a pickle file.
 
     Args:
-        mfa (MFASystem): The MFA system to be exported.
-        export_path (str): The path to the file where the MFA system should be saved.
+        mfa: The MFA system to be exported.
+        export_path: The path to the file where the MFA system should be saved.
     """
     dict_out = convert_to_dict(mfa)
     with open(export_path, "wb") as f:
@@ -23,12 +29,12 @@ def export_mfa_to_pickle(mfa: MFASystem, export_path: str):
     logger.info(f"Data saved to {export_path}")
 
 
-def export_mfa_flows_to_csv(mfa: MFASystem, export_directory: str):
-    """export flows of an MFA system to csv files.
+def export_mfa_flows_to_csv(mfa: MFASystem, export_directory: str) -> None:
+    """Export flows of an MFA system to csv files.
 
     Args:
-        mfa (MFASystem): The MFA system from which the flows should be exported.
-        export_directory (str): The directory where the csv files should be saved.
+        mfa: The MFA system from which the flows should be exported.
+        export_directory: The directory where the csv files should be saved.
     """
     if not os.path.exists(export_directory):
         os.makedirs(export_directory)
@@ -38,13 +44,16 @@ def export_mfa_flows_to_csv(mfa: MFASystem, export_directory: str):
     logger.info(f"Data saved in directory {export_directory}")
 
 
-def export_mfa_stocks_to_csv(mfa: MFASystem, export_directory: str, with_in_and_out: bool = False):
-    """export stocks of an MFA system to csv files.
+def export_mfa_stocks_to_csv(
+    mfa: MFASystem, export_directory: str, with_in_and_out: bool = False
+) -> None:
+    """Export stocks of an MFA system to csv files.
 
     Args:
-        mfa (MFASystem): The MFA system from which the stocks should be exported.
-        export_directory (str): The directory where the csv files should be saved.
-        with_in_and_out (bool, optional): If True, the inflow and outflow of the stocks are also exported. Defaults to False.
+        mfa: The MFA system from which the stocks should be exported.
+        export_directory: The directory where the csv files should be saved.
+        with_in_and_out: If True, the inflow and outflow of the stocks are also exported.
+            Defaults to False.
     """
     if not os.path.exists(export_directory):
         os.makedirs(export_directory)
@@ -62,29 +71,36 @@ def export_mfa_stocks_to_csv(mfa: MFASystem, export_directory: str, with_in_and_
     logger.info(f"Data saved in directory {export_directory}")
 
 
-def convert_to_dict(mfa: MFASystem, type: str = "numpy") -> dict:
+def convert_to_dict(mfa: MFASystem, type: Literal["numpy", "pandas"] = "numpy") -> dict[str, Any]:
     """Convert an MFA system to a dictionary which is readable without flodym.
 
     Args:
-        mfa (MFASystem): The MFA system to be converted.
-        type (str, optional): The type of the values in the flows and stocks. Options are 'numpy' and 'pandas'. Defaults to "numpy".
+        mfa: The MFA system to be converted.
+        type: The type of the values in the flows and stocks. Options are 'numpy' and 'pandas'.
+            Defaults to "numpy".
 
     Returns:
-        dict: The MFA system as a dictionary. Contains the items 'dimension_names', 'dimension_items', 'processes', 'flows', 'flow_dimensions', 'flow_processes', 'stocks', 'stock_dimensions', 'stock_processes'.
+        The MFA system as a dictionary. Contains the items 'dimension_names', 'dimension_items',
+        'processes', 'flows', 'flow_dimensions', 'flow_processes', 'stocks', 'stock_dimensions',
+        'stock_processes'.
+
+    Raises:
+        ValueError: If ``type`` is neither 'numpy' nor 'pandas'.
     """
     convert_func = _get_convert_func(type)
     return _convert_to_dict_by_func(mfa, convert_func)
 
 
-def _get_convert_func(type: str):
+def _get_convert_func(type: str) -> Callable[[FlodymArray], np.ndarray | pd.DataFrame]:
+    convert_func: Callable[[FlodymArray], np.ndarray | pd.DataFrame]
     if type == "numpy":
 
-        def convert_func(array: FlodymArray):
+        def convert_func(array: FlodymArray) -> np.ndarray:
             return array.values
 
     elif type == "pandas":
 
-        def convert_func(array: FlodymArray):
+        def convert_func(array: FlodymArray) -> pd.DataFrame:
             return array.to_df()
 
     else:
@@ -92,8 +108,10 @@ def _get_convert_func(type: str):
     return convert_func
 
 
-def _convert_to_dict_by_func(mfa: MFASystem, convert_func: Callable) -> dict:
-    dict_out = {}
+def _convert_to_dict_by_func(
+    mfa: MFASystem, convert_func: Callable[[FlodymArray], Any]
+) -> dict[str, Any]:
+    dict_out: dict[str, Any] = {}
     dict_out["dimension_names"] = {d.letter: d.name for d in mfa.dims}
     dict_out["dimension_items"] = {d.name: d.items for d in mfa.dims}
     dict_out["processes"] = [p.name for p in mfa.processes.values()]

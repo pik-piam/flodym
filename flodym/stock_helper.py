@@ -3,30 +3,10 @@
 from typing import Literal, overload
 
 from ._attribute_dict import AttributeDict
-from .dimensions import Dimension, DimensionSet
-from .flodym_array_helper import flodym_array_stack
+from .dimensions import DimensionSet
 from .mfa_definition import StockDefinition
 from .processes import Process
 from .stocks import Stock
-
-
-def stock_stack(stocks: list[Stock], dimension: Dimension) -> Stock:
-    """Make a `FlowDrivenStock` object as a combination of `Stock` objects,
-    by combining them on a new dimension.
-    For example, we could have one stock for each material of interest, and
-    with this function we can combine them to a stock object that contains
-    information about all the materials.
-    """
-    stacked_stock = flodym_array_stack([stock.stock for stock in stocks], dimension=dimension)
-    stacked_inflow = flodym_array_stack([stock.inflow for stock in stocks], dimension=dimension)
-    stacked_outflow = flodym_array_stack([stock.outflow for stock in stocks], dimension=dimension)
-    return stocks[0].__class__(
-        stock=stacked_stock,
-        inflow=stacked_inflow,
-        outflow=stacked_outflow,
-        name=stocks[0].name,
-        process=stocks[0].process,
-    )
 
 
 @overload
@@ -64,6 +44,10 @@ def make_empty_stocks(
 
     Returns:
         Dictionary of stocks, with stock names as keys.
+
+    Raises:
+        KeyError: If the process of a stock definition is not found in processes.
+        ValueError: If a prescribed array does not exist in the created stock.
     """
     empty_stocks = {}
     for stock_definition in stock_definitions:

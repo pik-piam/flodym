@@ -8,12 +8,23 @@ def flodym_array_stack(
     flodym_arrays: list[FlodymArray], dimension: Dimension, inplace: bool = False
 ) -> FlodymArray:
     """Stack a list of FlodymArray objects using a new dimension.
-    Like numpy.stack, but for `FlodymArray`s. New dimension is added at the end.
+
+    Like numpy.stack, but for `FlodymArray` objects. New dimension is added at the end.
 
     Args:
-        flodym_arrays (list[FlodymArray]): List of FlodymArray objects to stack. Must have the same dimensions and shape.
-        dimension (Dimension): The new dimension to stack along. Must not be present in the FlodymArrays to stack.
-        inplace (bool, optional): If True, modify the first FlodymArray in place. If False, return a new FlodymArray object.
+        flodym_arrays: List of FlodymArray objects to stack. Must have the same dimensions and
+            shape.
+        dimension: The new dimension to stack along. Must not be present in the FlodymArrays to
+            stack.
+        inplace: If True, modify the first FlodymArray in place. If False, return a new
+            FlodymArray object.
+
+    Returns:
+        The stacked array, with ``dimension`` appended to the dimensions of the inputs.
+
+    Raises:
+        ValueError: If the number of arrays does not match the length of ``dimension``, if the
+            arrays have different dimensions, or if ``dimension`` is already present in them.
     """
     if len(flodym_arrays) != dimension.len:
         raise ValueError(

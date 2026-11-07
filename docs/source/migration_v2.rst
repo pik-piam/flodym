@@ -10,7 +10,9 @@ Most models run under v2 without changes. The changes that are most likely to ma
 - stricter checks of the model structure, which turn silent overwrites into errors
   (see :ref:`v2-structure`);
 - a stricter mass balance check (see :ref:`v2-mass-balance`);
-- changed results of dynamic stock models with unequal time steps (see :ref:`v2-stocks`).
+- changed results of dynamic stock models with unequal time steps (see :ref:`v2-stocks`);
+- internal names that now start with an underscore, which matters if you override a validator
+  in a subclass (see :ref:`v2-names`).
 
 
 .. _v2-structure:
@@ -37,6 +39,9 @@ objects instead.
   have only one stock.
 - **The process named** ``sysenv`` **must have ID 0.** v1 only checked that the process with ID 0
   is named ``sysenv``.
+- **Subclasses of** ``DataReader`` must implement both ``read_dimension()`` and
+  ``read_parameter_values()``, since ``DataReader`` is now an abstract base class. Otherwise,
+  creating an instance raises a ``TypeError``.
 
 
 .. _v2-mass-balance:
@@ -190,6 +195,54 @@ This is a new feature and does not change existing models. If you use it, note:
 
 See HOWTO 05 for details.
 
+.. _v2-names:
+
+Public and private names
+------------------------
+
+Names that are only used inside flodym now start with an underscore. The public API consists of
+the names exported by ``flodym`` and ``flodym.export`` and documented in the API reference. Models
+that only use these are not affected.
+
+*Action:* If a subclass overrides one of the validators below, e.g. to switch it off, rename the
+override as well. Otherwise, the flodym validator runs in addition to it.
+
+Renamed with a leading underscore:
+
+- **Pydantic validators:**
+
+  - ``FlodymArray``: ``copy_dims``, ``validate_values``
+  - ``Dimension``, ``DimensionSet``: ``items_have_datatype``, ``no_repeated_dimensions``,
+    ``copy_dim_list``
+  - ``Stock``, ``DynamicStockModel``: ``validate_stock_arrays``, ``validate_time_first_dim``,
+    ``init_t``, ``init_cohort_arrays``, ``init_lifetime_model``
+  - ``Process``: ``check_id0``
+  - ``FlowDefinition``, ``StockDefinition``, ``ParameterDefinition``, ``MFADefinition``:
+    ``check_dimensions``, ``init_solver``, ``check_lifetime_model``, ``check_dimension_letters``
+  - array plotters, Sankey and process graph plotters: ``check_chart_type``, ``check_line_type``,
+    ``check_colors``, ``check_dims``, ``check_excluded``, ``check_flow_colors``,
+    ``check_node_colors``, ``check_consistency_with_mfa``
+
+- **Classes:** ``SubArrayHandler``, ``UnevenTimeDim``, ``DefinitionWithDimLetters``,
+  ``DictOfLists``
+- **Methods and attributes:**
+
+  - ``DimensionSet.prepare_other``, ``UnevenTimeDim.compute_t_bounds``
+  - ``PlotlySankeyPlotter``: ``excluded_process_ids``, ``ids_in_sankey``
+  - ``PyplotArrayPlotter``, ``PlotlyArrayPlotter``: ``get_fig``, ``set_xlabel``, ``set_ylabel``,
+    ``set_subplot_title``, ``add_line``, ``plot_legend``, ``set_title``, ``ax``, ``row``,
+    ``col``, ``nx``, ``ny``, ``subplot_titles``, ``n_previous_lines``
+
+- **Modules:** ``flodym.gauss_lobatto``, ``flodym.export.helper``
+
+Now exported by ``flodym``:
+
+- ``Config``, ``Checks``, ``ErrorBehaviors``, ``ErrorBehavior`` (the classes of
+  ``flodym.config``);
+- ``process_ids``, ``process_names_no_spaces``, ``process_names_with_arrow`` (also still
+  available in ``flodym.flow_naming``);
+- ``StandardDeviationLifetimeModel`` and ``LifetimeArrayType``, which appear in type hints.
+
 
 .. _v2-deprecations:
 
@@ -205,12 +258,14 @@ The following still work in v2, but emit a ``DeprecationWarning`` and will be re
 - ``LifetimeModel.set_prms()`` (deprecated since v1.1.0): assign the parameters directly, e.g.
   ``lifetime_model.mean = 10``;
 - ``LifetimeModel.sf`` and ``LifetimeModel.pdf``: use ``cumulative_survival`` and
-  ``outflow_pmf`` instead.
+  ``outflow_pmf`` instead;
+- ``CSVParameterReader.parameter_filenames``: use ``parameter_files``, as in
+  ``ExcelParameterReader``.
 
 The ``naming`` argument of ``make_empty_flows()`` is deprecated as well and will be removed in
 v3.0.0. It still works, but logs an info message instead of a warning. Set the global option
 ``flodym.config.flow_naming`` instead, e.g.
-``flodym.config.flow_naming = flodym.flow_naming.process_ids``, or use
+``flodym.config.flow_naming = flodym.process_ids``, or use
 ``with flodym.config.override(flow_naming=...):``.
 
 

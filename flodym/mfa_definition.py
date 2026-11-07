@@ -1,8 +1,10 @@
 """Home to definition classes.
 
 These are used when defining the MFA system, and can be used to check the input data
-and put it into ojects with the desired properties.
+and put it into objects with the desired properties.
 """
+
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -16,6 +18,7 @@ from pydantic import (
 from pydantic import (
     BaseModel as PydanticBaseModel,
 )
+from typing_extensions import Self
 
 
 class DimensionDefinition(PydanticBaseModel):
@@ -24,21 +27,24 @@ class DimensionDefinition(PydanticBaseModel):
     **Examples**
 
         >>> from flodym import DimensionDefinition
-        >>> time_definition = DimensionDefinition(name='Time', letter='t', dtype=int)
-        >>> region_definition = DimensionDefinition(name='Region', letter='r', dtype=str)
+        >>> time_definition = DimensionDefinition(name="Time", letter="t", dtype=int)
+        >>> region_definition = DimensionDefinition(name="Region", letter="r", dtype=str)
     """
 
     model_config = ConfigDict(protected_namespaces=())
 
     name: str = Field(..., min_length=2)
+    """Name of the dimension, with at least two characters."""
     letter: str = Field(
         ..., min_length=1, max_length=1, validation_alias=AliasChoices("letter", "dim_letter")
     )
+    """Single-character key of the dimension. Can also be given as ``dim_letter``."""
     dtype: type
+    """Data type of the dimension items, e.g. ``int`` or ``str``."""
 
 
-class DefinitionWithDimLetters(PydanticBaseModel):
-    """Base class for any definition that contains dimesnsion letters."""
+class _DefinitionWithDimLetters(PydanticBaseModel):
+    """Base class for any definition that contains dimension letters."""
 
     model_config = ConfigDict(protected_namespaces=())
 
@@ -46,23 +52,28 @@ class DefinitionWithDimLetters(PydanticBaseModel):
     """Letters of the dimensions that the object is defined on."""
 
     @field_validator("dim_letters", mode="before")
-    def check_dimensions(cls, v):
+    def _check_dimensions(cls, v: Any) -> Any:
+        """Check that all dimension letters are single-character strings."""
         for letter in v:
             if (not isinstance(letter, str)) or (len(letter) != 1):
                 raise ValueError("Dimensions must be defined using single digit letters")
         return v
 
 
-class FlowDefinition(DefinitionWithDimLetters):
+class FlowDefinition(_DefinitionWithDimLetters):
     """Define the model flows.
 
     **Examples**
 
         >>> from flodym import FlowDefinition
-        >>> flow_one = FlowDefinition(from_process_name='fabrication', to_process_name='use', dim_letters=('r', 't'))
-        >>> flow_two = FlowDefinition(from_process_name='use', to_process_name='end_of_life', dim_letters=('r', 't'))
+        >>> flow_one = FlowDefinition(
+        ...     from_process_name="fabrication", to_process_name="use", dim_letters=("r", "t")
+        ... )
+        >>> flow_two = FlowDefinition(
+        ...     from_process_name="use", to_process_name="end_of_life", dim_letters=("r", "t")
+        ... )
 
-    These are then used in the :py:class:MFADefinition, for creating a custom MFA System.
+    These are then used in the :py:class:`flodym.MFADefinition`, for creating a custom MFA System.
     """
 
     from_process_name: str = Field(
@@ -72,14 +83,17 @@ class FlowDefinition(DefinitionWithDimLetters):
     to_process_name: str = Field(validation_alias=AliasChoices("to_process_name", "to_process"))
     """Process to which the flow goes."""
     name_override: str | None = None
-    """Optional name for the flow. Will be generated from the connecting process names if not provided."""
+    """Optional name for the flow.
+
+    Will be generated from the connecting process names if not provided.
+    """
     prescribed: str | None = None
     """Optional name of a parameter whose values the flow is set to. The parameter is linked to
     the flow by :py:meth:`flodym.MFASystem.link_parameters`, and its values are copied into the
     flow by :py:meth:`flodym.MFASystem.set_arrays_from_prescribed`."""
 
 
-class StockDefinition(DefinitionWithDimLetters):
+class StockDefinition(_DefinitionWithDimLetters):
     """Define the model stocks.
 
     The arrays of the stock (stock, inflow, outflow, and inflow by cohort) can be prescribed by
@@ -119,20 +133,14 @@ class StockDefinition(DefinitionWithDimLetters):
     """Optional name of a parameter whose values the inflow by cohort of a dynamic stock model is
     set to. Requires ``cohort_letter``."""
 
-    @property
-    def prescribed_arrays(self) -> dict[str, str]:
-        """Names of the parameters which stock arrays are prescribed by, keyed by array name
-        (``"stock"``, ``"inflow"``, ``"outflow"``, ``"inflow_by_cohort"``)."""
-        parameters = {
-            "stock": self.prescribed_stock,
-            "inflow": self.prescribed_inflow,
-            "outflow": self.prescribed_outflow,
-            "inflow_by_cohort": self.prescribed_inflow_by_cohort,
-        }
-        return {name: p for name, p in parameters.items() if p is not None}
-
     @model_validator(mode="after")
-    def check_prescribed_arrays(self):
+    def _check_prescribed_arrays(self) -> Self:
+        """Check the consistency of cohort and prescribed array settings.
+
+        Checks that ``cohort_letter`` and ``prescribed_inflow_by_cohort`` are only given for
+        dynamic stock models, and that at most one of the arrays which determine the computation
+        mode of a dynamic stock model is prescribed.
+        """
         is_dynamic = "cohort_dim" in self.subclass.model_fields
         if self.cohort_letter is not None and not is_dynamic:
             raise ValueError(
@@ -154,13 +162,15 @@ class StockDefinition(DefinitionWithDimLetters):
         return self
 
     @model_validator(mode="after")
-    def init_solver(self):
+    def _init_solver(self) -> Self:
+        """Check that the deprecated ``solver`` is ``"manual"`` or ``"lapack"``."""
         if self.solver not in ["manual", "lapack"]:
             raise ValueError("Solver must be either 'manual' or 'lapack'.")
         return self
 
     @model_validator(mode="after")
-    def check_lifetime_model(self):
+    def _check_lifetime_model(self) -> Self:
+        """Check that a lifetime model class is given if and only if the subclass uses one."""
         if (
             self.lifetime_model_class is not None
             and "lifetime_model" not in self.subclass.model_fields
@@ -172,8 +182,22 @@ class StockDefinition(DefinitionWithDimLetters):
             )
         return self
 
+    @property
+    def prescribed_arrays(self) -> dict[str, str]:
+        """Names of the parameters which stock arrays are prescribed by.
 
-class ParameterDefinition(DefinitionWithDimLetters):
+        Keyed by array name (``"stock"``, ``"inflow"``, ``"outflow"``, ``"inflow_by_cohort"``).
+        """
+        parameters = {
+            "stock": self.prescribed_stock,
+            "inflow": self.prescribed_inflow,
+            "outflow": self.prescribed_outflow,
+            "inflow_by_cohort": self.prescribed_inflow_by_cohort,
+        }
+        return {name: p for name, p in parameters.items() if p is not None}
+
+
+class ParameterDefinition(_DefinitionWithDimLetters):
     """Define the model parameters."""
 
     name: str
@@ -181,7 +205,9 @@ class ParameterDefinition(DefinitionWithDimLetters):
 
 
 class ProcessDefinition(PydanticBaseModel):
-    """Define a process, optionally with an explicit ID and with parameters used by
+    """Define a process.
+
+    A process can be defined optionally with an explicit ID and with parameters used by
     :py:meth:`flodym.Process.compute`. In :py:attr:`MFADefinition.processes`, it can be used
     instead of a process name, see :py:func:`flodym.make_processes`.
 
@@ -217,7 +243,10 @@ class ProcessDefinition(PydanticBaseModel):
 
 
 class MFADefinition(PydanticBaseModel):
-    """All the information needed to define an MFA system, compiled of lists of definition objects."""
+    """All the information needed to define an MFA system.
+
+    It is compiled of lists of definition objects.
+    """
 
     model_config = ConfigDict(protected_namespaces=())
 
@@ -238,8 +267,8 @@ class MFADefinition(PydanticBaseModel):
     :py:meth:`flodym.MFASystem.link_parameters`."""
 
     @model_validator(mode="after")
-    def check_dimension_letters(self):
-        """Check that dimension letters used for flows, stocks and parameters are part of the defined dimensions."""
+    def _check_dimension_letters(self) -> Self:
+        """Check that dimension letters of flows, stocks and parameters are defined dimensions."""
         defined_dim_letters = [dd.letter for dd in self.dimensions]
         for item in self.flows + self.stocks + self.parameters:
             correct_dims = [letter in defined_dim_letters for letter in item.dim_letters]
@@ -251,13 +280,15 @@ class MFADefinition(PydanticBaseModel):
         return self
 
     @model_validator(mode="after")
-    def validate_parameter_names(self):
-        """Check that parameters used by flow, stock and process definitions are defined,
-        unless :py:attr:`check_parameter_names` is False."""
+    def _validate_parameter_names(self) -> Self:
+        """Check that parameters used by flow, stock and process definitions are defined.
+
+        Skipped if :py:attr:`check_parameter_names` is False.
+        """
         if not self.check_parameter_names:
             return self
         defined_parameters = {p.name for p in self.parameters}
-        used_parameters = []
+        used_parameters: list[tuple[str, str]] = []
         for flow in self.flows:
             if flow.prescribed is not None:
                 used_parameters.append((flow.prescribed, f"flow definition {flow}"))
@@ -279,13 +310,14 @@ class MFADefinition(PydanticBaseModel):
 
     def to_dfs(self) -> dict[str, pd.DataFrame]:
         """Export definition information to pandas DataFrames.
+
         Column names are the field names, rows have the lists.
 
         Returns:
             A dictionary mapping from definition list names (such as "dimensions") to the
             DataFrames.
         """
-        all_dfs = {}
+        all_dfs: dict[str, pd.DataFrame] = {}
         for field_name, def_list in self.model_dump().items():
             # skip options such as check_parameter_names, and empty lists
             if not isinstance(def_list, list) or not def_list:

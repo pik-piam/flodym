@@ -15,20 +15,25 @@ Two backends are provided:
 
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from typing import TYPE_CHECKING
+from collections.abc import Callable, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import plotly.graph_objects as go
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import ConfigDict, model_validator
+from typing_extensions import Self
 
 from ..flodym_arrays import Flow
 from ..mfa_system import MFASystem
 from ..processes import Process
 from ..stocks import Stock
-from .helper import CustomNameDisplayer
+from ._helper import CustomNameDisplayer
 
 if TYPE_CHECKING:
     import graphviz
+
+_NodeT = TypeVar("_NodeT", Process, Stock)
+_NodeKeyT = TypeVar("_NodeKeyT", int, str)
 
 
 class ProcessGraphPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
@@ -66,7 +71,8 @@ class ProcessGraphPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
     Nodes not in this dictionary use ``process_color`` or ``stock_color``, respectively."""
 
     @model_validator(mode="after")
-    def check_consistency_with_mfa(self):
+    def _check_consistency_with_mfa(self) -> Self:
+        """Check that all excluded processes, excluded flows and colored nodes exist in the MFA."""
         for process in self.exclude_processes:
             if process not in self.mfa.processes:
                 raise ValueError(f"Process {process} given in exclude_processes not in MFASystem.")
@@ -82,6 +88,7 @@ class ProcessGraphPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
 
     @property
     def shown_processes(self) -> list[Process]:
+        """Processes that are not excluded."""
         return [
             process
             for process in self.mfa.processes.values()
@@ -98,6 +105,8 @@ class ProcessGraphPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
 
     @property
     def shown_flows(self) -> list[Flow]:
+        """Flows that are neither excluded nor connected to an excluded process."""
+
         def should_show(flow: Flow) -> bool:
             return not (
                 (flow.name in self.exclude_flows)
@@ -109,6 +118,7 @@ class ProcessGraphPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
 
     @property
     def shown_stocks(self) -> list[Stock]:
+        """Stocks attached to a shown process; empty if ``show_stocks`` is False."""
         if not self.show_stocks:
             return []
         return [
@@ -124,7 +134,7 @@ class ProcessGraphPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
         return self.node_colors.get(name, self.stock_color)
 
     @abstractmethod
-    def plot(self):
+    def plot(self) -> Any:
         """Create the graph figure."""
         ...
 
@@ -138,7 +148,6 @@ class GraphvizProcessGraphPlotter(ProcessGraphPlotter):
     system binaries (the ``dot`` executable).
 
     Example:
-
         >>> from flodym.export import GraphvizProcessGraphPlotter
         >>> dot = GraphvizProcessGraphPlotter(mfa=mfa).plot()
         >>> dot.render("system_structure", format="png")
@@ -151,6 +160,15 @@ class GraphvizProcessGraphPlotter(ProcessGraphPlotter):
     """Additional Graphviz graph attributes, see :py:class:`graphviz.Digraph` for details."""
 
     def plot(self) -> "graphviz.Digraph":
+        """Create the graph.
+
+        Returns:
+            The Graphviz directed graph.
+
+        Raises:
+            ImportError: If the ``graphviz`` package is not installed.
+        """
+
         def get_process_id(process: Process) -> str:
             return f"process_{process.id}"
 
@@ -209,7 +227,6 @@ class PlotlyProcessGraphPlotter(ProcessGraphPlotter):
         within each layer horizontally.
 
     Example:
-
         >>> from flodym.export import PlotlyProcessGraphPlotter
         >>> fig = PlotlyProcessGraphPlotter(mfa=mfa).plot()
         >>> fig.show()  # doctest: +SKIP
@@ -228,10 +245,13 @@ class PlotlyProcessGraphPlotter(ProcessGraphPlotter):
         """Create the graph figure.
 
         Args:
-
             process_positions: Optional dictionary mapping process IDs to (x, y) positions.
+                If None, positions are computed with a layered layout.
             stock_positions: Optional dictionary mapping stock names to (x, y) positions.
+                If None, stocks are placed below their process.
 
+        Returns:
+            The plotly figure.
         """
         if process_positions is None:
             process_positions = self._calculate_process_positions()
@@ -303,7 +323,8 @@ class PlotlyProcessGraphPlotter(ProcessGraphPlotter):
     ) -> list[tuple[int, int]]:
         """Return the edges of the graph with cycle-closing back-edges removed.
 
-        A depth-first traversal is used. Edges are colored white (unvisited), grey (currently in the stack), or black (fully explored).
+        A depth-first traversal is used. Edges are colored white (unvisited), grey (currently in the
+        stack), or black (fully explored).
         Back-edges are those that point to a grey node, and they are dropped.
         """
         white, grey, black = 0, 1, 2
@@ -346,7 +367,7 @@ class PlotlyProcessGraphPlotter(ProcessGraphPlotter):
         return positions
 
     def _calculate_stock_positions(
-        self, process_positions: dict[int, tuple[float, float]]
+        self, process_positions: Mapping[int, tuple[float, float]]
     ) -> dict[str, tuple[float, float]]:
         stocks_by_process: dict[int, list[Stock]] = defaultdict(list)
         stocks_not_attached_to_process = []
@@ -368,7 +389,7 @@ class PlotlyProcessGraphPlotter(ProcessGraphPlotter):
             positions[stock.name] = (x, -1.5)
         return positions
 
-    def _add_flow_edges(self, fig: go.Figure, positions: dict[int, tuple[float, float]]):
+    def _add_flow_edges(self, fig: go.Figure, positions: Mapping[int, tuple[float, float]]) -> None:
         label_x, label_y, label_text = [], [], []
         for flow in self.shown_flows:
             x0, y0 = positions[flow.from_process_id]
@@ -413,9 +434,9 @@ class PlotlyProcessGraphPlotter(ProcessGraphPlotter):
     def _add_stock_edges(
         self,
         fig: go.Figure,
-        process_positions: dict[int, tuple[float, float]],
-        stock_positions: dict[str, tuple[float, float]],
-    ):
+        process_positions: Mapping[int, tuple[float, float]],
+        stock_positions: Mapping[str, tuple[float, float]],
+    ) -> None:
         for stock in self.shown_stocks:
             px, py = process_positions[stock.process.id]
             sx, sy = stock_positions[stock.name]
@@ -431,13 +452,13 @@ class PlotlyProcessGraphPlotter(ProcessGraphPlotter):
     def _add_nodes(
         self,
         fig: go.Figure,
-        items,
-        positions,
-        key_getter,
-        color_getter,
+        items: Sequence[_NodeT],
+        positions: Mapping[_NodeKeyT, tuple[float, float]],
+        key_getter: Callable[[_NodeT], _NodeKeyT],
+        color_getter: Callable[[str], str],
         marker_symbol: str,
         textposition: str,
-    ):
+    ) -> None:
         if not items:
             return
 

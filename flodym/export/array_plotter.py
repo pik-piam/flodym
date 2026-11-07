@@ -1,4 +1,7 @@
+"""Line, scatter and area plots of multi-dimensional `FlodymArray` objects."""
+
 from abc import ABC, abstractmethod
+from collections.abc import Iterable, ValuesView
 from typing import Any
 
 import numpy as np
@@ -7,17 +10,20 @@ from plotly import colors as plc
 from plotly import graph_objects as go
 from plotly.subplots import make_subplots
 from pydantic import BaseModel as PydanticBaseModel
-from pydantic import ConfigDict, model_validator
+from pydantic import ConfigDict, PrivateAttr, model_validator
+from typing_extensions import Self
 
 from ..dimensions import DimensionSet
 from ..flodym_arrays import FlodymArray
-from .helper import CustomNameDisplayer
+from ._helper import CustomNameDisplayer
 
 
 class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
-    """
-    Abstract base class for array plotting classes. Subclasses exist for pyplot and plotly.
-    Mostly recommended for plotting multi-dimensional arrays, where subplots and multiple lines are needed.
+    """Abstract base class for array plotting classes.
+
+    Subclasses exist for pyplot and plotly.
+    Mostly recommended for plotting multi-dimensional arrays, where subplots and multiple lines are
+    needed.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow", protected_namespaces=())
@@ -25,17 +31,33 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
     array: FlodymArray
     """Values to plot, usually a Flow or Stock; sliced or summed along excess dimensions."""
     intra_line_dim: str
-    """Name or letter of the dimension along which lines are plotted (if no x_array is given, this is also the x-axis)."""
+    """Name or letter of the dimension along which lines are plotted.
+
+    If no x_array is given, this is also the x-axis.
+    """
     x_array: FlodymArray | None = None
-    """Array with x-values for each line. Must have the same dimensions as array, or a subset of them. If None, the intra_line_dim is used as x-axis."""
+    """Array with x-values for each line.
+
+    Must have the same dimensions as array, or a subset of them. If None, the intra_line_dim is used
+    as x-axis.
+    """
     subplot_dim: str | None = None
-    """Name or letter of the dimension by which to split the array into subplots. If None, the array is plotted in a single subplot."""
+    """Name or letter of the dimension by which to split the array into subplots.
+
+    If None, the array is plotted in a single subplot.
+    """
     linecolor_dim: str | None = None
-    """Name or letter of the dimension along which to split the array into several lines within each subplot. If None, only one line is plotted per subplot."""
+    """Name or letter of the dimension along which to split the array into lines in each subplot.
+
+    If None, only one line is plotted per subplot.
+    """
     fig: Any = None
     """Pre-existing figure to plot on. If None, a new figure is created."""
     line_label: str | None = None
-    """Custom label for the line. If None, the respective item along linecolor_dim is used as label."""
+    """Custom label for the line.
+
+    If None, the respective item along linecolor_dim is used as label.
+    """
     xlabel: str | None = None
     """Custom label for the x-axis. If None, the name of the x_array or intra_line_dim is used."""
     ylabel: str | None = None
@@ -51,14 +73,20 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
     suppress_legend: bool = False
     """If True, the legend is not shown."""
 
+    _nx: int = PrivateAttr(default=1)
+    _ny: int = PrivateAttr(default=1)
+    _subplot_titles: list[str] | None = PrivateAttr(default=None)
+
     @model_validator(mode="after")
-    def check_chart_type(self):
+    def _check_chart_type(self) -> Self:
+        """Check that ``chart_type`` is supported."""
         if self.chart_type not in self._allowed_chart_types:
             raise ValueError("chart_type must be either 'line' or 'scatter'.")
         return self
 
     @model_validator(mode="after")
-    def check_line_type(self):
+    def _check_line_type(self) -> Self:
+        """Check ``line_type``, translating between pyplot and plotly names where possible."""
         if self.line_type not in self._allowed_line_types:
             allowed_changes = {"dash": "dashed", "dot": "dotted", "dashed": "dash", "dotted": "dot"}
             if (
@@ -72,16 +100,9 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
             raise ValueError("line_type is only applicable to chart_type 'line'.")
         return self
 
-    @property
-    def _allowed_line_types(self):
-        raise NotImplementedError
-
-    @property
-    def _allowed_chart_types(self):
-        return ["line", "area", "scatter"]
-
     @model_validator(mode="after")
-    def check_colors(self):
+    def _check_colors(self) -> Self:
+        """Check that ``line_label`` is not combined with ``linecolor_dim``."""
         if self.linecolor_dim is not None and self.line_label is not None:
             raise ValueError(
                 "If linecolor_dim is given, several lines are plotted. In this case, lines are labeled"
@@ -90,7 +111,8 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
         return self
 
     @model_validator(mode="after")
-    def check_dims(self):
+    def _check_dims(self) -> Self:
+        """Check that each array dimension is assigned exactly once and ``x_array`` fits."""
         dim_attributes = [self.linecolor_dim, self.subplot_dim, self.intra_line_dim]
         dim_attribute_names = ["linecolor_dim", "subplot_dim", "intra_line_dim"]
         for attr_name, dim in zip(dim_attribute_names, dim_attributes):
@@ -112,58 +134,81 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
             raise ValueError("x_array must have the same dimensions as array, or a subset of them.")
         return self
 
-    def plot(self, save_path: str | None = None, do_show: bool = False):
+    @property
+    def _allowed_line_types(self) -> list[str]:
+        raise NotImplementedError
+
+    @property
+    def _allowed_chart_types(self) -> list[str]:
+        return ["line", "area", "scatter"]
+
+    def plot(self, save_path: str | None = None, do_show: bool = False) -> Any:
+        """Plot the array.
+
+        Args:
+            save_path: If given, the figure is saved to this path.
+            do_show: Whether to show the figure.
+
+        Returns:
+            The figure, of the type of the respective backend.
+        """
         self._fill_fig()
         subplots_array, subplots_x_array = self._prepare_arrays()
         self._plot_all_subplots(subplots_array, subplots_x_array)
-        self.plot_legend()
+        self._plot_legend()
         if self.title is not None:
-            self.set_title()
+            self._set_title()
         if save_path is not None:
             self.save(save_path)
         if do_show:
             self.show()
         return self.fig
 
-    def _prepare_arrays(self) -> tuple[dict[str, FlodymArray], dict[str, FlodymArray]]:
+    def _prepare_arrays(self) -> tuple[ValuesView[FlodymArray], ValuesView[FlodymArray]]:
         self._get_x_array_like_value_array()
         subplots_array = self._dict_of_slices(self.array, self.subplot_dim).values()
         subplots_x_array = self._dict_of_slices(self.x_array, self.subplot_dim).values()
         return subplots_array, subplots_x_array
 
     @staticmethod
-    def _dict_of_slices(array: FlodymArray, dim_name_to_slice) -> dict[str, FlodymArray]:
+    def _dict_of_slices(
+        array: FlodymArray, dim_name_to_slice: str | None
+    ) -> dict[Any, FlodymArray]:
         if dim_name_to_slice is not None:
             slice_letter = array.dims[dim_name_to_slice].letter
             return array.split(slice_letter)
         else:
             return {None: array}
 
-    def _plot_all_subplots(self, subplotlist_array, subplotlist_x_array):
+    def _plot_all_subplots(
+        self,
+        subplotlist_array: Iterable[FlodymArray],
+        subplotlist_x_array: Iterable[FlodymArray],
+    ) -> None:
         for i_subplot, (array_subplot, x_array_subplot) in enumerate(
             zip(subplotlist_array, subplotlist_x_array)
         ):
             self._plot_subplot(i_subplot=i_subplot, array=array_subplot, x_array=x_array_subplot)
             self._label_subplot(i_subplot=i_subplot)
 
-    def _fill_fig(self):
+    def _fill_fig(self) -> None:
         if self.fig is not None:  # already filled from input argument
-            self.nx, self.ny = self._get_nx_ny()
-            self.subplot_titles = None
+            self._nx, self._ny = self._get_nx_ny()
+            self._subplot_titles = None
             return
         if self.subplot_dim is None:
-            self.nx, self.ny = 1, 1
-            self.subplot_titles = None
+            self._nx, self._ny = 1, 1
+            self._subplot_titles = None
         else:
             n_subplots = self.array.dims[self.subplot_dim].len
-            self.nx, self.ny = self._get_nx_ny_from_n(n_subplots)
-            self.subplot_titles = [
+            self._nx, self._ny = self._get_nx_ny_from_n(n_subplots)
+            self._subplot_titles = [
                 f"{self.display_name(self.subplot_dim)}={self.display_name(item)}"
                 for item in self.array.dims[self.subplot_dim].items
             ]
-        self.fig = self.get_fig()
+        self.fig = self._get_fig()
 
-    def _get_x_array_like_value_array(self):
+    def _get_x_array_like_value_array(self) -> None:
         if self.x_array is None:
             x_dim_obj = self.array.dims[self.intra_line_dim]
             x_dimset = DimensionSet(dim_list=[x_dim_obj])
@@ -172,7 +217,7 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
             )
         self.x_array = self.x_array.cast_to(self.array.dims)
 
-    def _plot_subplot(self, i_subplot: int, array: FlodymArray, x_array: FlodymArray):
+    def _plot_subplot(self, i_subplot: int, array: FlodymArray, x_array: FlodymArray) -> None:
         linedict_array = self._dict_of_slices(array, self.linecolor_dim)
         linedict_x_array = self._dict_of_slices(x_array, self.linecolor_dim)
         prev_y = None
@@ -186,129 +231,178 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
                 "All dimensions of array must be given exactly once. Either as x_dim / subplot_dim / linecolor_dim, or in "
                 "slice_dict or summed_dims."
             )
-            self.add_line(i_subplot, x_array_line.values, array_line.values, prev_y, label, i_line)
+            self._add_line(i_subplot, x_array_line.values, array_line.values, prev_y, label, i_line)
             prev_y = array_line.values
 
-    def _label_subplot(self, i_subplot: int):
-        if self.subplot_titles is not None:
-            self.set_subplot_title(i_subplot, self.subplot_titles[i_subplot])
+    def _label_subplot(self, i_subplot: int) -> None:
+        if self._subplot_titles is not None:
+            self._set_subplot_title(i_subplot, self._subplot_titles[i_subplot])
         xlabel = self.xlabel if self.xlabel is not None else self.display_name(self.x_array.name)
         if xlabel != "unnamed":
-            self.set_xlabel(i_subplot, xlabel)
+            self._set_xlabel(i_subplot, xlabel)
         ylabel = self.ylabel if self.ylabel is not None else self.display_name(self.array.name)
         if ylabel != "unnamed":
-            self.set_ylabel(i_subplot, ylabel)
+            self._set_ylabel(i_subplot, ylabel)
 
-    def _index2d(self, i_subplot):
-        return i_subplot // self.nx, i_subplot % self.nx
+    def _index2d(self, i_subplot: int) -> tuple[int, int]:
+        return i_subplot // self._nx, i_subplot % self._nx
 
     @staticmethod
-    def _get_nx_ny_from_n(n):
+    def _get_nx_ny_from_n(n: int) -> tuple[int, int]:
         nx = int(np.ceil(np.sqrt(n)))
         ny = int(np.ceil(n / nx))
         return nx, ny
 
     @abstractmethod
-    def save(self, save_path: str | None = None):
+    def save(self, save_path: str) -> None:
+        """Save the figure to ``save_path``."""
         raise NotImplementedError
 
     @abstractmethod
-    def show(self):
+    def show(self) -> None:
+        """Show the figure."""
         raise NotImplementedError
 
     @abstractmethod
-    def _get_nx_ny(self):
+    def _get_nx_ny(self) -> tuple[int, int]:
         raise NotImplementedError
 
     @abstractmethod
-    def get_fig(self):
+    def _get_fig(self) -> Any:
+        """Create a new figure with the required subplots."""
         raise NotImplementedError
 
     @abstractmethod
-    def set_xlabel(self, index, label):
+    def _set_xlabel(self, i_subplot: int, label: str) -> None:
+        """Set the x-axis label of the subplot with the given index."""
         raise NotImplementedError
 
     @abstractmethod
-    def set_ylabel(self, index, label):
+    def _set_ylabel(self, i_subplot: int, label: str) -> None:
+        """Set the y-axis label of the subplot with the given index."""
         raise NotImplementedError
 
     @abstractmethod
-    def set_subplot_title(self, index, title):
+    def _set_subplot_title(self, i_subplot: int, title: str) -> None:
+        """Set the title of the subplot with the given index."""
         raise NotImplementedError
 
     @abstractmethod
-    def add_line(self, index, x, y, prev_y, label, i_line):
+    def _add_line(
+        self,
+        i_subplot: int,
+        x: np.ndarray,
+        y: np.ndarray,
+        prev_y: np.ndarray | None,
+        label: str,
+        i_line: int,
+    ) -> None:
+        """Add a line to a subplot.
+
+        Args:
+            i_subplot: Index of the subplot.
+            x: x-values of the line.
+            y: y-values of the line.
+            prev_y: y-values of the previous line in the same subplot, used as lower bound for
+                area charts. None for the first line.
+            label: Label of the line.
+            i_line: Index of the line within the subplot, used to select its color.
+        """
         raise NotImplementedError
 
     @abstractmethod
-    def plot_legend(self):
+    def _plot_legend(self) -> None:
+        """Add a legend to the figure."""
         raise NotImplementedError
 
     @abstractmethod
-    def set_title(self):
+    def _set_title(self) -> None:
+        """Set the title of the figure."""
         raise NotImplementedError
 
 
 class PyplotArrayPlotter(ArrayPlotter):
+    """Array plotter using matplotlib.pyplot."""
+
     fig: plt.Figure | None = None
     """A previously created pyplot figure object, for adding lines to an existing figure.
     If None, a new figure is created.
     """
 
-    def save(self, save_path: str | None = None, **kwargs):
-        self.fig.savefig(save_path, **kwargs)
-
-    def show(self):
-        self.fig.show()
-
-    def get_fig(self):
-        fig, _ = plt.subplots(self.nx, self.ny)
-        return fig
-
-    def _get_nx_ny(self):
-        return self._get_nx_ny_from_n(len(self.ax))
-
-    def set_xlabel(self, i_subplot, label):
-        self.ax[i_subplot].set_xlabel(label)
-
-    def set_ylabel(self, i_subplot, label):
-        self.ax[i_subplot].set_ylabel(label)
-
-    def set_subplot_title(self, i_subplot, title):
-        self.ax[i_subplot].set_title(title)
+    @property
+    def _ax(self) -> list[plt.Axes]:
+        """Axes of the figure."""
+        return self.fig.axes
 
     @property
-    def _allowed_line_types(self):
+    def _allowed_line_types(self) -> list[str]:
         return ["solid", "dashed", "dotted", "dashdot"]
 
-    def add_line(self, i_subplot, x, y, prev_y, label, i_line):
-        common_dict = {}
+    def save(self, save_path: str, **kwargs: Any) -> None:
+        """Save the figure to ``save_path``, passing ``kwargs`` to ``Figure.savefig``."""
+        self.fig.savefig(save_path, **kwargs)
+
+    def show(self) -> None:
+        """Show the figure."""
+        self.fig.show()
+
+    def _get_fig(self) -> plt.Figure:
+        """Create a new pyplot figure with the required subplots."""
+        fig, _ = plt.subplots(self._nx, self._ny)
+        return fig
+
+    def _get_nx_ny(self) -> tuple[int, int]:
+        return self._get_nx_ny_from_n(len(self._ax))
+
+    def _set_xlabel(self, i_subplot: int, label: str) -> None:
+        """Set the x-axis label of the subplot with the given index."""
+        self._ax[i_subplot].set_xlabel(label)
+
+    def _set_ylabel(self, i_subplot: int, label: str) -> None:
+        """Set the y-axis label of the subplot with the given index."""
+        self._ax[i_subplot].set_ylabel(label)
+
+    def _set_subplot_title(self, i_subplot: int, title: str) -> None:
+        """Set the title of the subplot with the given index."""
+        self._ax[i_subplot].set_title(title)
+
+    def _add_line(
+        self,
+        i_subplot: int,
+        x: np.ndarray,
+        y: np.ndarray,
+        prev_y: np.ndarray | None,
+        label: str,
+        i_line: int,
+    ) -> None:
+        """Add a line, scatter or area plot to the subplot with index ``i_subplot``."""
+        common_dict: dict[str, Any] = {}
         if not self.suppress_legend:
             common_dict["label"] = label
         if self.color_map is not None:
             common_dict["color"] = self.color_map[i_line]
 
         if self.chart_type == "line":
-            self.ax[i_subplot].plot(x, y, linestyle=self.line_type, **common_dict)
+            self._ax[i_subplot].plot(x, y, linestyle=self.line_type, **common_dict)
         elif self.chart_type == "scatter":
-            self.ax[i_subplot].scatter(x, y, **common_dict)
+            self._ax[i_subplot].scatter(x, y, **common_dict)
         elif self.chart_type == "area":
             args = [x, y] if prev_y is None else [x, y, prev_y]
-            self.ax[i_subplot].fill_between(*args, **common_dict)
+            self._ax[i_subplot].fill_between(*args, **common_dict)
 
-    def plot_legend(self):
-        handles, labels = self.ax[0].get_legend_handles_labels()
+    def _plot_legend(self) -> None:
+        """Add a legend below the subplots, using the labels of the first subplot."""
+        handles, labels = self._ax[0].get_legend_handles_labels()
         self.fig.legend(handles, labels, loc="lower center")
 
-    def set_title(self):
+    def _set_title(self) -> None:
+        """Set the title of the figure."""
         self.fig.suptitle(self.title)
-
-    @property
-    def ax(self) -> plt.Axes:
-        return self.fig.axes
 
 
 class PlotlyArrayPlotter(ArrayPlotter):
+    """Array plotter using plotly."""
+
     fig: go.Figure | None = None
     """A previously created plotly figure object, for adding lines to an existing figure.
     If None, a new figure is created.
@@ -316,53 +410,76 @@ class PlotlyArrayPlotter(ArrayPlotter):
     color_map: list[str] | None = plc.qualitative.Dark24
     """List of colors to use for the lines. If None, the plotly default colors are used."""
 
-    def save(self, save_path: str | None = None, **kwargs):
+    _n_previous_lines: int = PrivateAttr(default=0)
+
+    @property
+    def _allowed_line_types(self) -> list[str]:
+        return ["solid", "dash", "dot", "dashdot"]
+
+    def save(self, save_path: str, **kwargs: Any) -> None:
+        """Save the figure to ``save_path``, passing ``kwargs`` to ``Figure.write_image``."""
         self.fig.write_image(save_path, **kwargs)
 
-    def show(self):
+    def show(self) -> None:
+        """Show the figure."""
         self.fig.show()
 
-    def get_fig(self):
-        fig = make_subplots(self.ny, self.nx, subplot_titles=self.subplot_titles)
+    def _get_fig(self) -> go.Figure:
+        """Create a new plotly figure with the required subplots."""
+        fig = make_subplots(self._ny, self._nx, subplot_titles=self._subplot_titles)
         return fig
 
-    def _fill_fig(self):
+    def _fill_fig(self) -> None:
         super()._fill_fig()
-        self.n_previous_lines = getattr(self.fig, "_n_lines_flodym", 0)
+        self._n_previous_lines = getattr(self.fig, "_n_lines_flodym", 0)
         n_current_lines = (
             len(self.array.dims[self.linecolor_dim].items) if self.linecolor_dim is not None else 1
         )
-        self.fig._n_lines_flodym = self.n_previous_lines + n_current_lines
+        self.fig._n_lines_flodym = self._n_previous_lines + n_current_lines
 
-    def _get_nx_ny(self):
+    def _get_nx_ny(self) -> tuple[int, int]:
         grid_ref = self.fig._validate_get_grid_ref()
         nrows = len(grid_ref)
         ncols = len(grid_ref[0])
         return ncols, nrows
 
-    def row(self, i_subplot):
+    def _row(self, i_subplot: int) -> int:
+        """Return the 1-based plotly row of the subplot with index ``i_subplot``."""
         return self._index2d(i_subplot)[0] + 1
 
-    def col(self, i_subplot):
+    def _col(self, i_subplot: int) -> int:
+        """Return the 1-based plotly column of the subplot with index ``i_subplot``."""
         return self._index2d(i_subplot)[1] + 1
 
-    def set_xlabel(self, i_subplot, label):
-        self.fig.update_xaxes(title_text=label, row=self.row(i_subplot), col=self.col(i_subplot))
+    def _set_xlabel(self, i_subplot: int, label: str) -> None:
+        """Set the x-axis label of the subplot with the given index."""
+        self.fig.update_xaxes(title_text=label, row=self._row(i_subplot), col=self._col(i_subplot))
 
-    def set_ylabel(self, i_subplot, label):
-        self.fig.update_yaxes(title_text=label, row=self.row(i_subplot), col=self.col(i_subplot))
+    def _set_ylabel(self, i_subplot: int, label: str) -> None:
+        """Set the y-axis label of the subplot with the given index."""
+        self.fig.update_yaxes(title_text=label, row=self._row(i_subplot), col=self._col(i_subplot))
 
-    def set_subplot_title(self, index, title):
-        pass  # already set in make_subplots
+    def _set_subplot_title(self, i_subplot: int, title: str) -> None:
+        """Do nothing, as subplot titles are already set when creating the figure."""
+        # already set in make_subplots
 
-    @property
-    def _allowed_line_types(self):
-        return ["solid", "dash", "dot", "dashdot"]
+    def _add_line(
+        self,
+        i_subplot: int,
+        x: np.ndarray,
+        y: np.ndarray,
+        prev_y: np.ndarray | None,
+        label: str,
+        i_line: int,
+    ) -> None:
+        """Add a line, scatter or area trace to the subplot with index ``i_subplot``.
 
-    def add_line(self, i_subplot, x, y, prev_y, label, i_line):
-        i_color = i_line + self.n_previous_lines
+        Raises:
+            ValueError: If ``chart_type`` is not supported.
+        """
+        i_color = i_line + self._n_previous_lines
         color = self.color_map[i_color] if self.color_map is not None else None
-        common_dict = {
+        common_dict: dict[str, Any] = {
             "x": x,
             "y": y,
             "name": label,
@@ -393,12 +510,13 @@ class PlotlyArrayPlotter(ArrayPlotter):
             raise ValueError("chart_type must be either 'line' or 'scatter'.")
         self.fig.add_trace(
             trace=trace,
-            row=self.row(i_subplot),
-            col=self.col(i_subplot),
+            row=self._row(i_subplot),
+            col=self._col(i_subplot),
         )
 
-    def plot_legend(self):
-        pass
+    def _plot_legend(self) -> None:
+        """Do nothing, as plotly adds the legend automatically."""
 
-    def set_title(self):
+    def _set_title(self) -> None:
+        """Set the title of the figure."""
         self.fig.update_layout(title={"text": self.title})

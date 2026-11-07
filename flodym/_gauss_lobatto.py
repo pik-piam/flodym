@@ -1,4 +1,10 @@
-gl_nodes = {
+"""Nodes and weights of Gauss-Lobatto quadrature on the interval [-1, 1].
+
+The dictionaries map the number of points n (1 to 10) to the list of nodes and weights. For n = 1,
+the midpoint rule is given, which is not a Gauss-Lobatto rule.
+"""
+
+GL_NODES: dict[int, list[float]] = {
     1: [
         0.00000000000000000,
     ],
@@ -76,7 +82,7 @@ gl_nodes = {
     ],
 }
 
-gl_weights = {
+GL_WEIGHTS: dict[int, list[float]] = {
     1: [
         2.0000000000000000,
     ],

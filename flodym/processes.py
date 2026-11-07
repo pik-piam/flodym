@@ -1,9 +1,17 @@
-from typing import TYPE_CHECKING, Optional, Union
+"""Processes, the nodes of an MFA system.
+
+Home to the :py:class:`flodym.Process` class and :py:func:`flodym.make_processes`.
+"""
+
+from collections.abc import Iterator
+from typing import TYPE_CHECKING, Any, Literal, Optional, Union
 
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import PrivateAttr, model_validator
+from typing_extensions import Self
 
 from ._checks import balance_failure, config_hint, report_balance_failures
+from ._config import ErrorBehavior, config
 from ._process_compute import (
     SPLITTER_SIDES,
     Direction,
@@ -14,7 +22,6 @@ from ._process_compute import (
     compute_processes,
     is_overdetermined,
 )
-from .config import ErrorBehavior, config
 from .mfa_definition import ProcessDefinition
 
 if TYPE_CHECKING:
@@ -24,11 +31,12 @@ if TYPE_CHECKING:
 
 class Process(PydanticBaseModel):
     """Processes serve as nodes for the MFA system layout definition.
+
     Flows are defined between two processes. Stocks are connected to a process.
     Processes do not contain values themselves.
 
-    Processes get an ID by the order they are defined in the :py:attribute::`MFASystem.definition`,
-    or explicitly by a :py:class:`flodym.ProcessDefinition`.
+    Processes get an ID by the order they are defined in the
+    :py:attr:`flodym.MFASystem.definition`, or explicitly by a :py:class:`flodym.ProcessDefinition`.
     The process with ID 0 necessarily contains everything outside the system boundary.
     It has to be named 'sysenv'.
 
@@ -57,7 +65,7 @@ class Process(PydanticBaseModel):
     )
 
     @model_validator(mode="after")
-    def check_id0(self):
+    def _check_id0(self) -> Self:
         """Ensure that the process with ID 0 is named 'sysenv', and vice versa."""
         if (self.id == 0) != (self.name == "sysenv"):
             raise ValueError(
@@ -67,9 +75,11 @@ class Process(PydanticBaseModel):
             )
         return self
 
-    def __repr_args__(self):
-        """Arguments shown by ``repr()`` and ``str()``. Linked flows and the stock are shown by
-        name only, since they link back to the process."""
+    def __repr_args__(self) -> Iterator[tuple[str, Any]]:
+        """Arguments shown by ``repr()`` and ``str()``.
+
+        Linked flows and the stock are shown by name only, since they link back to the process.
+        """
         yield "name", self.name
         yield "id", self.id
         yield "inflows", list(self._inflows)
@@ -143,26 +153,35 @@ class Process(PydanticBaseModel):
         self._stock = None
 
     def get_sum_inflows(self) -> Union["FlodymArray", float]:
-        """Sum of all inflows to the process, reduced to the dimensions common to all inflows.
-        Zero if the process has no inflows."""
+        """Sum of all inflows to the process.
+
+        The sum is reduced to the dimensions common to all inflows.
+        Zero if the process has no inflows.
+        """
         return sum(self._inflows.values(), 0.0)
 
     def get_sum_outflows(self) -> Union["FlodymArray", float]:
-        """Sum of all outflows from the process, reduced to the dimensions common to all outflows.
-        Zero if the process has no outflows."""
+        """Sum of all outflows from the process.
+
+        The sum is reduced to the dimensions common to all outflows.
+        Zero if the process has no outflows.
+        """
         return sum(self._outflows.values(), 0.0)
 
     def get_net_inflow(self) -> Union["FlodymArray", float]:
         """Sum of all inflows minus sum of all outflows of the process.
+
         Unless the process is 'sysenv', this equals the net inflow of its stock (or zero), if the
-        mass balance is satisfied."""
+        mass balance is satisfied.
+        """
         return self.get_sum_inflows() - self.get_sum_outflows()
 
     def get_mass_balance(
         self, mass_change: Union["FlodymArray", float, None] = None
     ) -> Union["FlodymArray", float]:
-        """Mass balance error of the process: The net inflow of the process
-        (see :py:meth:`get_net_inflow`) minus its mass change.
+        """Mass balance error of the process.
+
+        It is the net inflow of the process (see :py:meth:`get_net_inflow`) minus its mass change.
         Zero if the mass balance is satisfied.
 
         Args:
@@ -183,8 +202,10 @@ class Process(PydanticBaseModel):
 
     @property
     def _absolute_float_precision(self) -> float:
-        """Machine epsilon times the largest absolute value of the in- and outflows of the process
-        and of the in- and outflow of its stock."""
+        """Machine epsilon times the largest absolute value of the relevant arrays.
+
+        These are the in- and outflows of the process and the in- and outflow of its stock.
+        """
         arrays = list(self._inflows.values()) + list(self._outflows.values())
         if self._stock is not None:
             arrays += [self._stock.inflow, self._stock.outflow]
@@ -192,8 +213,10 @@ class Process(PydanticBaseModel):
 
     @property
     def tolerance(self) -> float:
-        """Absolute tolerance for the mass balance check of the process, see
-        :py:attr:`flodym.config.Config.relative_tolerance`."""
+        """Absolute tolerance for the mass balance check of the process.
+
+        See :py:attr:`flodym.Config.relative_tolerance`.
+        """
         return config.get_tolerance(self._absolute_float_precision)
 
     def check_mass_balance(
@@ -202,8 +225,9 @@ class Process(PydanticBaseModel):
         error_behavior: ErrorBehavior | str | None = None,
         mass_change: Union["FlodymArray", float, None] = None,
     ) -> bool:
-        """Check whether the mass balance of the process (see :py:meth:`get_mass_balance`) is
-        satisfied within a tolerance.
+        """Check whether the mass balance of the process is satisfied within a tolerance.
+
+        See :py:meth:`get_mass_balance`.
 
         Args:
             tolerance: Absolute tolerance. If None, :py:attr:`tolerance` is used.
@@ -228,9 +252,11 @@ class Process(PydanticBaseModel):
         tolerance: float | None = None,
         mass_change: Union["FlodymArray", float, None] = None,
     ) -> str | None:
-        """Description of the failed mass balance check for an error message, or None if it
-        passed. If no tolerance is given, :py:attr:`tolerance` is used, extended by the float
-        precision of ``mass_change`` if given."""
+        """Description of the failed mass balance check for an error message.
+
+        None if the check passed. If no tolerance is given, :py:attr:`tolerance` is used,
+        extended by the float precision of ``mass_change`` if given.
+        """
         if tolerance is None:
             precision = self._absolute_float_precision
             if mass_change is not None and hasattr(mass_change, "_absolute_float_precision"):
@@ -245,37 +271,49 @@ class Process(PydanticBaseModel):
     @property
     def inflow_shares(self) -> dict[str, Union["FlodymArray", str]]:
         """Shares of inflows in the total throughput of the process, keyed by flow name.
+
         Set them with :py:meth:`set_inflow_share`, or by a :py:class:`flodym.ProcessDefinition`.
         Shares from a definition are parameter names, keyed as in the definition, until they are
-        linked by :py:meth:`flodym.MFASystem.link_parameters`."""
+        linked by :py:meth:`flodym.MFASystem.link_parameters`.
+        """
         return dict(self._inflow_shares)
 
     @property
     def outflow_shares(self) -> dict[str, Union["FlodymArray", str]]:
         """Shares of outflows in the total throughput of the process, keyed by flow name.
-        See :py:attr:`inflow_shares`."""
+
+        See :py:attr:`inflow_shares`.
+        """
         return dict(self._outflow_shares)
 
     @property
-    def forward_dimension_splitter(self) -> Optional["FlodymArray"]:
-        """Array by which the total throughput of the process is multiplied in
+    def forward_dimension_splitter(self) -> Union["FlodymArray", str, None]:
+        """Splitter adding dimensions to the total throughput before computing outflows.
+
+        It is the array by which the total throughput of the process is multiplied in
         :py:meth:`compute` before computing the outflows, to add dimensions which the total does
         not have, but the outflows to compute do. Set it with :py:meth:`set_dimension_splitter`.
+        A splitter from a :py:class:`flodym.ProcessDefinition` is a parameter name until it is
+        linked by :py:meth:`flodym.MFASystem.link_parameters`.
         """
         return self._dimension_splitters.get("forward")
 
     @property
-    def backward_dimension_splitter(self) -> Optional["FlodymArray"]:
-        """Array by which the total throughput of the process is multiplied in
+    def backward_dimension_splitter(self) -> Union["FlodymArray", str, None]:
+        """Splitter adding dimensions to the total throughput before computing inflows.
+
+        It is the array by which the total throughput of the process is multiplied in
         :py:meth:`compute` before computing the inflows, to add dimensions which the total does
         not have, but the inflows to compute do. Set it with :py:meth:`set_dimension_splitter`.
+        See also :py:attr:`forward_dimension_splitter`.
         """
         return self._dimension_splitters.get("backward")
 
     def set_inflow_share(self, flow: str, share: "FlodymArray") -> None:
-        """Set the share of an inflow in the total throughput of the process, used by
-        :py:meth:`compute`. The array is stored by reference, so later changes of its values are
-        taken into account.
+        """Set the share of an inflow in the total throughput of the process.
+
+        The share is used by :py:meth:`compute`. The array is stored by reference, so later
+        changes of its values are taken into account.
 
         Args:
             flow: Name of the inflow, or name of the process it comes from, if only one flow
@@ -288,24 +326,31 @@ class Process(PydanticBaseModel):
 
     def set_outflow_share(self, flow: str, share: "FlodymArray") -> None:
         """Set the share of an outflow in the total throughput of the process.
-        See :py:meth:`set_inflow_share`."""
+
+        See :py:meth:`set_inflow_share`.
+        """
         self._set_share("out", flow, share)
 
     def remove_inflow_share(self, flow: str) -> None:
-        """Remove the share of an inflow, given by flow name or name of the process it comes
-        from."""
+        """Remove the share of an inflow.
+
+        The inflow is given by flow name or name of the process it comes from.
+        """
         self._remove_share("in", flow)
 
     def remove_outflow_share(self, flow: str) -> None:
-        """Remove the share of an outflow, given by flow name or name of the process it goes
-        to."""
+        """Remove the share of an outflow.
+
+        The outflow is given by flow name or name of the process it goes to.
+        """
         self._remove_share("out", flow)
 
     def set_dimension_splitter(
-        self, direction: Direction, splitter: Optional["FlodymArray"]
+        self, direction: Literal["forward", "backward"], splitter: Optional["FlodymArray"]
     ) -> None:
-        """Set a dimension splitter of the process, or remove it by passing None. The array is
-        stored by reference, so later changes of its values are taken into account.
+        """Set a dimension splitter of the process, or remove it by passing None.
+
+        The array is stored by reference, so later changes of its values are taken into account.
 
         Args:
             direction: ``"forward"`` for the splitter used to compute outflows (see
@@ -322,8 +367,10 @@ class Process(PydanticBaseModel):
         self._dimension_splitters[direction] = splitter
 
     def _resolve_flow_name(self, side: Side, flow: str) -> str:
-        """Get the name of an in- or outflow, given by flow name or by the name of the process
-        it comes from or goes to."""
+        """Get the name of an in- or outflow.
+
+        The flow is given by flow name or by the name of the process it comes from or goes to.
+        """
         flows = ProcessSide(self, side).flows
         if flow in flows:
             return flow
@@ -354,8 +401,16 @@ class Process(PydanticBaseModel):
         check_share_values(self, share, f"Share of flow '{name}'")
         ProcessSide(self, side).shares[name] = share
 
+    def _remove_share(self, side: Side, flow: str) -> None:
+        shares = ProcessSide(self, side).shares
+        name = flow if flow in shares else self._resolve_flow_name(side, flow)
+        if name not in shares:
+            raise ValueError(f"In process '{self.name}': No share for {side}flow '{name}' found.")
+        del shares[name]
+
     def _rename_share_keys(self, new_keys: dict[str, str]) -> None:
         """Rename the flow names under which shares are stored, keeping their order.
+
         Used by :py:meth:`flodym.MFASystem.relink` when flows are renamed.
 
         Args:
@@ -368,7 +423,9 @@ class Process(PydanticBaseModel):
 
     def _set_parameter_names(self, definition: ProcessDefinition) -> None:
         """Store the names of the shares and dimension splitters given in a process definition.
-        They are replaced by the parameters in :py:meth:`_link_parameters`."""
+
+        They are replaced by the parameters in :py:meth:`_link_parameters`.
+        """
         self._inflow_shares.update(definition.inflow_shares)
         self._outflow_shares.update(definition.outflow_shares)
         splitters = {
@@ -390,8 +447,10 @@ class Process(PydanticBaseModel):
 
     def _link_parameters(self, parameters: dict[str, "FlodymArray"]) -> None:
         """Replace the parameter names of shares and dimension splitters by the parameters.
+
         Share keys given as process names are resolved to flow names, so the process must be
-        linked to its flows (see :py:meth:`flodym.MFASystem.relink`). Linked entries are kept."""
+        linked to its flows (see :py:meth:`flodym.MFASystem.relink`). Linked entries are kept.
+        """
         for side in ("in", "out"):
             shares = ProcessSide(self, side).shares
             linked = {}
@@ -423,20 +482,15 @@ class Process(PydanticBaseModel):
                 "dimension splitters are not linked. Call MFASystem.link_parameters() first."
             )
 
-    def _remove_share(self, side: Side, flow: str) -> None:
-        shares = ProcessSide(self, side).shares
-        name = flow if flow in shares else self._resolve_flow_name(side, flow)
-        if name not in shares:
-            raise ValueError(f"In process '{self.name}': No share for {side}flow '{name}' found.")
-        del shares[name]
-
     # ------------------------------------------------------------------------------------------
     # Computation
 
     @property
     def is_computed(self) -> bool:
-        """Whether all in- and outflows of the process and its stock (if any) are set
-        (see :py:attr:`flodym.FlodymArray.is_set`)."""
+        """Whether all in- and outflows of the process and its stock (if any) are set.
+
+        See :py:attr:`flodym.FlodymArray.is_set`.
+        """
         if any(not f.is_set for f in self._inflows.values()):
             return False
         if any(not f.is_set for f in self._outflows.values()):
@@ -445,9 +499,11 @@ class Process(PydanticBaseModel):
 
     @property
     def is_overdetermined(self) -> bool:
-        """Whether more flow values, shares and stock values are given than needed to compute
-        the process with :py:meth:`compute`. In this case, the given values may be inconsistent,
-        which :py:meth:`compute` checks.
+        """Whether more values are given than needed to compute the process.
+
+        This is the case if more flow values, shares and stock values are given than needed to
+        compute the process with :py:meth:`compute`. In this case, the given values may be
+        inconsistent, which :py:meth:`compute` checks.
 
         Unknowns are the in- and outflows and the totals: one total throughput without stock,
         or the inflow, outflow and stock of the stock. Equations are the sums of the in- and of
@@ -461,8 +517,9 @@ class Process(PydanticBaseModel):
         on_underdetermined: ErrorBehavior | str | None = None,
         compute_neighbors: bool = False,
     ) -> bool:
-        """Compute the unknown in- and outflows of the process (and its stock, if any), from the
-        known ones, the shares and the dimension splitters.
+        """Compute the unknown in- and outflows of the process (and its stock, if any).
+
+        They are computed from the known ones, the shares and the dimension splitters.
 
         Flows are known if they are set (see :py:attr:`flodym.FlodymArray.is_set`). This covers
         many, but not all MFA processes; others have to be computed manually, for example if two
@@ -551,6 +608,15 @@ def make_processes(definitions: list[str | ProcessDefinition]) -> dict[str, Proc
     stored in the processes. They are replaced by the parameters in
     :py:meth:`flodym.MFASystem.link_parameters`.
     The process with ID 0 must be named 'sysenv'.
+
+    Args:
+        definitions: Process names or process definitions.
+
+    Returns:
+        The processes, keyed by name.
+
+    Raises:
+        ValueError: If explicit IDs are negative or not unique, or if a name is given twice.
     """
     explicit_ids = [
         d.id for d in definitions if isinstance(d, ProcessDefinition) and d.id is not None
