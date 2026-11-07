@@ -1212,13 +1212,13 @@ class Flow(_PrescribableArray):
 
     **Example**
 
-        >>> from flodym import DimensionSet, Flow, Process
-        >>> goods = Dimension(name="Good", letter="g", items=["Car", "Bus", "Bicycle"])
-        >>> time = Dimension(name="Time", letter="t", items=[1990, 2000, 2010, 2020, 2030])
-        >>> dimensions = DimensionSet([goods, time])
-        >>> fabrication = Process(name="fabrication", id=2)
-        >>> use = Process(name="use", id=3)
-        >>> flow = Flow(from_process=fabrication, to_process=use, dims=dimensions)
+        >>> import flodym as fd
+        >>> goods = fd.Dimension(name="Good", letter="g", items=["Car", "Bus", "Bicycle"])
+        >>> time = fd.Dimension(name="Time", letter="t", items=[1990, 2000, 2010, 2020, 2030])
+        >>> dimensions = fd.DimensionSet([goods, time])
+        >>> fabrication = fd.Process(name="fabrication", id=2)
+        >>> use = fd.Process(name="use", id=3)
+        >>> flow = fd.Flow(from_process=fabrication, to_process=use, dims=dimensions)
 
     In the above example, we did not pass any values when initialising the Flow instance,
     and these would get filled with zeros.

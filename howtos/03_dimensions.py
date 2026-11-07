@@ -12,9 +12,9 @@
 # When loading items from file, it can be useful to check that for example years are integers and not converted to strings.
 
 # %%
-from flodym import Dimension
+import flodym as fd
 
-regions = Dimension(name="Region", letter="r", items=["EU", "US", "MEX"])
+regions = fd.Dimension(name="Region", letter="r", items=["EU", "US", "MEX"])
 
 # %% [markdown]
 #
@@ -22,14 +22,14 @@ regions = Dimension(name="Region", letter="r", items=["EU", "US", "MEX"])
 
 # %%
 # historic and future time
-time = Dimension(name="Time", letter="t", items=["2010", "2020", "2030"])
+time = fd.Dimension(name="Time", letter="t", items=["2010", "2020", "2030"])
 # Historic time - a subset of time
 
 # WRONG! (same letter t)
-historic_time = Dimension(name="Historic Time", letter="t", items=["2010", "2020"])
+historic_time = fd.Dimension(name="Historic Time", letter="t", items=["2010", "2020"])
 
 # Correct
-historic_time = Dimension(name="Historic Time", letter="h", items=["2010", "2020"])
+historic_time = fd.Dimension(name="Historic Time", letter="h", items=["2010", "2020"])
 
 # %% [markdown]
 # ## DimensionSets
@@ -37,13 +37,11 @@ historic_time = Dimension(name="Historic Time", letter="h", items=["2010", "2020
 # Multiple dimensions are grouped in a DimensionSet object:
 
 # %%
-from flodym import DimensionSet
-
-dims = DimensionSet(
+dims = fd.DimensionSet(
     dim_list=[
-        Dimension(name="Region", letter="r", items=["EU", "US", "MEX"]),
-        Dimension(name="Product", letter="p", items=["A", "B"]),
-        Dimension(name="Time", letter="t", items=[2020]),
+        fd.Dimension(name="Region", letter="r", items=["EU", "US", "MEX"]),
+        fd.Dimension(name="Product", letter="p", items=["A", "B"]),
+        fd.Dimension(name="Time", letter="t", items=[2020]),
     ]
 )
 

@@ -17,12 +17,12 @@
 # %%
 import pandas as pd
 
-from flodym import Dimension, DimensionSet, FlodymArray
+import flodym as fd
 
-dims = DimensionSet(
+dims = fd.DimensionSet(
     dim_list=[
-        Dimension(letter="t", name="Time", dtype=int, items=[2010, 2020]),
-        Dimension(letter="e", name="Material", dtype=str, items=["Fe", "Cu", "Mn"]),
+        fd.Dimension(letter="t", name="Time", dtype=int, items=[2010, 2020]),
+        fd.Dimension(letter="e", name="Material", dtype=str, items=["Fe", "Cu", "Mn"]),
     ]
 )
 df = pd.DataFrame(
@@ -32,7 +32,7 @@ df = pd.DataFrame(
         "value": [6.0, 5.0, 4.0, 1.0, 2.0, 3.0],
     }
 )
-my_array = FlodymArray.from_df(dims=dims, df=df)
+my_array = fd.FlodymArray.from_df(dims=dims, df=df)
 
 print("Shape:", my_array.shape)
 print("Values:", my_array.values.flatten())
@@ -63,11 +63,9 @@ print("Values:", my_array.values.flatten())
 # When working with reader, the information needed in addition to the data (for dimensions, everything apart from the items) is given in a definition object:
 
 # %%
-from flodym import DimensionDefinition, ExcelDimensionReader
-
 dimension_definitions = [
-    DimensionDefinition(name="Time", letter="t", dtype=int),
-    DimensionDefinition(name="Material", letter="e", dtype=str),
+    fd.DimensionDefinition(name="Time", letter="t", dtype=int),
+    fd.DimensionDefinition(name="Material", letter="e", dtype=str),
 ]
 
 
@@ -80,7 +78,7 @@ dimension_definitions = [
 dimension_file = "../examples/input_data/example2_dimensions.xlsx"
 dimension_files = {d.name: dimension_file for d in dimension_definitions}
 dimension_sheets = {d.name: d.name for d in dimension_definitions}
-reader = ExcelDimensionReader(
+reader = fd.ExcelDimensionReader(
     dimension_files=dimension_files,
     dimension_sheets=dimension_sheets,
 )
@@ -96,16 +94,14 @@ dims = reader.read_dimensions(dimension_definitions)
 # ParameterReader objects work exactly the same: First, we create the definitions:
 
 # %%
-from flodym import ExcelParameterReader, ParameterDefinition
-
 parameter_definitions = [
-    ParameterDefinition(name="eol machines", dim_letters=("t",)),
-    ParameterDefinition(name="eol buildings", dim_letters=("t",)),
-    ParameterDefinition(name="composition eol machines", dim_letters=("e",)),
-    ParameterDefinition(name="composition eol buildings", dim_letters=("e",)),
-    ParameterDefinition(name="shredder yield", dim_letters=("e",)),
-    ParameterDefinition(name="demolition yield", dim_letters=("e",)),
-    ParameterDefinition(name="remelting yield", dim_letters=("e",)),
+    fd.ParameterDefinition(name="eol machines", dim_letters=("t",)),
+    fd.ParameterDefinition(name="eol buildings", dim_letters=("t",)),
+    fd.ParameterDefinition(name="composition eol machines", dim_letters=("e",)),
+    fd.ParameterDefinition(name="composition eol buildings", dim_letters=("e",)),
+    fd.ParameterDefinition(name="shredder yield", dim_letters=("e",)),
+    fd.ParameterDefinition(name="demolition yield", dim_letters=("e",)),
+    fd.ParameterDefinition(name="remelting yield", dim_letters=("e",)),
 ]
 
 # %% [markdown]
@@ -115,7 +111,7 @@ parameter_definitions = [
 parameter_file = "../examples/input_data/example2_parameters.xlsx"
 parameter_files = {p.name: parameter_file for p in parameter_definitions}
 parameter_sheets = {p.name: p.name for p in parameter_definitions}
-reader = ExcelParameterReader(
+reader = fd.ExcelParameterReader(
     parameter_files=parameter_files,
     parameter_sheets=parameter_sheets,
 )
