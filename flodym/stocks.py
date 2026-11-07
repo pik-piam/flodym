@@ -5,6 +5,7 @@ These include flow-driven stocks and dynamic (lifetime-based) stocks.
 
 import functools
 import logging
+import string
 import warnings
 from abc import abstractmethod
 from collections.abc import Callable
@@ -12,7 +13,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Concatenate, ParamSpec, TypeVar
 
 import numpy as np
 from pydantic import BaseModel as PydanticBaseModel
-from pydantic import ConfigDict, model_validator
+from pydantic import ConfigDict, field_validator, model_validator
 from typing_extensions import Self
 
 from ._checks import balance_failure, config_hint, report_balance_failures
@@ -70,6 +71,27 @@ def _wrap_compute(
     return wrapper
 
 
+def _to_stock_array(value: Any) -> Any:
+    """Convert a FlodymArray which is not a StockArray to a StockArray.
+
+    Dimensions, values, name and set status are copied. Other inputs are returned unchanged.
+    """
+    if isinstance(value, FlodymArray) and not isinstance(value, StockArray):
+        return StockArray.from_array(value)
+    return value
+
+
+def _free_cohort_letter(used_letters: tuple[str, ...]) -> str:
+    """First letter of "c", "C", "d", "D", ..., "z", "Z", "a", "A", ... not in ``used_letters``."""
+    lowercase = string.ascii_lowercase
+    start = lowercase.index("c")
+    for letter in lowercase[start:] + lowercase[:start]:
+        for candidate in (letter, letter.upper()):
+            if candidate not in used_letters:
+                return candidate
+    raise ValueError("No free letter for the cohort dimension.")
+
+
 class Stock(PydanticBaseModel):
     """Stock objects are components of an MFASystem, where materials can accumulate over time.
 
@@ -86,11 +108,11 @@ class Stock(PydanticBaseModel):
     dims: DimensionSet
     """Dimensions of the stock, inflow, and outflow arrays. Time must be the first dimension."""
     stock: StockArray | None = None
-    """Accumulation of the stock"""
+    """Accumulation of the stock. Other FlodymArrays are converted to a StockArray."""
     inflow: StockArray | None = None
-    """Inflow into the stock"""
+    """Inflow into the stock. Other FlodymArrays are converted to a StockArray."""
     outflow: StockArray | None = None
-    """Outflow from the stock"""
+    """Outflow from the stock. Other FlodymArrays are converted to a StockArray."""
     name: str | None = "unnamed"
     """Name of the stock"""
     process: Process | None = None
@@ -102,6 +124,12 @@ class Stock(PydanticBaseModel):
     _n_equations: ClassVar[int] = 1
     """Number of equations relating inflow, outflow and stock. Used to detect overdetermined
     processes in :py:attr:`flodym.Process.is_overdetermined`."""
+
+    @field_validator("stock", "inflow", "outflow", mode="before")
+    @classmethod
+    def _to_stock_array(cls, value: Any) -> Any:
+        """Convert a FlodymArray which is not a StockArray to a StockArray."""
+        return _to_stock_array(value)
 
     @model_validator(mode="after")
     def _validate_stock_arrays(self) -> Self:
@@ -465,12 +493,14 @@ class DynamicStockModel(Stock):
     """
     cohort_dim: Dimension | None = None
     """Cohort (age-cohort or production year) dimension. Must have the same items as the time
-    dimension, but a different letter and name. Required for :py:attr:`dims_cohort`,
-    ``inflow_by_cohort``, and for returning the arrays by cohort as :py:class:`flodym.StockArray`.
+    dimension, but a different letter and name. Used for :py:attr:`dims_cohort`.
+    If not given, it is created with a warning: its name is "cohort", its items are those of the
+    time dimension, and its letter is the first of "c", "C", "d", "D", ... not in ``dims``.
     """
     inflow_by_cohort: StockArray | None = None
     """Annual inflow by year and age-cohort, which can also enter older cohorts.
-    Requires ``cohort_dim``. Only used by :py:meth:`compute_inflow_by_cohort_driven`.
+    Only used by :py:meth:`compute_inflow_by_cohort_driven`. Other FlodymArrays are converted to a
+    StockArray.
     """
 
     _outflow_by_cohort: np.ndarray | None = None
@@ -481,6 +511,30 @@ class DynamicStockModel(Stock):
     _initial_stock_included_in_inflow: bool = False
     _n_equations: ClassVar[int] = 2
 
+    @field_validator("inflow_by_cohort", mode="before")
+    @classmethod
+    def _inflow_by_cohort_to_stock_array(cls, value: Any) -> Any:
+        """Convert a FlodymArray which is not a StockArray to a StockArray."""
+        return _to_stock_array(value)
+
+    @model_validator(mode="after")
+    def _init_cohort_dim(self) -> Self:
+        """Create the cohort dimension with a warning if it is not given."""
+        if self.cohort_dim is None:
+            time_dim = self.dims[self.time_letter]
+            self.cohort_dim = Dimension(
+                name="cohort",
+                letter=_free_cohort_letter(self.dims.letters),
+                items=time_dim.items,
+                dtype=time_dim.dtype,
+            )
+            logger.warning(
+                f"No cohort_dim given for stock '{self.name}'. Created cohort dimension with name "
+                f"'{self.cohort_dim.name}', letter '{self.cohort_dim.letter}' and the items of the "
+                "time dimension."
+            )
+        return self
+
     @model_validator(mode="after")
     def _init_cohort_arrays(self) -> Self:
         """Initialize the stock and outflow by cohort with zeros."""
@@ -490,15 +544,11 @@ class DynamicStockModel(Stock):
 
     @model_validator(mode="after")
     def _init_inflow_by_cohort(self) -> Self:
-        """Create ``inflow_by_cohort`` if not given, or check the dimensions of a given one.
-
-        It is only created if ``cohort_dim`` is given.
-        """
+        """Create ``inflow_by_cohort`` if not given, or check the dimensions of a given one."""
         if self.inflow_by_cohort is None:
-            if self.cohort_dim is not None:
-                self.inflow_by_cohort = StockArray(
-                    dims=self.dims_cohort, name=f"{self.name}_inflow_by_cohort"
-                )
+            self.inflow_by_cohort = StockArray(
+                dims=self.dims_cohort, name=f"{self.name}_inflow_by_cohort"
+            )
         elif self.inflow_by_cohort.dims.letters != self.dims_cohort.letters:
             raise ValueError(
                 f"Inflow by cohort dimensions {self.inflow_by_cohort.dims.letters} do not match expected dims {self.dims_cohort.letters}."
@@ -526,11 +576,9 @@ class DynamicStockModel(Stock):
         """Dimensions of the arrays by cohort: time, cohort, and the other stock dimensions.
 
         Raises:
-            ValueError: If no ``cohort_dim`` is given, or it is invalid.
+            ValueError: If ``cohort_dim`` is invalid.
         """
         if self._dims_cohort is None:
-            if self.cohort_dim is None:
-                raise ValueError("Cohort dimension must be provided at DSM initialization")
             self._validate_cohort_dim()
             t = self.dims[self.time_letter]
             c = self.cohort_dim
@@ -594,32 +642,24 @@ class DynamicStockModel(Stock):
         new_stock._initial_stock_included_in_inflow = self._initial_stock_included_in_inflow
         return new_stock
 
-    def get_outflow_by_cohort(self) -> StockArray | np.ndarray:
+    def get_outflow_by_cohort(self) -> StockArray:
         """Outflow by cohort, i.e. the outflow of each production year at each time step.
 
         Returns:
-            The outflow by cohort with dimensions :py:attr:`dims_cohort`. If no ``cohort_dim``
-            is given, its raw values are returned instead, with a warning.
+            The outflow by cohort with dimensions :py:attr:`dims_cohort`.
         """
         return self._get_by_cohort_array(self._outflow_by_cohort, "outflow_by_cohort")
 
-    def get_stock_by_cohort(self) -> StockArray | np.ndarray:
+    def get_stock_by_cohort(self) -> StockArray:
         """Stock by cohort, i.e. the stock of each production year at each time step.
 
         Returns:
-            The stock by cohort with dimensions :py:attr:`dims_cohort`. If no ``cohort_dim``
-            is given, its raw values are returned instead, with a warning.
+            The stock by cohort with dimensions :py:attr:`dims_cohort`.
         """
         return self._get_by_cohort_array(self._stock_by_cohort, "stock_by_cohort")
 
-    def _get_by_cohort_array(self, values: np.ndarray, name: str) -> StockArray | np.ndarray:
-        if self.cohort_dim is None:  # leave in for backwards compatibility
-            logger.warning(
-                f"Cohort dimension is not defined; {name} cannot be retrieved as FlodymArray. Returning raw ndarray instead."
-            )
-            return values
-        else:
-            return StockArray(dims=self.dims_cohort, values=values, name=f"{self.name}_{name}")
+    def _get_by_cohort_array(self, values: np.ndarray, name: str) -> StockArray:
+        return StockArray(dims=self.dims_cohort, values=values, name=f"{self.name}_{name}")
 
     def set_initial_stock(
         self, initial_stock: FlodymArray, initial_year: int, included_in_inflow: bool = False
@@ -800,7 +840,7 @@ class DynamicStockModel(Stock):
     def compute_inflow_by_cohort_driven(self) -> None:
         """Compute inflow, stock and outflow from ``inflow_by_cohort`` and the lifetime model.
 
-        Requires ``cohort_dim``. ``inflow_by_cohort`` need not be marked as set (see
+        ``inflow_by_cohort`` need not be marked as set (see
         ``config.error_behaviors.unset_array_used``).
         """
         self._check_inflow_by_cohort_known()
@@ -973,10 +1013,6 @@ class DynamicStockModel(Stock):
         self.lifetime_model._check_prms_set()
 
     def _check_inflow_by_cohort_known(self) -> None:
-        if self.inflow_by_cohort is None:
-            raise ValueError(
-                "Inflow by cohort driven computation requires cohort_dim to be given at DSM initialization."
-            )
         self._check_array_known(
             self.inflow_by_cohort, "Inflow by cohort", "This will lead to a zero stock and outflow."
         )

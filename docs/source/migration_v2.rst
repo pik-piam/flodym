@@ -139,9 +139,15 @@ Removed or changed interface:
 - ``LifetimeModel.compute_survival_factor()`` is now private. Use the property
   ``lifetime_model.cumulative_survival``, which is computed when needed, or
   ``lifetime_model.get_cumulative_survival()``, which returns a ``FlodymArray``.
-- ``get_stock_by_cohort()`` and ``get_outflow_by_cohort()`` log a warning if the stock has no
-  ``cohort_dim``. They still return numpy arrays in this case. With ``cohort_dim`` (or
-  ``StockDefinition.cohort_letter``), they return ``StockArray`` objects.
+- Dynamic stock models without ``cohort_dim`` (or ``StockDefinition.cohort_letter``) create a
+  cohort dimension and log a warning. It has the name ``cohort``, the items of the time dimension,
+  and the letter ``c``; if ``c`` is a stock dimension, ``C``, else the next free letter
+  (``d``, ``D``, ...). Therefore, ``get_stock_by_cohort()`` and ``get_outflow_by_cohort()`` always
+  return ``StockArray`` objects, no longer numpy arrays, and ``inflow_by_cohort`` always exists.
+
+  *Action:* Use ``.values`` on the results of ``get_stock_by_cohort()`` and
+  ``get_outflow_by_cohort()`` where numpy arrays are needed. Pass ``cohort_dim`` to avoid the
+  warning.
 - ``DynamicStockModel`` is no longer abstract. Its ``compute()`` chooses the compute mode from the
   given arrays. ``InflowDrivenDSM`` and ``StockDrivenDSM`` are used as before.
 
@@ -298,5 +304,8 @@ New features
   the conditional one-step survival ``conditional_survival``; ``get_cumulative_survival()``,
   ``get_conditional_survival()`` and ``get_outflow_pmf()``, which return ``FlodymArray`` objects.
 - **Set and unset arrays:** ``FlodymArray.is_set``, ``mark_set()`` and ``mark_unset()``.
+- **Input conversion:** ``FlodymArray`` accepts a single ``Dimension`` as ``dims``. Stocks accept
+  any ``FlodymArray`` for ``stock``, ``inflow``, ``outflow`` and ``inflow_by_cohort`` and convert
+  it to a ``StockArray``.
 - **Attribute access:** ``mfa.flows.my_flow`` in addition to ``mfa.flows["my_flow"]``, also for
   stocks, processes and parameters (``flodym.AttributeDict``).

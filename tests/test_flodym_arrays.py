@@ -50,6 +50,12 @@ class TestFlodymArrayInit:
         assert arr.values.shape == DIMS.shape
         assert np.all(arr.values == 0)
 
+    def test_single_dimension_converted_to_dimension_set(self):
+        arr = FlodymArray(dims=ANIMALS, values=np.ones(len(ANIMALS.items)))
+        assert isinstance(arr.dims, DimensionSet)
+        assert arr.dims.letters == (ANIMALS.letter,)
+        assert arr.shape == (len(ANIMALS.items),)
+
     def test_scalar_number_wrapped_in_array(self):
         # a scalar Number is wrapped in a 0-d numpy array (needs 0-d dims to match)
         arr = FlodymArray(dims=DimensionSet(dim_list=[]), values=5)

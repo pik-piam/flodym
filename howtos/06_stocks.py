@@ -140,7 +140,8 @@ print("Stock values for Vehicles:", stocks["in-use"].stock["Vehicles"].values)
 # `InflowDrivenDSM` and `StockDrivenDSM` fix whether `compute()` starts from the inflow or from the stock.
 # The general `DynamicStockModel` instead has one method for each mode:
 # `compute_inflow_driven()`, `compute_stock_driven()` and `compute_inflow_by_cohort_driven()`.
-# The latter starts from `inflow_by_cohort`, an inflow by year and age-cohort, for which a `cohort_dim` must be given.
+# The latter starts from `inflow_by_cohort`, an inflow by year and age-cohort, over the time dimension and the `cohort_dim`.
+# If no `cohort_dim` is given, the stock creates one with the name `cohort` and the letter `c`, and logs a warning.
 #
 # These methods can be called repeatedly and in any order on the same object.
 # For example, a stock-driven computation yields negative inflows if the stock decreases faster than items reach the end of their lifetime.
