@@ -90,90 +90,6 @@ class MFASystem(PydanticBaseModel):
         self.relink(update_names=False)
         return self
 
-    def relink(self, update_names: bool = True) -> None:
-        """Link each process to its inflows, outflows and stock, as given by the flows and stocks
-        of the MFA system (see :py:attr:`flodym.Process.inflows`).
-
-        This is done automatically when the MFA system is set up, without changing flow names.
-        Call it again after adding, replacing or removing entries of :py:attr:`flows` or
-        :py:attr:`stocks`, or after changing the processes of a flow.
-        Existing links of the processes are replaced.
-
-        Args:
-            update_names: If True (default), the names of flows that are named after the
-                processes they connect, i.e. flows created by :py:func:`flodym.make_empty_flows`
-                without ``name_override``, are generated anew from their current processes.
-                The flow names, the keys of :py:attr:`flows` and the keys of the process shares
-                (see :py:attr:`flodym.Process.inflow_shares`) are updated; their order is kept. Names are generated with the function given in the
-                global config option :py:attr:`flodym.config.Config.flow_naming`. If a generated
-                name is already used, a suffix ``__2``, ``__3``, ... is appended, and a warning is
-                logged. Other flows keep their names and keys.
-
-                Warning: With ``update_names=False``, flows named after processes keep their old
-                names after their processes have been changed or renamed. These names are then
-                misleading.
-
-        Raises:
-            ValueError: If a flow or stock refers to a process object which is not in
-                :py:attr:`processes`, or if several stocks refer to the same process.
-                In this case, the existing links are left unchanged.
-        """
-        linked_stocks: dict[str, str] = {}
-        for flow in self.flows.values():
-            for process in (flow.from_process, flow.to_process):
-                self._check_is_own_process(process, f"flow '{flow.name}'")
-        for stock in self.stocks.values():
-            if stock.process is None:
-                continue
-            self._check_is_own_process(stock.process, f"stock '{stock.name}'")
-            if stock.process.name in linked_stocks:
-                raise ValueError(
-                    f"Process '{stock.process.name}' cannot have both stocks "
-                    f"'{linked_stocks[stock.process.name]}' and '{stock.name}'."
-                )
-            linked_stocks[stock.process.name] = stock.name
-
-        if update_names:
-            self._update_flow_names()
-        for process in self.processes.values():
-            process.clear_links()
-        for flow in self.flows.values():
-            flow.from_process.add_outflow(flow)
-            flow.to_process.add_inflow(flow)
-        for stock in self.stocks.values():
-            if stock.process is not None:
-                stock.process.set_stock(stock)
-
-    def _update_flow_names(self) -> None:
-        """Generate the names of flows named after their processes anew, and update the keys of
-        :py:attr:`flows` and of the process shares accordingly, keeping their order.
-        See :py:meth:`relink`."""
-        fixed_names = {key for key, flow in self.flows.items() if not flow._named_after_processes}
-        renamed_flows: dict[str, Flow] = {}
-        new_keys: dict[str, str] = {}
-        for key, flow in self.flows.items():
-            if flow._named_after_processes:
-                generated_name = config.flow_naming(flow.from_process, flow.to_process)
-                new_key = make_unique_name(generated_name, fixed_names | renamed_flows.keys())
-                flow.name = new_key
-                if new_key != key:
-                    new_keys[key] = new_key
-                key = new_key
-            renamed_flows[key] = flow
-        # change the existing dictionary instead of replacing it, to keep references to it valid
-        self.flows.clear()
-        self.flows.update(renamed_flows)
-        for process in self.processes.values():
-            process._rename_share_keys(new_keys)
-
-    def _check_is_own_process(self, process: Process, used_by: str) -> None:
-        """Raise a ValueError if ``process`` is not the object stored in :py:attr:`processes`
-        under its name. ``used_by`` labels the referring flow or stock for the message."""
-        if self.processes.get(process.name) is not process:
-            raise ValueError(
-                f"Process '{process.name}' of {used_by} is not a process of the MFA system."
-            )
-
     @classmethod
     def from_data_reader(
         cls, definition: MFADefinition, data_reader: DataReader, link: bool = True
@@ -310,6 +226,109 @@ class MFASystem(PydanticBaseModel):
         )
         return cls.from_data_reader(definition, data_reader, link=link)
 
+    @property
+    def total_stock_change(self) -> FlodymArray | float:
+        """Sum of the net inflows (per year) of all stocks connected to a process, i.e. the mass
+        change of the whole system, reduced to the dimensions common to all stocks."""
+        return sum((s.net_inflow for s in self.stocks.values() if s.process is not None), 0.0)
+
+    @property
+    def _absolute_float_precision(self) -> float:
+        """Machine epsilon times the largest absolute value of all flows and stocks."""
+        precisions = [f._absolute_float_precision for f in self.flows.values()]
+        precisions += [s._absolute_float_precision for s in self.stocks.values()]
+        return max(precisions, default=0.0)
+
+    @property
+    def tolerance(self) -> float:
+        """Absolute tolerance based on all flows and stocks of the MFA system, see
+        :py:attr:`flodym.config.Config.relative_tolerance`. Used by :py:meth:`check_flows`."""
+        return config.get_tolerance(self._absolute_float_precision)
+
+    def relink(self, update_names: bool = True) -> None:
+        """Link each process to its inflows, outflows and stock, as given by the flows and stocks
+        of the MFA system (see :py:attr:`flodym.Process.inflows`).
+
+        This is done automatically when the MFA system is set up, without changing flow names.
+        Call it again after adding, replacing or removing entries of :py:attr:`flows` or
+        :py:attr:`stocks`, or after changing the processes of a flow.
+        Existing links of the processes are replaced.
+
+        Args:
+            update_names: If True (default), the names of flows that are named after the
+                processes they connect, i.e. flows created by :py:func:`flodym.make_empty_flows`
+                without ``name_override``, are generated anew from their current processes.
+                The flow names, the keys of :py:attr:`flows` and the keys of the process shares
+                (see :py:attr:`flodym.Process.inflow_shares`) are updated; their order is kept. Names are generated with the function given in the
+                global config option :py:attr:`flodym.config.Config.flow_naming`. If a generated
+                name is already used, a suffix ``__2``, ``__3``, ... is appended, and a warning is
+                logged. Other flows keep their names and keys.
+
+                Warning: With ``update_names=False``, flows named after processes keep their old
+                names after their processes have been changed or renamed. These names are then
+                misleading.
+
+        Raises:
+            ValueError: If a flow or stock refers to a process object which is not in
+                :py:attr:`processes`, or if several stocks refer to the same process.
+                In this case, the existing links are left unchanged.
+        """
+        linked_stocks: dict[str, str] = {}
+        for flow in self.flows.values():
+            for process in (flow.from_process, flow.to_process):
+                self._check_is_own_process(process, f"flow '{flow.name}'")
+        for stock in self.stocks.values():
+            if stock.process is None:
+                continue
+            self._check_is_own_process(stock.process, f"stock '{stock.name}'")
+            if stock.process.name in linked_stocks:
+                raise ValueError(
+                    f"Process '{stock.process.name}' cannot have both stocks "
+                    f"'{linked_stocks[stock.process.name]}' and '{stock.name}'."
+                )
+            linked_stocks[stock.process.name] = stock.name
+
+        if update_names:
+            self._update_flow_names()
+        for process in self.processes.values():
+            process.clear_links()
+        for flow in self.flows.values():
+            flow.from_process.add_outflow(flow)
+            flow.to_process.add_inflow(flow)
+        for stock in self.stocks.values():
+            if stock.process is not None:
+                stock.process.set_stock(stock)
+
+    def _update_flow_names(self) -> None:
+        """Generate the names of flows named after their processes anew, and update the keys of
+        :py:attr:`flows` and of the process shares accordingly, keeping their order.
+        See :py:meth:`relink`."""
+        fixed_names = {key for key, flow in self.flows.items() if not flow._named_after_processes}
+        renamed_flows: dict[str, Flow] = {}
+        new_keys: dict[str, str] = {}
+        for key, flow in self.flows.items():
+            if flow._named_after_processes:
+                generated_name = config.flow_naming(flow.from_process, flow.to_process)
+                new_key = make_unique_name(generated_name, fixed_names | renamed_flows.keys())
+                flow.name = new_key
+                if new_key != key:
+                    new_keys[key] = new_key
+                key = new_key
+            renamed_flows[key] = flow
+        # change the existing dictionary instead of replacing it, to keep references to it valid
+        self.flows.clear()
+        self.flows.update(renamed_flows)
+        for process in self.processes.values():
+            process._rename_share_keys(new_keys)
+
+    def _check_is_own_process(self, process: Process, used_by: str) -> None:
+        """Raise a ValueError if ``process`` is not the object stored in :py:attr:`processes`
+        under its name. ``used_by`` labels the referring flow or stock for the message."""
+        if self.processes.get(process.name) is not process:
+            raise ValueError(
+                f"Process '{process.name}' of {used_by} is not a process of the MFA system."
+            )
+
     def compute(self) -> None:
         """Perform all computations for the MFA system.
         This method must be implemented in a subclass of MFASystem.
@@ -336,25 +355,6 @@ class MFASystem(PydanticBaseModel):
         """
         dims = self.dims.get_subset(dim_letters)
         return FlodymArray(dims=dims, **kwargs)
-
-    @property
-    def total_stock_change(self) -> FlodymArray | float:
-        """Sum of the net inflows (per year) of all stocks connected to a process, i.e. the mass
-        change of the whole system, reduced to the dimensions common to all stocks."""
-        return sum((s.net_inflow for s in self.stocks.values() if s.process is not None), 0.0)
-
-    @property
-    def _absolute_float_precision(self) -> float:
-        """Machine epsilon times the largest absolute value of all flows and stocks."""
-        precisions = [f._absolute_float_precision for f in self.flows.values()]
-        precisions += [s._absolute_float_precision for s in self.stocks.values()]
-        return max(precisions, default=0.0)
-
-    @property
-    def tolerance(self) -> float:
-        """Absolute tolerance based on all flows and stocks of the MFA system, see
-        :py:attr:`flodym.config.Config.relative_tolerance`. Used by :py:meth:`check_flows`."""
-        return config.get_tolerance(self._absolute_float_precision)
 
     def check_mass_balance(
         self,
@@ -556,6 +556,27 @@ class MFASystem(PydanticBaseModel):
         for _, array in self._prescribable_arrays():
             array._set_arrays_from_prescribed()
 
+    def compute_all_possible(self) -> list[str]:
+        """Compute all processes which can be computed from the known flows, shares and stock
+        values, see :py:meth:`flodym.Process.compute`.
+
+        Prescribed flows and stock arrays are set to the values of their parameters first (see
+        :py:meth:`set_arrays_from_prescribed`), overwriting their values. Then, all processes are tried, and each computed process triggers a new try of its neighbors, until
+        no further process can be computed (see :py:func:`flodym.compute_processes`).
+        Underdetermined processes are skipped.
+
+        Returns:
+            The names of the processes (except 'sysenv') which could not be computed.
+        """
+        self.set_arrays_from_prescribed()
+        compute_processes(self.processes.values())
+        not_computed = [p.name for p in self.processes.values() if p.id != 0 and not p.is_computed]
+        if not_computed:
+            logger.info(
+                f"compute_all_possible(): Could not compute processes {', '.join(not_computed)}."
+            )
+        return not_computed
+
     def _prescribable_arrays(self) -> list[tuple[str, FlodymArray]]:
         """Flows and stock arrays, as tuples of a label for messages and the array."""
         arrays = [(f"flow '{name}'", flow) for name, flow in self.flows.items()]
@@ -579,27 +600,6 @@ class MFASystem(PydanticBaseModel):
                 (name, f"process '{process.name}'") for name in process._unlinked_parameter_names()
             ]
         return users
-
-    def compute_all_possible(self) -> list[str]:
-        """Compute all processes which can be computed from the known flows, shares and stock
-        values, see :py:meth:`flodym.Process.compute`.
-
-        Prescribed flows and stock arrays are set to the values of their parameters first (see
-        :py:meth:`set_arrays_from_prescribed`), overwriting their values. Then, all processes are tried, and each computed process triggers a new try of its neighbors, until
-        no further process can be computed (see :py:func:`flodym.compute_processes`).
-        Underdetermined processes are skipped.
-
-        Returns:
-            The names of the processes (except 'sysenv') which could not be computed.
-        """
-        self.set_arrays_from_prescribed()
-        compute_processes(self.processes.values())
-        not_computed = [p.name for p in self.processes.values() if p.id != 0 and not p.is_computed]
-        if not_computed:
-            logger.info(
-                f"compute_all_possible(): Could not compute processes {', '.join(not_computed)}."
-            )
-        return not_computed
 
 
 def _resolve_error_behavior(

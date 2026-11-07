@@ -479,72 +479,6 @@ class LifetimeModel(PydanticBaseModel):
             mean_lifetime += tail_integral
         return FlodymArray(dims=self.dims, values=mean_lifetime, name="mean_lifetime_by_cohort")
 
-    def _tile(self, a: np.ndarray) -> np.ndarray:
-        """tiles the input array a to the shape of the lifetime model, by adding non-time dimensions
-
-        Args:
-            a (np.ndarray): either of shape (n_t,) or (n_t, n_t), where the second dimension
-                corresponds to the age cohort
-
-        Returns:
-            np.ndarray: the tiled array
-        """
-        index = (slice(None),) * a.ndim + (np.newaxis,) * len(self._shape_no_t)
-        out = a[index]
-        return np.tile(out, self._shape_no_t)
-
-    def _quad_point_time(self, m: int | np.ndarray, quad_point: float) -> float | np.ndarray:
-        """Returns the time point within the inflow time period m, given the quadrature point eta."""
-        return quad_point * self._t.bounds[m + 1] + (1 - quad_point) * self._t.bounds[m]
-
-    def _remaining_ages(self, i_t: int, quad_point: float) -> np.ndarray:
-        return self._tile(self._t.bounds[i_t + 1 :] - self._quad_point_time(i_t, quad_point))
-
-    def _compute_cumulative_survival(self, cum_surv: np.ndarray) -> None:
-        """Computes the cumulative survival without lifetime extension by year and writes it into
-        cum_surv. cum_surv(t,c) is the share of the inflow of cohort c still present at the end of
-        year t, i.e. the survival function of the lifetime distribution evaluated at the age at
-        the end of year t, averaged over the inflow points within year c.
-        For a lifetime of 0, it is also 0, meaning that the age-cohort leaves during the year of
-        inflow.
-        This is the only method for the inflow-driven model where the lifetime distribution
-        directly enters the computation. All other stock variables are determined by mass balance.
-        """
-        for i_c in range(self._n_t):  # cohort index
-            for quad_point, quad_weight in zip(self._quad_points, self._quad_weights):
-                ages = self._remaining_ages(i_c, quad_point)
-                cum_surv[i_c::, i_c, ...] += quad_weight * self._survival_by_cohort(ages, i_c)
-
-    def _get_quad_points_and_weights(self) -> tuple[list[float], list[float]]:
-        """Returns the quadrature points and weights for the inflow time periods."""
-        if not 1 <= self.n_pts_per_interval <= 10:
-            raise ValueError(
-                f"n_pts_per_interval must be between 1 and 10, got {self.n_pts_per_interval}."
-            )
-        if self.n_pts_per_interval > 1:
-            points = [(x + 1) / 2 for x in gl_nodes[self.n_pts_per_interval]]
-            weights = [w / 2 for w in gl_weights[self.n_pts_per_interval]]
-            return points, weights
-        else:
-            if self.inflow_at == "start":
-                return [0], [1]
-            elif self.inflow_at == "middle":
-                return [0.5], [1]
-            elif self.inflow_at == "end":
-                return [1], [1]
-
-    @abstractmethod
-    def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
-        """Survival function
-
-        Args:
-            ages: array of ages, i.e. difference of a time vector to the inflow time of cohort i_c.
-                  If i_c is a slice, ages must have a cohort axis that
-                  lines up with the parameters indexed by i_c, so implementations must broadcast
-                  against it rather than assume a single cohort.
-            i_c: cohort index or a slice of cohorts.
-        """
-
     def set_prms(self, *args: LifetimeArrayType, **kwargs: LifetimeArrayType) -> None:
         """Set parameters of the lifetime distribution, like mean and standard deviation.
         Parameters can be set either by positional arguments or by keyword arguments, but not both.
@@ -589,15 +523,41 @@ class LifetimeModel(PydanticBaseModel):
         self._outflow_pmf = None
         self._conditional_survival = None
 
-    def _compute_outflow_pmf(self) -> None:
-        """Computes outflow_pmf(t,c), the probability that an item added to the stock in year c
-        (cohort c) leaves during year t, from the cumulative survival.
+    def _tile(self, a: np.ndarray) -> np.ndarray:
+        """tiles the input array a to the shape of the lifetime model, by adding non-time dimensions
+
+        Args:
+            a (np.ndarray): either of shape (n_t,) or (n_t, n_t), where the second dimension
+                corresponds to the age cohort
+
+        Returns:
+            np.ndarray: the tiled array
         """
-        cum_surv = self.cumulative_survival
-        t_diag_indices = np.diag_indices(self._n_t) + (slice(None),) * len(self._shape_no_t)
-        self._outflow_pmf[t_diag_indices] = 1.0 - np.moveaxis(cum_surv.diagonal(0, 0, 1), -1, 0)
-        for i_c in range(self._n_t):
-            self._outflow_pmf[i_c + 1 :, i_c, ...] = -1 * np.diff(cum_surv[i_c:, i_c, ...], axis=0)
+        index = (slice(None),) * a.ndim + (np.newaxis,) * len(self._shape_no_t)
+        out = a[index]
+        return np.tile(out, self._shape_no_t)
+
+    def _quad_point_time(self, m: int | np.ndarray, quad_point: float) -> float | np.ndarray:
+        """Returns the time point within the inflow time period m, given the quadrature point eta."""
+        return quad_point * self._t.bounds[m + 1] + (1 - quad_point) * self._t.bounds[m]
+
+    def _remaining_ages(self, i_t: int, quad_point: float) -> np.ndarray:
+        return self._tile(self._t.bounds[i_t + 1 :] - self._quad_point_time(i_t, quad_point))
+
+    def _compute_cumulative_survival(self, cum_surv: np.ndarray) -> None:
+        """Computes the cumulative survival without lifetime extension by year and writes it into
+        cum_surv. cum_surv(t,c) is the share of the inflow of cohort c still present at the end of
+        year t, i.e. the survival function of the lifetime distribution evaluated at the age at
+        the end of year t, averaged over the inflow points within year c.
+        For a lifetime of 0, it is also 0, meaning that the age-cohort leaves during the year of
+        inflow.
+        This is the only method for the inflow-driven model where the lifetime distribution
+        directly enters the computation. All other stock variables are determined by mass balance.
+        """
+        for i_c in range(self._n_t):  # cohort index
+            for quad_point, quad_weight in zip(self._quad_points, self._quad_weights):
+                ages = self._remaining_ages(i_c, quad_point)
+                cum_surv[i_c::, i_c, ...] += quad_weight * self._survival_by_cohort(ages, i_c)
 
     def _compute_cumulative_survival_with_nurture(self, cum_surv: np.ndarray) -> None:
         """
@@ -641,6 +601,46 @@ class LifetimeModel(PydanticBaseModel):
                 # for small lifetimes, sf_e_prev can be zero, which means that nothing has survived
                 ratio = np.divide(sf_e, sf_e_prev, out=np.zeros_like(sf_e), where=sf_e_prev > 0)
                 cum_surv[i_t, :i_t, ...] = cum_surv_prev * ratio
+
+    def _get_quad_points_and_weights(self) -> tuple[list[float], list[float]]:
+        """Returns the quadrature points and weights for the inflow time periods."""
+        if not 1 <= self.n_pts_per_interval <= 10:
+            raise ValueError(
+                f"n_pts_per_interval must be between 1 and 10, got {self.n_pts_per_interval}."
+            )
+        if self.n_pts_per_interval > 1:
+            points = [(x + 1) / 2 for x in gl_nodes[self.n_pts_per_interval]]
+            weights = [w / 2 for w in gl_weights[self.n_pts_per_interval]]
+            return points, weights
+        else:
+            if self.inflow_at == "start":
+                return [0], [1]
+            elif self.inflow_at == "middle":
+                return [0.5], [1]
+            elif self.inflow_at == "end":
+                return [1], [1]
+
+    @abstractmethod
+    def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
+        """Survival function
+
+        Args:
+            ages: array of ages, i.e. difference of a time vector to the inflow time of cohort i_c.
+                  If i_c is a slice, ages must have a cohort axis that
+                  lines up with the parameters indexed by i_c, so implementations must broadcast
+                  against it rather than assume a single cohort.
+            i_c: cohort index or a slice of cohorts.
+        """
+
+    def _compute_outflow_pmf(self) -> None:
+        """Computes outflow_pmf(t,c), the probability that an item added to the stock in year c
+        (cohort c) leaves during year t, from the cumulative survival.
+        """
+        cum_surv = self.cumulative_survival
+        t_diag_indices = np.diag_indices(self._n_t) + (slice(None),) * len(self._shape_no_t)
+        self._outflow_pmf[t_diag_indices] = 1.0 - np.moveaxis(cum_surv.diagonal(0, 0, 1), -1, 0)
+        for i_c in range(self._n_t):
+            self._outflow_pmf[i_c + 1 :, i_c, ...] = -1 * np.diff(cum_surv[i_c:, i_c, ...], axis=0)
 
 
 class FixedLifetime(LifetimeModel):
@@ -1024,9 +1024,20 @@ class CompetingRisksLifetime(LifetimeModel):
                 raise ValueError("Time dimension of all lifetime models must match.")
         return self
 
-    def _check_prms_set(self) -> None:
-        for model in self.models:
-            model._check_prms_set()
+    @property
+    def cumulative_survival(self) -> np.ndarray:
+        self._reset_if_models_changed()
+        return super().cumulative_survival
+
+    @property
+    def outflow_pmf(self) -> np.ndarray:
+        self._reset_if_models_changed()
+        return super().outflow_pmf
+
+    @property
+    def conditional_survival(self) -> np.ndarray:
+        self._reset_if_models_changed()
+        return super().conditional_survival
 
     def reset_cached_arrays(self) -> None:
         super().reset_cached_arrays()
@@ -1045,6 +1056,10 @@ class CompetingRisksLifetime(LifetimeModel):
             self.reset_cached_arrays()
             self._model_cumulative_survivals = model_cum_survs
 
+    def _check_prms_set(self) -> None:
+        for model in self.models:
+            model._check_prms_set()
+
     def _compute_base_cumulative_survival(self) -> np.ndarray:
         cum_surv = self._model_cumulative_survivals[0].copy()
         for model_cum_surv in self._model_cumulative_survivals[1:]:
@@ -1055,21 +1070,6 @@ class CompetingRisksLifetime(LifetimeModel):
         """Inflow time within the time step, used for removal_share_by_year. Taken from the first
         model, as it cannot be set in CompetingRisksLifetime."""
         return self.models[0]._get_quad_points_and_weights()
-
-    @property
-    def cumulative_survival(self) -> np.ndarray:
-        self._reset_if_models_changed()
-        return super().cumulative_survival
-
-    @property
-    def outflow_pmf(self) -> np.ndarray:
-        self._reset_if_models_changed()
-        return super().outflow_pmf
-
-    @property
-    def conditional_survival(self) -> np.ndarray:
-        self._reset_if_models_changed()
-        return super().conditional_survival
 
     def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
         raise NotImplementedError(

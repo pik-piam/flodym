@@ -59,6 +59,11 @@ class DataFrameToFlodymDataConverter:
             # add error context to all errors to ease debugging
             raise type(e)(f"{self.error_context} {e!s}").with_traceback(sys.exc_info()[2])
 
+    @property
+    def error_context(self) -> str:
+        """Prefix for error messages, naming the FlodymArray whose values are set."""
+        return f"While setting values of {self.flodym_array.__class__.__name__} '{self.flodym_array.name}' from DataFrame:"
+
     def get_target_values(self) -> np.ndarray:
         """Determine the DataFrame format and convert it to an array of the FlodymArray's shape.
 
@@ -78,6 +83,24 @@ class DataFrameToFlodymDataConverter:
         self._sort_columns()
         values = self._check_data_complete()
         return values
+
+    @staticmethod
+    def same_items(arr: Iterable[Any], dim: Dimension) -> bool:
+        """Check if the items in ``arr`` (converted to the dimension dtype, if given) are exactly
+        the items of ``dim``, regardless of order and repetitions."""
+        dim_items = set(dim.items)
+        found_items = set()
+        for item in arr:
+            if dim.dtype is not None:
+                try:
+                    item = dim.dtype(item)
+                except ValueError:
+                    return False
+            # Exit at the first non-matching item without scanning and converting all entries
+            if item not in dim_items:
+                return False
+            found_items.add(item)
+        return len(found_items) == len(dim_items)
 
     def _reset_non_default_index(self) -> None:
         if (
@@ -320,26 +343,3 @@ class DataFrameToFlodymDataConverter:
         values = np.zeros(self.flodym_array.dims.shape)
         values[tuple(fill_indices)] = fill_values
         return values
-
-    @staticmethod
-    def same_items(arr: Iterable[Any], dim: Dimension) -> bool:
-        """Check if the items in ``arr`` (converted to the dimension dtype, if given) are exactly
-        the items of ``dim``, regardless of order and repetitions."""
-        dim_items = set(dim.items)
-        found_items = set()
-        for item in arr:
-            if dim.dtype is not None:
-                try:
-                    item = dim.dtype(item)
-                except ValueError:
-                    return False
-            # Exit at the first non-matching item without scanning and converting all entries
-            if item not in dim_items:
-                return False
-            found_items.add(item)
-        return len(found_items) == len(dim_items)
-
-    @property
-    def error_context(self) -> str:
-        """Prefix for error messages, naming the FlodymArray whose values are set."""
-        return f"While setting values of {self.flodym_array.__class__.__name__} '{self.flodym_array.name}' from DataFrame:"

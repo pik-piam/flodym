@@ -99,32 +99,6 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
                 )
         return self
 
-    def _check_flow_color(self, f: Flow, fallback_str: str) -> None:
-        color = self.flow_color_dict[f.name]
-        if isinstance(color, str):
-            return
-        elif not isinstance(color, tuple):
-            raise TypeError(
-                f"In flow_color_dict, the value for flow {f.name}{fallback_str} must be either a color string or a tuple of dimension name and color list"
-            )
-
-        if len(color) != 2:
-            raise ValueError(
-                f"In flow_color_dict, color tuple for flow {f.name}{fallback_str} must have length 2."
-            )
-        if color[0] not in f.dims:
-            raise ValueError(
-                f"In flow_color_dict, first element of color tuple for flow {f.name}{fallback_str} must be a dimension in flow {f.name}"
-            )
-        if not isinstance(color[1], list):
-            raise TypeError(
-                f"In flow_color_dict, second element of color tuple for flow {f.name}{fallback_str} must be a list of colors"
-            )
-        if len(color[1]) < self.mfa.dims[color[0]].len:
-            raise ValueError(
-                f"In flow_color_dict, list in second element of color tuple for flow {f.name}{fallback_str} must not be shorter than dimension {color[0]}"
-            )
-
     @property
     def shown_processes(self) -> list[Process]:
         """Processes that are not excluded."""
@@ -208,6 +182,32 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
             )
         )
         return fig
+
+    def _check_flow_color(self, f: Flow, fallback_str: str) -> None:
+        color = self.flow_color_dict[f.name]
+        if isinstance(color, str):
+            return
+        elif not isinstance(color, tuple):
+            raise TypeError(
+                f"In flow_color_dict, the value for flow {f.name}{fallback_str} must be either a color string or a tuple of dimension name and color list"
+            )
+
+        if len(color) != 2:
+            raise ValueError(
+                f"In flow_color_dict, color tuple for flow {f.name}{fallback_str} must have length 2."
+            )
+        if color[0] not in f.dims:
+            raise ValueError(
+                f"In flow_color_dict, first element of color tuple for flow {f.name}{fallback_str} must be a dimension in flow {f.name}"
+            )
+        if not isinstance(color[1], list):
+            raise TypeError(
+                f"In flow_color_dict, second element of color tuple for flow {f.name}{fallback_str} must be a list of colors"
+            )
+        if len(color[1]) < self.mfa.dims[color[0]].len:
+            raise ValueError(
+                f"In flow_color_dict, list in second element of color tuple for flow {f.name}{fallback_str} must not be shorter than dimension {color[0]}"
+            )
 
 
 class DictOfLists:

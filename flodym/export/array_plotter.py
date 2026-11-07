@@ -78,14 +78,6 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
             raise ValueError("line_type is only applicable to chart_type 'line'.")
         return self
 
-    @property
-    def _allowed_line_types(self) -> list[str]:
-        raise NotImplementedError
-
-    @property
-    def _allowed_chart_types(self) -> list[str]:
-        return ["line", "area", "scatter"]
-
     @model_validator(mode="after")
     def check_colors(self) -> Self:
         """Check that ``line_label`` is not combined with ``linecolor_dim``."""
@@ -119,6 +111,14 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
         ):
             raise ValueError("x_array must have the same dimensions as array, or a subset of them.")
         return self
+
+    @property
+    def _allowed_line_types(self) -> list[str]:
+        raise NotImplementedError
+
+    @property
+    def _allowed_chart_types(self) -> list[str]:
+        return ["line", "area", "scatter"]
 
     def plot(self, save_path: str | None = None, do_show: bool = False) -> Any:
         """Plot the array.
@@ -307,6 +307,15 @@ class PyplotArrayPlotter(ArrayPlotter):
     If None, a new figure is created.
     """
 
+    @property
+    def ax(self) -> list[plt.Axes]:
+        """Axes of the figure."""
+        return self.fig.axes
+
+    @property
+    def _allowed_line_types(self) -> list[str]:
+        return ["solid", "dashed", "dotted", "dashdot"]
+
     def save(self, save_path: str, **kwargs: Any) -> None:
         """Save the figure to ``save_path``, passing ``kwargs`` to ``Figure.savefig``."""
         self.fig.savefig(save_path, **kwargs)
@@ -334,10 +343,6 @@ class PyplotArrayPlotter(ArrayPlotter):
     def set_subplot_title(self, i_subplot: int, title: str) -> None:
         """Set the title of the subplot with the given index."""
         self.ax[i_subplot].set_title(title)
-
-    @property
-    def _allowed_line_types(self) -> list[str]:
-        return ["solid", "dashed", "dotted", "dashdot"]
 
     def add_line(
         self,
@@ -372,11 +377,6 @@ class PyplotArrayPlotter(ArrayPlotter):
         """Set the title of the figure."""
         self.fig.suptitle(self.title)
 
-    @property
-    def ax(self) -> list[plt.Axes]:
-        """Axes of the figure."""
-        return self.fig.axes
-
 
 class PlotlyArrayPlotter(ArrayPlotter):
     """Array plotter using plotly."""
@@ -387,6 +387,10 @@ class PlotlyArrayPlotter(ArrayPlotter):
     """
     color_map: list[str] | None = plc.qualitative.Dark24
     """List of colors to use for the lines. If None, the plotly default colors are used."""
+
+    @property
+    def _allowed_line_types(self) -> list[str]:
+        return ["solid", "dash", "dot", "dashdot"]
 
     def save(self, save_path: str, **kwargs: Any) -> None:
         """Save the figure to ``save_path``, passing ``kwargs`` to ``Figure.write_image``."""
@@ -434,10 +438,6 @@ class PlotlyArrayPlotter(ArrayPlotter):
     def set_subplot_title(self, index: int, title: str) -> None:
         """Do nothing, as subplot titles are already set when creating the figure."""
         pass  # already set in make_subplots
-
-    @property
-    def _allowed_line_types(self) -> list[str]:
-        return ["solid", "dash", "dot", "dashdot"]
 
     def add_line(
         self,

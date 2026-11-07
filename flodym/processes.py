@@ -362,6 +362,13 @@ class Process(PydanticBaseModel):
         check_share_values(self, share, f"Share of flow '{name}'")
         ProcessSide(self, side).shares[name] = share
 
+    def _remove_share(self, side: Side, flow: str) -> None:
+        shares = ProcessSide(self, side).shares
+        name = flow if flow in shares else self._resolve_flow_name(side, flow)
+        if name not in shares:
+            raise ValueError(f"In process '{self.name}': No share for {side}flow '{name}' found.")
+        del shares[name]
+
     def _rename_share_keys(self, new_keys: dict[str, str]) -> None:
         """Rename the flow names under which shares are stored, keeping their order.
         Used by :py:meth:`flodym.MFASystem.relink` when flows are renamed.
@@ -430,13 +437,6 @@ class Process(PydanticBaseModel):
                 f"In process '{self.name}': The parameters {', '.join(unlinked)} of shares or "
                 "dimension splitters are not linked. Call MFASystem.link_parameters() first."
             )
-
-    def _remove_share(self, side: Side, flow: str) -> None:
-        shares = ProcessSide(self, side).shares
-        name = flow if flow in shares else self._resolve_flow_name(side, flow)
-        if name not in shares:
-            raise ValueError(f"In process '{self.name}': No share for {side}flow '{name}' found.")
-        del shares[name]
 
     # ------------------------------------------------------------------------------------------
     # Computation

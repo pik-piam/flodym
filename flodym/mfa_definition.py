@@ -126,18 +126,6 @@ class StockDefinition(DefinitionWithDimLetters):
     """Optional name of a parameter whose values the inflow by cohort of a dynamic stock model is
     set to. Requires ``cohort_letter``."""
 
-    @property
-    def prescribed_arrays(self) -> dict[str, str]:
-        """Names of the parameters which stock arrays are prescribed by, keyed by array name
-        (``"stock"``, ``"inflow"``, ``"outflow"``, ``"inflow_by_cohort"``)."""
-        parameters = {
-            "stock": self.prescribed_stock,
-            "inflow": self.prescribed_inflow,
-            "outflow": self.prescribed_outflow,
-            "inflow_by_cohort": self.prescribed_inflow_by_cohort,
-        }
-        return {name: p for name, p in parameters.items() if p is not None}
-
     @model_validator(mode="after")
     def check_prescribed_arrays(self) -> Self:
         """Check that ``cohort_letter`` and ``prescribed_inflow_by_cohort`` are only given for
@@ -184,6 +172,18 @@ class StockDefinition(DefinitionWithDimLetters):
                 f"Lifetime model class must be part of definition for given subclass {self.subclass}"
             )
         return self
+
+    @property
+    def prescribed_arrays(self) -> dict[str, str]:
+        """Names of the parameters which stock arrays are prescribed by, keyed by array name
+        (``"stock"``, ``"inflow"``, ``"outflow"``, ``"inflow_by_cohort"``)."""
+        parameters = {
+            "stock": self.prescribed_stock,
+            "inflow": self.prescribed_inflow,
+            "outflow": self.prescribed_outflow,
+            "inflow_by_cohort": self.prescribed_inflow_by_cohort,
+        }
+        return {name: p for name, p in parameters.items() if p is not None}
 
 
 class ParameterDefinition(DefinitionWithDimLetters):

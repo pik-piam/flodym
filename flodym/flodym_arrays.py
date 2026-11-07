@@ -31,12 +31,12 @@ from .dimensions import Dimension, DimensionSet
 from .processes import Process
 
 
+T = TypeVar("T", bound="FlodymArray")
+
+
 def _is_iterable(arg: object) -> bool:
     """Whether ``arg`` is an iterable of items, i.e. not a string or a :py:class:`Dimension`."""
     return isinstance(arg, Iterable) and not isinstance(arg, (str, Dimension))
-
-
-T = TypeVar("T", bound="FlodymArray")
 
 
 class FlodymArray(PydanticBaseModel):
@@ -129,6 +129,12 @@ class FlodymArray(PydanticBaseModel):
         if isinstance(data, dict):
             obj._is_set = data.get("values") is not None
         return obj
+
+    def __str__(self) -> str:
+        base = f"{self.__class__.__name__} '{self.name}'"
+        dims = f" with dims ({','.join(self.dims.letters)}) and shape {self.shape};"
+        values = f"\nValues:\n{self.values!s}"
+        return base + dims + values
 
     @classmethod
     def from_dims_superset(
@@ -270,8 +276,23 @@ class FlodymArray(PydanticBaseModel):
         )
         return flodym_array
 
-    def _sub_array_handler(self, definition: dict[str, Any] | Hashable) -> "SubArrayHandler":
-        return SubArrayHandler(self, definition)
+    @classmethod
+    def from_array(cls, array: "FlodymArray", name: str | None = None, **kwargs: Any) -> Self:
+        """Create an instance of this class from an existing FlodymArray, copying its dimensions
+        and values.
+
+        This is the class-side counterpart to :py:meth:`to_class`: ``Parameter.from_array(arr)``
+        is equivalent to ``arr.to_class(Parameter)``.
+
+        Args:
+            array (FlodymArray): Source array whose dimensions and values are copied.
+            name (str, optional): Name of the returned array. If not given, ``array``'s name is kept.
+            **kwargs: Additional keyword arguments forwarded to this class's constructor.
+
+        Returns:
+            An instance of this class with copied values and dimensions.
+        """
+        return array.to_class(cls, name=name, **kwargs)
 
     @property
     def shape(self) -> tuple[int, ...]:
@@ -510,6 +531,28 @@ class FlodymArray(PydanticBaseModel):
         values_out = self.values**power.values
         return FlodymArray(dims=self.dims, values=values_out)
 
+    def __neg__(self) -> "FlodymArray":
+        self._check_is_set("a math operation")
+        return FlodymArray(dims=self.dims, values=-self.values)
+
+    def __abs__(self) -> "FlodymArray":
+        self._check_is_set("a math operation")
+        return FlodymArray(dims=self.dims, values=abs(self.values))
+
+    def __radd__(self, other: SupportsFloat) -> "FlodymArray":
+        return self + other
+
+    def __rsub__(self, other: SupportsFloat) -> "FlodymArray":
+        return -self + other
+
+    def __rmul__(self, other: SupportsFloat) -> "FlodymArray":
+        return self * other
+
+    def __rtruediv__(self, other: SupportsFloat) -> "FlodymArray":
+        self._check_is_set("a math operation")
+        inv_self = FlodymArray(dims=self.dims, values=1 / self.values)
+        return inv_self * other
+
     def minimum(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
         """Element-wise minimum of this array and another array or scalar.
 
@@ -603,24 +646,6 @@ class FlodymArray(PydanticBaseModel):
         result._is_set = self._is_set
         return result
 
-    @classmethod
-    def from_array(cls, array: "FlodymArray", name: str | None = None, **kwargs: Any) -> Self:
-        """Create an instance of this class from an existing FlodymArray, copying its dimensions
-        and values.
-
-        This is the class-side counterpart to :py:meth:`to_class`: ``Parameter.from_array(arr)``
-        is equivalent to ``arr.to_class(Parameter)``.
-
-        Args:
-            array (FlodymArray): Source array whose dimensions and values are copied.
-            name (str, optional): Name of the returned array. If not given, ``array``'s name is kept.
-            **kwargs: Additional keyword arguments forwarded to this class's constructor.
-
-        Returns:
-            An instance of this class with copied values and dimensions.
-        """
-        return array.to_class(cls, name=name, **kwargs)
-
     @overload
     def abs(self, inplace: Literal[False] = ...) -> "FlodymArray": ...
     @overload
@@ -669,28 +694,6 @@ class FlodymArray(PydanticBaseModel):
         i_axis = self.dims.letters.index(dim_letter)
         return self.apply(np.cumsum, kwargs={"axis": i_axis}, inplace=inplace)
 
-    def __neg__(self) -> "FlodymArray":
-        self._check_is_set("a math operation")
-        return FlodymArray(dims=self.dims, values=-self.values)
-
-    def __abs__(self) -> "FlodymArray":
-        self._check_is_set("a math operation")
-        return FlodymArray(dims=self.dims, values=abs(self.values))
-
-    def __radd__(self, other: SupportsFloat) -> "FlodymArray":
-        return self + other
-
-    def __rsub__(self, other: SupportsFloat) -> "FlodymArray":
-        return -self + other
-
-    def __rmul__(self, other: SupportsFloat) -> "FlodymArray":
-        return self * other
-
-    def __rtruediv__(self, other: SupportsFloat) -> "FlodymArray":
-        self._check_is_set("a math operation")
-        inv_self = FlodymArray(dims=self.dims, values=1 / self.values)
-        return inv_self * other
-
     def __getitem__(self, keys: dict[str, Any] | Hashable) -> "FlodymArray":
         """Defines what is returned when the object with square brackets stands on the right-hand side of an assignment,
         e.g. foo = bar[{'e': 'C'}]. Here, it is solely used for slicing. For allowed values in the square brackets,
@@ -717,6 +720,9 @@ class FlodymArray(PydanticBaseModel):
         else:
             self.values[slice_obj.ids] = copy(item)
         self._is_set = True
+
+    def _sub_array_handler(self, definition: dict[str, Any] | Hashable) -> "SubArrayHandler":
+        return SubArrayHandler(self, definition)
 
     def to_df(
         self, index: bool = True, dim_to_columns: str | None = None, sparse: bool = False
@@ -899,12 +905,6 @@ class FlodymArray(PydanticBaseModel):
                 ),
             )
 
-    def __str__(self) -> str:
-        base = f"{self.__class__.__name__} '{self.name}'"
-        dims = f" with dims ({','.join(self.dims.letters)}) and shape {self.shape};"
-        values = f"\nValues:\n{self.values!s}"
-        return base + dims + values
-
 
 class SubArrayHandler:
     """This class handles subsets of the 'values' numpy array of a FlodymArray object, created by slicing along one or
@@ -953,6 +953,36 @@ class SubArrayHandler:
         self._init_dims_out()
         self._init_ids()
 
+    @property
+    def ids(self) -> tuple[slice | int | list[int] | np.ndarray, ...]:
+        """Indices used for slicing the values array."""
+        return tuple(self._ids_all_dims)
+
+    @property
+    def values_pointer(self) -> np.ndarray:
+        """Pointer to the subset of the values array of the parent FlodymArray object."""
+        return self.flodym_array.values[self.ids]
+
+    @property
+    def dim_letters(self) -> tuple[str, ...]:
+        """Updated dimension letters, where sliced dimensions with only one item along that direction are removed."""
+        return self.dims_out.letters
+
+    def to_flodym_array(self) -> "FlodymArray":
+        """Return a FlodymArray object that is a slice of the original FlodymArray object.
+
+        Attention: This creates a new FlodymArray object, which is not linked to the original one.
+        """
+        if self.invalid_flodym_array:
+            raise ValueError(
+                "Cannot convert to FlodymArray if there are dimension slices with several items."
+                "Use a new dimension object with the subset as values instead"
+            )
+
+        return FlodymArray(
+            dims=self.dims_out, values=self.values_pointer, name=self.flodym_array.name
+        )
+
     def _get_def_dict(self, definition: dict[str, Any] | Hashable) -> None:
         self.def_dict: dict[str, Any]
         if isinstance(definition, type(Ellipsis)):
@@ -991,16 +1021,6 @@ class SubArrayHandler:
         # if there is only one item along a dimension, convert list to single item
         return {k: v if len(v) > 1 else v[0] for k, v in dict_out.items()}
 
-    @property
-    def ids(self) -> tuple[slice | int | list[int] | np.ndarray, ...]:
-        """Indices used for slicing the values array."""
-        return tuple(self._ids_all_dims)
-
-    @property
-    def values_pointer(self) -> np.ndarray:
-        """Pointer to the subset of the values array of the parent FlodymArray object."""
-        return self.flodym_array.values[self.ids]
-
     def _init_dims_out(self) -> None:
         self.dims_out = deepcopy(self.flodym_array.dims)
         for letter, value in self.def_dict.items():
@@ -1008,26 +1028,6 @@ class SubArrayHandler:
                 self.dims_out.replace(letter, value, inplace=True)
             elif not _is_iterable(value):
                 self.dims_out.drop(letter, inplace=True)
-
-    @property
-    def dim_letters(self) -> tuple[str, ...]:
-        """Updated dimension letters, where sliced dimensions with only one item along that direction are removed."""
-        return self.dims_out.letters
-
-    def to_flodym_array(self) -> "FlodymArray":
-        """Return a FlodymArray object that is a slice of the original FlodymArray object.
-
-        Attention: This creates a new FlodymArray object, which is not linked to the original one.
-        """
-        if self.invalid_flodym_array:
-            raise ValueError(
-                "Cannot convert to FlodymArray if there are dimension slices with several items."
-                "Use a new dimension object with the subset as values instead"
-            )
-
-        return FlodymArray(
-            dims=self.dims_out, values=self.values_pointer, name=self.flodym_array.name
-        )
 
     def _init_ids(self) -> None:
         """

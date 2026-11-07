@@ -57,16 +57,6 @@ class ExampleMFA(MFASystem):
         self.stocks["slag piles"].compute()
 
 
-def _get_dims() -> DimensionSet:
-    """Time (1980-2010) and material (Fe, Cu, Mn) dimensions of the example."""
-    return DimensionSet(
-        dim_list=[
-            Dimension(letter="t", name="Time", dtype=int, items=list(range(1980, 2011))),
-            Dimension(letter="e", name="Material", dtype=str, items=["Fe", "Cu", "Mn"]),
-        ]
-    )
-
-
 def get_example_array() -> FlodymArray:
     """Return a FlodymArray over time and material, filled with random values."""
     dims = _get_dims()
@@ -170,4 +160,14 @@ def get_example_mfa() -> ExampleMFA:
 
     return ExampleMFA(
         dims=dims, parameters=parameters, processes=processes, flows=flows, stocks=stocks
+    )
+
+
+def _get_dims() -> DimensionSet:
+    """Time (1980-2010) and material (Fe, Cu, Mn) dimensions of the example."""
+    return DimensionSet(
+        dim_list=[
+            Dimension(letter="t", name="Time", dtype=int, items=list(range(1980, 2011))),
+            Dimension(letter="e", name="Material", dtype=str, items=["Fe", "Cu", "Mn"]),
+        ]
     )

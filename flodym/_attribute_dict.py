@@ -61,39 +61,6 @@ class AttributeDict(dict[str, ValueT]):
     ``flows.foo[...] = new_values``; to replace a dictionary entry, use ``flows["foo"] = new_value``.
     """
 
-    def _alias_map(self) -> dict[str, str]:
-        """Return the mapping from attribute aliases to keys, rebuilding it if the keys changed."""
-        keys = frozenset(self.keys())
-        cache = self.__dict__.get("_alias_cache")
-        if cache is not None and cache[0] == keys:
-            return cache[1]
-        alias_map = self._build_alias_map()
-        object.__setattr__(self, "_alias_cache", (keys, alias_map))
-        return alias_map
-
-    def _build_alias_map(self) -> dict[str, str]:
-        """Map aliases to keys, excluding ambiguous aliases and aliases of dict attributes."""
-        keys_by_alias: dict[str, list[str]] = {}
-        for key in self.keys():
-            if isinstance(key, str):
-                keys_by_alias.setdefault(_to_attribute_name(key), []).append(key)
-
-        alias_map: dict[str, str] = {}
-        for alias, keys in keys_by_alias.items():
-            if len(keys) > 1:
-                logger.warning(
-                    f"Keys {keys} all map to the attribute name '{alias}'. "
-                    "They are excluded from attribute access; use [] instead."
-                )
-            elif hasattr(type(self), alias):
-                logger.warning(
-                    f"The attribute name '{alias}' of key '{keys[0]}' is a dict attribute. "
-                    "The key is excluded from attribute access; use [] instead."
-                )
-            else:
-                alias_map[alias] = keys[0]
-        return alias_map
-
     def __getattr__(self, name: str) -> ValueT:
         """Return the value whose key has the attribute alias ``name``."""
         if name.startswith("__") or name == "_alias_cache":
@@ -133,3 +100,36 @@ class AttributeDict(dict[str, ValueT]):
             keys_schema=core_schema.str_schema(), values_schema=values_schema
         )
         return core_schema.no_info_after_validator_function(cls, dict_schema)
+
+    def _alias_map(self) -> dict[str, str]:
+        """Return the mapping from attribute aliases to keys, rebuilding it if the keys changed."""
+        keys = frozenset(self.keys())
+        cache = self.__dict__.get("_alias_cache")
+        if cache is not None and cache[0] == keys:
+            return cache[1]
+        alias_map = self._build_alias_map()
+        object.__setattr__(self, "_alias_cache", (keys, alias_map))
+        return alias_map
+
+    def _build_alias_map(self) -> dict[str, str]:
+        """Map aliases to keys, excluding ambiguous aliases and aliases of dict attributes."""
+        keys_by_alias: dict[str, list[str]] = {}
+        for key in self.keys():
+            if isinstance(key, str):
+                keys_by_alias.setdefault(_to_attribute_name(key), []).append(key)
+
+        alias_map: dict[str, str] = {}
+        for alias, keys in keys_by_alias.items():
+            if len(keys) > 1:
+                logger.warning(
+                    f"Keys {keys} all map to the attribute name '{alias}'. "
+                    "They are excluded from attribute access; use [] instead."
+                )
+            elif hasattr(type(self), alias):
+                logger.warning(
+                    f"The attribute name '{alias}' of key '{keys[0]}' is a dict attribute. "
+                    "The key is excluded from attribute access; use [] instead."
+                )
+            else:
+                alias_map[alias] = keys[0]
+        return alias_map
