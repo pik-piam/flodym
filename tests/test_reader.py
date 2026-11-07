@@ -3,11 +3,11 @@ import pytest
 
 from flodym.data_reader import (
     CSVDimensionReader,
-    ExcelDimensionReader,
     CSVParameterReader,
+    ExcelDimensionReader,
     ExcelParameterReader,
 )
-from flodym.mfa_definition import DimensionDefinition, ParameterDefinition, MFADefinition
+from flodym.mfa_definition import DimensionDefinition, MFADefinition, ParameterDefinition
 from flodym.mfa_system import MFASystem
 
 csv_dimension_files = {
@@ -16,8 +16,8 @@ csv_dimension_files = {
     "region": "tests/tests_data/dimension_region_single.csv",
 }
 excel_dimension_file = "tests/tests_data/dimensions.xlsx"
-excel_dimension_files = {a: excel_dimension_file for a in csv_dimension_files.keys()}
-dimension_sheet_names = {a: a for a in csv_dimension_files.keys()}
+excel_dimension_files = {a: excel_dimension_file for a in csv_dimension_files}
+dimension_sheet_names = {a: a for a in csv_dimension_files}
 dimension_definitions = [
     DimensionDefinition(name="animals", letter="a", dtype=str),
     DimensionDefinition(name="time", letter="t", dtype=int),

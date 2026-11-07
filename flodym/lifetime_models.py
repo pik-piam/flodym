@@ -1,16 +1,18 @@
 """Home to various lifetime models, for use in dynamic stock modelling."""
 
+import warnings
 from abc import abstractmethod
+from numbers import Number
 from types import MappingProxyType
+from typing import Any, ClassVar, Literal, SupportsFloat, TypeAlias
+
 import numpy as np
 import scipy.special
 import scipy.stats
-from pydantic import BaseModel as PydanticBaseModel, ConfigDict, PrivateAttr, model_validator
-from typing import Any, ClassVar, TypeAlias, Literal, SupportsFloat
-from numbers import Number
-import warnings
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import ConfigDict, PrivateAttr, model_validator
 
-from .dimensions import DimensionSet, Dimension
+from .dimensions import Dimension, DimensionSet
 from .flodym_arrays import FlodymArray
 from .gauss_lobatto import gl_nodes, gl_weights
 
@@ -163,7 +165,7 @@ class LifetimeModel(PydanticBaseModel):
             prm_out = np.ndarray(self.shape)
             prm_out[...] = prm_in
         else:
-            raise ValueError(
+            raise TypeError(
                 f"Parameter {name} must be a FlodymArray, np.ndarray, or number, but is {type(prm_in)}"
             )
         return prm_out
@@ -495,7 +497,7 @@ class LifetimeModel(PydanticBaseModel):
         This is the only method for the inflow-driven model where the lifetime distribution
         directly enters the computation. All other stock variables are determined by mass balance.
         """
-        for i_c in range(0, self._n_t):  # cohort index
+        for i_c in range(self._n_t):  # cohort index
             for quad_point, quad_weight in zip(self._quad_points, self._quad_weights):
                 ages = self._remaining_ages(i_c, quad_point)
                 cum_surv[i_c::, i_c, ...] += quad_weight * self._survival_by_cohort(ages, i_c)
@@ -527,7 +529,6 @@ class LifetimeModel(PydanticBaseModel):
                   against it rather than assume a single cohort.
             i_c: cohort index or a slice of cohorts.
         """
-        pass
 
     def set_prms(self, *args, **kwargs):
         """Set parameters of the lifetime distribution, like mean and standard deviation.
@@ -574,7 +575,7 @@ class LifetimeModel(PydanticBaseModel):
         cum_surv = self.cumulative_survival
         t_diag_indices = np.diag_indices(self._n_t) + (slice(None),) * len(self._shape_no_t)
         self._outflow_pmf[t_diag_indices] = 1.0 - np.moveaxis(cum_surv.diagonal(0, 0, 1), -1, 0)
-        for i_c in range(0, self._n_t):
+        for i_c in range(self._n_t):
             self._outflow_pmf[i_c + 1 :, i_c, ...] = -1 * np.diff(cum_surv[i_c:, i_c, ...], axis=0)
 
     def _compute_cumulative_survival_with_nurture(self, cum_surv: np.ndarray):
@@ -901,7 +902,7 @@ class TabulatedLifetime(LifetimeModel):
                     f"{self._shape_cohort} (time, cohort, other dimensions)."
                 )
         else:
-            raise ValueError(
+            raise TypeError(
                 "cumulative_survival_table must be a FlodymArray or np.ndarray, but is "
                 f"{type(value)}."
             )

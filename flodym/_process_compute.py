@@ -17,7 +17,8 @@ The computation is split into these parts:
 
 import logging
 from collections import deque
-from typing import TYPE_CHECKING, Dict, Iterable, List, Literal, Optional, Sequence, Union
+from collections.abc import Iterable, Sequence
+from typing import TYPE_CHECKING, Literal, Optional
 
 import numpy as np
 
@@ -29,6 +30,8 @@ if TYPE_CHECKING:
     from .flodym_arrays import FlodymArray, Flow
     from .processes import Process
 
+logger = logging.getLogger(__name__)
+
 Side = Literal["in", "out"]
 """Side of a process: ``"in"`` for its inflows, ``"out"`` for its outflows."""
 SIDES: tuple[Side, Side] = ("in", "out")
@@ -36,9 +39,9 @@ SIDES: tuple[Side, Side] = ("in", "out")
 Direction = Literal["forward", "backward"]
 """Direction of a dimension splitter: ``"forward"`` splitters are used to compute outflows,
 ``"backward"`` splitters to compute inflows."""
-SPLITTER_SIDES: Dict[Direction, Side] = {"forward": "out", "backward": "in"}
+SPLITTER_SIDES: dict[Direction, Side] = {"forward": "out", "backward": "in"}
 """The side whose flows a dimension splitter of each direction is used for."""
-SPLITTER_DIRECTIONS: Dict[Side, Direction] = {side: d for d, side in SPLITTER_SIDES.items()}
+SPLITTER_DIRECTIONS: dict[Side, Direction] = {side: d for d, side in SPLITTER_SIDES.items()}
 
 TotalMethod = Literal["sum", "share", "remainder"]
 """Ways to compute the total of a side from its flows, in order of preference
@@ -110,9 +113,9 @@ class ProcessSide:
     def __init__(self, process: "Process", side: Side):
         self.process = process
         self.side = side
-        self.flows: Dict[str, "Flow"] = process._inflows if side == "in" else process._outflows
+        self.flows: dict[str, Flow] = process._inflows if side == "in" else process._outflows
         """Flows of this side, keyed by flow name."""
-        self.shares: Dict[str, "FlodymArray"] = (
+        self.shares: dict[str, FlodymArray] = (
             process._inflow_shares if side == "in" else process._outflow_shares
         )
         """Shares of flows of this side, keyed by flow name."""
@@ -123,22 +126,22 @@ class ProcessSide:
         return f"{self.side}flow"
 
     @property
-    def known(self) -> Dict[str, "Flow"]:
+    def known(self) -> dict[str, "Flow"]:
         """Flows with known values."""
         return {name: f for name, f in self.flows.items() if f.is_set}
 
     @property
-    def unknown(self) -> Dict[str, "Flow"]:
+    def unknown(self) -> dict[str, "Flow"]:
         """Flows with unknown values."""
         return {name: f for name, f in self.flows.items() if not f.is_set}
 
     @property
-    def neither_known(self) -> List[str]:
+    def neither_known(self) -> list[str]:
         """Names of flows of which neither the value nor the share is given."""
         return [name for name in self.unknown if name not in self.shares]
 
     @property
-    def both_known(self) -> List[str]:
+    def both_known(self) -> list[str]:
         """Names of flows of which both the value and the share are given."""
         return [name for name in self.known if name in self.shares]
 
@@ -159,7 +162,7 @@ class ProcessSide:
 
     # Computing the total from the flows ---------------------------------------------------------
 
-    def total_method(self) -> Optional[TotalMethod]:
+    def total_method(self) -> TotalMethod | None:
         """How the total of this side can be computed from its flows, or None if it cannot:
 
         - ``"sum"``: All flows are known; the total is their sum.
@@ -383,14 +386,14 @@ class ProcessComputation:
     def __init__(self, process: "Process"):
         process._check_parameters_linked()
         self.process = process
-        self.sides: Dict[Side, ProcessSide] = {side: ProcessSide(process, side) for side in SIDES}
-        self.unused_splitters: List[Direction] = []
+        self.sides: dict[Side, ProcessSide] = {side: ProcessSide(process, side) for side in SIDES}
+        self.unused_splitters: list[Direction] = []
         """Directions of dimension splitters which were not applied when computing the flows of
         their side, since no dimensions had to be added."""
 
     # Checks before the computation --------------------------------------------------------------
 
-    def require_total(self, sides: Sequence[Side] = SIDES) -> List[Side]:
+    def require_total(self, sides: Sequence[Side] = SIDES) -> list[Side]:
         """Sides from which the total can be computed, sorted by the preference of their
         method (see :py:data:`TOTAL_METHODS`). Raises an UnderdeterminedError if there is none."""
         candidates = []
@@ -593,7 +596,7 @@ def is_overdetermined(process: "Process") -> bool:
     return n_equations > n_unknowns
 
 
-def _stock_arrays(stock) -> List["FlodymArray"]:
+def _stock_arrays(stock) -> list["FlodymArray"]:
     """Inflow, outflow, stock and, if present, inflow by cohort of a stock."""
     arrays = [stock.inflow, stock.outflow, stock.stock]
     inflow_by_cohort = getattr(stock, "inflow_by_cohort", None)
@@ -637,7 +640,7 @@ class _Snapshot:
 
 
 def compute_process(
-    process: "Process", on_underdetermined: Union[ErrorBehavior, str, None], short_message: bool
+    process: "Process", on_underdetermined: ErrorBehavior | str | None, short_message: bool
 ) -> bool:
     """Compute a single process, see :py:meth:`flodym.Process.compute`.
 
@@ -655,10 +658,10 @@ def compute_process(
         Whether the process is computed afterwards.
     """
     if process.id == 0:
-        logging.debug(f"Process '{process.name}' is the system boundary and is not computed.")
+        logger.debug(f"Process '{process.name}' is the system boundary and is not computed.")
         return False
     if process.is_computed:
-        logging.debug(f"Process '{process.name}' is already computed.")
+        logger.debug(f"Process '{process.name}' is already computed.")
         return True
     if on_underdetermined is None:
         on_underdetermined = config.error_behaviors.process_underdetermined

@@ -3,10 +3,10 @@
 from typing import Literal, overload
 
 from ._attribute_dict import AttributeDict
-from .processes import Process
-from .flodym_array_helper import flodym_array_stack
 from .dimensions import Dimension, DimensionSet
+from .flodym_array_helper import flodym_array_stack
 from .mfa_definition import StockDefinition
+from .processes import Process
 from .stocks import Stock
 
 
@@ -76,12 +76,12 @@ def make_empty_stocks(
             except KeyError:
                 raise KeyError(f"Process {stock_definition.process_name} not in processes.")
 
-        init_args = dict(
-            dims=dim_subset,
-            time_letter=stock_definition.time_letter,
-            name=stock_definition.name,
-            process=process,
-        )
+        init_args = {
+            "dims": dim_subset,
+            "time_letter": stock_definition.time_letter,
+            "name": stock_definition.name,
+            "process": process,
+        }
         if stock_definition.cohort_letter is not None:
             init_args["cohort_dim"] = dims[stock_definition.cohort_letter]
         if stock_definition.lifetime_model_class is not None:

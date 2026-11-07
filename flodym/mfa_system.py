@@ -6,7 +6,7 @@ Specific MFA models can be built that inherit from this class.
 import logging
 import warnings
 from os import PathLike
-from typing import Optional, SupportsFloat, Union
+from typing import SupportsFloat
 
 import numpy as np
 from pydantic import BaseModel as PydanticBaseModel
@@ -14,6 +14,8 @@ from pydantic import ConfigDict, model_validator
 from typing_extensions import Self
 
 from ._attribute_dict import AttributeDict
+from ._checks import config_hint, report_balance_failures
+from .config import ErrorBehavior, config, handle_error
 from .data_reader import (
     CompoundDataReader,
     CSVDimensionReader,
@@ -29,8 +31,8 @@ from .mfa_definition import MFADefinition
 from .processes import Process, compute_processes, make_processes
 from .stock_helper import make_empty_stocks
 from .stocks import Stock
-from ._checks import config_hint, report_balance_failures
-from .config import ErrorBehavior, config, handle_error
+
+logger = logging.getLogger(__name__)
 
 
 class MFASystem(PydanticBaseModel):
@@ -252,8 +254,8 @@ class MFASystem(PydanticBaseModel):
         definition: MFADefinition,
         dimension_files: dict[str, str | PathLike[str]],
         parameter_files: dict[str, str | PathLike[str]],
-        dimension_sheets: Optional[dict[str, str]] = None,
-        parameter_sheets: Optional[dict[str, str]] = None,
+        dimension_sheets: dict[str, str] | None = None,
+        parameter_sheets: dict[str, str] | None = None,
         allow_missing_parameter_values: bool = False,
         allow_extra_parameter_values: bool = False,
         link: bool = True,
@@ -299,7 +301,7 @@ class MFASystem(PydanticBaseModel):
             "The compute method must be implemented in a subclass of MFASystem if it is to be used."
         )
 
-    def get_new_array(self, dim_letters: Optional[tuple[str, ...]] = None, **kwargs) -> FlodymArray:
+    def get_new_array(self, dim_letters: tuple[str, ...] | None = None, **kwargs) -> FlodymArray:
         """Get a new FlodymArray object.
 
         :param dim_letters: tuple of dimension letters to include in the new FlodymArray. If None, all dimensions are included.
@@ -309,7 +311,7 @@ class MFASystem(PydanticBaseModel):
         return FlodymArray(dims=dims, **kwargs)
 
     @property
-    def total_stock_change(self) -> Union[FlodymArray, float]:
+    def total_stock_change(self) -> FlodymArray | float:
         """Sum of the net inflows (per year) of all stocks connected to a process, i.e. the mass
         change of the whole system, reduced to the dimensions common to all stocks."""
         return sum((s.net_inflow for s in self.stocks.values() if s.process is not None), 0.0)
@@ -329,9 +331,9 @@ class MFASystem(PydanticBaseModel):
 
     def check_mass_balance(
         self,
-        tolerance: Optional[SupportsFloat] = None,
-        error_behavior: Optional[ErrorBehavior | str] = None,
-        raise_error: Optional[bool] = None,
+        tolerance: SupportsFloat | None = None,
+        error_behavior: ErrorBehavior | str | None = None,
+        raise_error: bool | None = None,
     ) -> bool:
         """Check the mass balance of all processes and stocks of the MFA system.
 
@@ -356,7 +358,7 @@ class MFASystem(PydanticBaseModel):
         Returns:
             Whether all checks passed.
         """
-        logging.info(f"Checking mass balance of {self.__class__.__name__} object...")
+        logger.info(f"Checking mass balance of {self.__class__.__name__} object...")
 
         if tolerance is not None:
             tolerance = float(tolerance)
@@ -402,10 +404,10 @@ class MFASystem(PydanticBaseModel):
 
     def check_flows(
         self,
-        exceptions: list[str] = [],
-        error_behavior: Optional[ErrorBehavior | str] = None,
+        exceptions: list[str] | None = None,
+        error_behavior: ErrorBehavior | str | None = None,
         verbose: bool = False,
-        raise_error: Optional[bool] = None,
+        raise_error: bool | None = None,
     ) -> bool:
         """Check that no flow has NaN values or negative values (beyond the tolerance of the
         MFA system, see :py:attr:`tolerance`).
@@ -422,11 +424,13 @@ class MFASystem(PydanticBaseModel):
         Returns:
             Whether all checked flows passed.
         """
-        logging.info("Checking flows for NaN and negative values...")
+        logger.info("Checking flows for NaN and negative values...")
         error_behavior = _resolve_error_behavior(
             error_behavior, raise_error, config.error_behaviors.check_flows, "check_flows"
         )
 
+        if exceptions is None:
+            exceptions = []
         flows = [f for f in self.flows.values() if f.name not in exceptions]
         flows = [
             f
@@ -458,7 +462,7 @@ class MFASystem(PydanticBaseModel):
                 all_good = False
 
         if all_good:
-            logging.info(f"Success - No negative flows or NaN values in {self.__class__.__name__}")
+            logger.info(f"Success - No negative flows or NaN values in {self.__class__.__name__}")
         return all_good
 
     def mark_all_set(self):
@@ -565,15 +569,15 @@ class MFASystem(PydanticBaseModel):
         compute_processes(self.processes.values())
         not_computed = [p.name for p in self.processes.values() if p.id != 0 and not p.is_computed]
         if not_computed:
-            logging.info(
+            logger.info(
                 f"compute_all_possible(): Could not compute processes {', '.join(not_computed)}."
             )
         return not_computed
 
 
 def _resolve_error_behavior(
-    error_behavior: Optional[ErrorBehavior | str | bool],
-    raise_error: Optional[bool],
+    error_behavior: ErrorBehavior | str | bool | None,
+    raise_error: bool | None,
     default: ErrorBehavior,
     method_name: str,
 ) -> ErrorBehavior:
