@@ -13,10 +13,21 @@ uv run pytest
 
 CI runs both of these on Python 3.10 to 3.12, on Linux, macOS and Windows.
 
-Never run any formatter, linter, pre-commit - except if you work on the linter configuration itself.
-In that case, run only the ruff hooks, `uvx pre-commit run ruff-check --all-files` and
-`uvx pre-commit run ruff-format --all-files`, to check the linter configuration. Running all hooks
-would also sync the notebooks (see below).
+Before pushing, check that pre-commit.ci will pass the ruff hooks:
+
+```bash
+uvx ruff@0.17.3 check
+uvx ruff@0.17.3 format --check
+```
+
+Use the ruff version given as `rev` of `ruff-pre-commit` in `.pre-commit-config.yaml` (here
+0.17.3), since the version installed by `uv sync` may differ. Both commands only report; fix
+the reported issues by hand.
+
+Apart from these checks, never run any formatter, linter, pre-commit - except if you work on the
+linter configuration itself. In that case, run only the ruff hooks,
+`uvx pre-commit run ruff-check --all-files` and `uvx pre-commit run ruff-format --all-files`, to
+check the linter configuration. Running all hooks would also sync the notebooks (see below).
 
 # Repository structure
 

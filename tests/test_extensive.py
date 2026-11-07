@@ -151,9 +151,11 @@ def test_mixed_addition_is_reported(caplog):
         result = make_array(("t",), E) + make_array(("t",), I)
     assert "same extensivity" in caplog.text
     assert result.extensive is None
-    with config.override(error_behaviors={"extensivity": "error"}):
-        with pytest.raises(ValueError, match="same extensivity"):
-            make_array(("t",), E) - make_array(("t",), I)
+    with (
+        config.override(error_behaviors={"extensivity": "error"}),
+        pytest.raises(ValueError, match="same extensivity"),
+    ):
+        make_array(("t",), E) - make_array(("t",), I)
 
 
 def test_explicit_sum_of_intensive_is_reported(caplog):
@@ -163,9 +165,11 @@ def test_explicit_sum_of_intensive_is_reported(caplog):
     assert "is summed over the dimensions ['Region']" in caplog.text
     np.testing.assert_allclose(result.values, 2.0)
     assert result.extensive is False
-    with config.override(error_behaviors={"extensivity": "error"}):
-        with pytest.raises(ValueError, match="summed over"):
-            intensive.sum_over(("r",))
+    with (
+        config.override(error_behaviors={"extensivity": "error"}),
+        pytest.raises(ValueError, match="summed over"),
+    ):
+        intensive.sum_over(("r",))
 
 
 def test_explicit_sum_not_reported(strict):
@@ -180,9 +184,11 @@ def test_explicit_cast_of_extensive_is_reported(caplog):
         result = make_array(("t",), E).cast_to(DIMS.get_subset(("t", "r")))
     assert "is copied along the dimensions ['Region']" in caplog.text
     assert result.extensive is True
-    with config.override(error_behaviors={"extensivity": "error"}):
-        with pytest.raises(ValueError, match="copied along"):
-            make_flow(("t",)).cast_to(DIMS.get_subset(("t", "r")), inplace=True)
+    with (
+        config.override(error_behaviors={"extensivity": "error"}),
+        pytest.raises(ValueError, match="copied along"),
+    ):
+        make_flow(("t",)).cast_to(DIMS.get_subset(("t", "r")), inplace=True)
 
 
 def test_explicit_cast_not_reported(strict):
@@ -204,9 +210,11 @@ def test_assignment_of_intensive_broadcasts(strict):
 
 def test_assignment_with_extra_intensive_dims_is_reported():
     target = make_array(("t",), I)
-    with config.override(error_behaviors={"extensivity": "error"}):
-        with pytest.raises(ValueError, match="summed over"):
-            target[...] = make_array(("t", "r"), I)
+    with (
+        config.override(error_behaviors={"extensivity": "error"}),
+        pytest.raises(ValueError, match="summed over"),
+    ):
+        target[...] = make_array(("t", "r"), I)
 
 
 def test_assignment_of_not_intensive_with_missing_dims_raises():
@@ -339,9 +347,11 @@ def test_conflicting_parameter_uses_are_reported():
         ],
         parameters=[ParameterDefinition(name="p", dim_letters=("t",))],
     )
-    with config.override(error_behaviors={"extensivity": "error"}):
-        with pytest.raises(ValueError, match="used with different extensivity"):
-            MFASystem.from_data_reader(definition, DictReader({"p": 0.5}))
+    with (
+        config.override(error_behaviors={"extensivity": "error"}),
+        pytest.raises(ValueError, match="used with different extensivity"),
+    ):
+        MFASystem.from_data_reader(definition, DictReader({"p": 0.5}))
 
 
 def test_example_mfa_without_reports(strict):
