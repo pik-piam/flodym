@@ -96,7 +96,8 @@ class FlodymArray(PydanticBaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True, protected_namespaces=())
 
     dims: DimensionSet
-    """Dimensions of the FlodymArray."""
+    """Dimensions of the FlodymArray. A single :py:class:`flodym.Dimension` is converted to a
+    DimensionSet."""
     values: np.ndarray = Field(default=None, validate_default=True)
     """Values of the FlodymArray. Must have the same shape as the dimensions of the FlodymArray.
     If not given or None, an array of zeros is created."""
@@ -104,6 +105,14 @@ class FlodymArray(PydanticBaseModel):
     """Name of the FlodymArray."""
     _is_set: bool = False
     """Flag indicating whether the array has been set or not."""
+
+    @field_validator("dims", mode="before")
+    @classmethod
+    def _dimension_to_dimension_set(cls, value: Any) -> Any:
+        """Convert a single Dimension to a DimensionSet."""
+        if isinstance(value, Dimension):
+            return DimensionSet(dim_list=[value])
+        return value
 
     @field_validator("values", mode="before")
     @classmethod
