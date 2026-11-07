@@ -232,7 +232,7 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
         return nx, ny
 
     @abstractmethod
-    def save(self, save_path: str | None = None) -> None:
+    def save(self, save_path: str) -> None:
         """Save the figure to ``save_path``."""
         raise NotImplementedError
 
@@ -307,7 +307,7 @@ class PyplotArrayPlotter(ArrayPlotter):
     If None, a new figure is created.
     """
 
-    def save(self, save_path: str | None = None, **kwargs: Any) -> None:
+    def save(self, save_path: str, **kwargs: Any) -> None:
         """Save the figure to ``save_path``, passing ``kwargs`` to ``Figure.savefig``."""
         self.fig.savefig(save_path, **kwargs)
 
@@ -388,7 +388,7 @@ class PlotlyArrayPlotter(ArrayPlotter):
     color_map: list[str] | None = plc.qualitative.Dark24
     """List of colors to use for the lines. If None, the plotly default colors are used."""
 
-    def save(self, save_path: str | None = None, **kwargs: Any) -> None:
+    def save(self, save_path: str, **kwargs: Any) -> None:
         """Save the figure to ``save_path``, passing ``kwargs`` to ``Figure.write_image``."""
         self.fig.write_image(save_path, **kwargs)
 

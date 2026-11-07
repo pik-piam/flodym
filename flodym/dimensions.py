@@ -164,6 +164,8 @@ class DimensionSet(PydanticBaseModel):
         >>>        elif dimension_definition.letter == 'r':
         >>>            return Dimension(name='Region', letter='r', items=['Earth', 'Moon', 'Sun'])
         >>>        raise ValueError('No data available for desired dimension')
+        >>>    def read_parameter_values(self, parameter_name: str, dims: DimensionSet) -> Parameter:
+        >>>        raise NotImplementedError('This reader only provides dimensions')
         >>> data_reader = MyDataReader()
         >>> time_definition = DimensionDefinition(name='Time', letter='t', dtype=int)
         >>> region_definition = DimensionDefinition(name='Region', letter='r', dtype=str)

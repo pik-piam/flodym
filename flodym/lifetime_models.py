@@ -171,7 +171,7 @@ class LifetimeModel(PydanticBaseModel):
                 prm_out[...] = prm_in
             except ValueError:
                 raise ValueError(
-                    f"Parameter {name} (shape {prm_in.shape}) has incompatible dimensions with lifetime model shape ({self._shape})"
+                    f"Parameter {name} (shape {prm_in.shape}) has incompatible dimensions with lifetime model shape ({self.shape})"
                 )
         elif isinstance(prm_in, Number):
             prm_out = np.ndarray(self.shape)
@@ -517,8 +517,10 @@ class LifetimeModel(PydanticBaseModel):
 
     def _get_quad_points_and_weights(self) -> tuple[list[float], list[float]]:
         """Returns the quadrature points and weights for the inflow time periods."""
-        if self.n_pts_per_interval > 10:
-            raise ValueError("quad_order must be between 0 and 9.")
+        if not 1 <= self.n_pts_per_interval <= 10:
+            raise ValueError(
+                f"n_pts_per_interval must be between 1 and 10, got {self.n_pts_per_interval}."
+            )
         if self.n_pts_per_interval > 1:
             points = [(x + 1) / 2 for x in gl_nodes[self.n_pts_per_interval]]
             weights = [w / 2 for w in gl_weights[self.n_pts_per_interval]]

@@ -435,3 +435,17 @@ def test_mean_lifetime_by_cohort():
 
     with pytest.raises(ValueError, match="tail must be"):
         exponential.get_mean_lifetime_by_cohort(tail="linear")
+
+
+def test_incompatible_array_shape_raises_value_error():
+    with pytest.raises(ValueError, match="incompatible dimensions"):
+        NormalLifetime(dims=dims, mean=np.ones(5), std=1.0)
+
+
+@pytest.mark.parametrize("n_pts_per_interval", [0, 11])
+def test_invalid_n_pts_per_interval(n_pts_per_interval):
+    lifetime_model = NormalLifetime(
+        dims=dims, mean=mean, std=1.0, n_pts_per_interval=n_pts_per_interval
+    )
+    with pytest.raises(ValueError, match="n_pts_per_interval must be between 1 and 10"):
+        lifetime_model.cumulative_survival

@@ -220,3 +220,39 @@ def test_mixed_dimension_letters_and_names():
     param_def_p1 = ParameterDefinition(name="p1", dim_letters=["t", "r"])
     params_p1 = reader_mixed.read_parameters([param_def_p1], dims)
     assert np.array_equal(params_p1["p1"].values, [[1], [2], [3]])
+
+
+def test_excel_readers_use_first_sheet_without_sheet_names(tmp_path):
+    import pandas as pd
+
+    from flodym import DimensionSet
+
+    def write_two_sheets(path, first, second, header):
+        with pd.ExcelWriter(path) as writer:
+            first.to_excel(writer, sheet_name="first", index=False, header=header)
+            second.to_excel(writer, sheet_name="second", index=False, header=header)
+
+    dimension_path = tmp_path / "dimensions.xlsx"
+    write_two_sheets(dimension_path, pd.DataFrame([1990, 2000]), pd.DataFrame([1, 2, 3]), False)
+    parameter_path = tmp_path / "parameters.xlsx"
+    write_two_sheets(
+        parameter_path,
+        pd.DataFrame({"time": [1990, 2000], "value": [1.0, 2.0]}),
+        pd.DataFrame({"time": [1990, 2000], "value": [3.0, 4.0]}),
+        True,
+    )
+    time_definition = DimensionDefinition(name="time", letter="t", dtype=int)
+
+    dimension = ExcelDimensionReader({"time": dimension_path}).read_dimension(time_definition)
+    assert dimension.items == [1990, 2000]
+
+    dims = DimensionSet(dim_list=[dimension])
+    parameter = ExcelParameterReader({"p": parameter_path}).read_parameter_values("p", dims)
+    assert np.array_equal(parameter.values, [1.0, 2.0])
+
+
+def test_data_reader_is_abstract():
+    from flodym import DataReader
+
+    with pytest.raises(TypeError):
+        DataReader()  # ty: ignore[call-non-callable]

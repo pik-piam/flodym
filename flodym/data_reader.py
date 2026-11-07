@@ -11,7 +11,7 @@ from .flodym_arrays import Parameter
 from .mfa_definition import DimensionDefinition, ParameterDefinition
 
 
-class DataReader:
+class DataReader(ABC):
     """Template for creating a data reader, showing required methods and data formats needed for
     use in the MFASystem model.
     """
@@ -103,7 +103,7 @@ class ExcelDimensionReader(DimensionReader):
 
     Args:
         dimension_files (dict): {dimension_name: file_path, ...}
-        dimension_sheets (dict): {dimension_name: sheet_name, ...}
+        dimension_sheets (dict): {dimension_name: sheet_name, ...}. If None, the first sheet is used.
         read_excel_kwargs: Additional keyword arguments passed to pandas.read_excel.
             The default is {"header": None}. Not encouraged to use, since it may not lead to the
             intended DataFrame format. Sticking to recommended excel file format is preferred.
@@ -125,7 +125,7 @@ class ExcelDimensionReader(DimensionReader):
         path = self.dimension_files[definition.name]
         # load data from excel
         if self.dimension_sheets is None:
-            sheet_name = None
+            sheet_name = 0  # first sheet; None would make pandas read all sheets into a dict
         else:
             sheet_name = self.dimension_sheets[definition.name]
         # default for header is None
@@ -238,7 +238,7 @@ class ExcelParameterReader(ParameterReader):
         name."""
         datasets_path = self.parameter_files[parameter_name]
         if self.parameter_sheets is None:
-            sheet_name = None
+            sheet_name = 0  # first sheet; None would make pandas read all sheets into a dict
         else:
             sheet_name = self.parameter_sheets[parameter_name]
         data = pd.read_excel(datasets_path, sheet_name=sheet_name, **self.read_excel_kwargs)

@@ -37,6 +37,9 @@ objects instead.
   have only one stock.
 - **The process named** ``sysenv`` **must have ID 0.** v1 only checked that the process with ID 0
   is named ``sysenv``.
+- **Subclasses of** ``DataReader`` must implement both ``read_dimension()`` and
+  ``read_parameter_values()``, since ``DataReader`` is now an abstract base class. Otherwise,
+  creating an instance raises a ``TypeError``.
 
 
 .. _v2-mass-balance:
