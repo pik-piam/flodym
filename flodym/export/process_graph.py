@@ -106,6 +106,7 @@ class ProcessGraphPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
     @property
     def shown_flows(self) -> list[Flow]:
         """Flows that are neither excluded nor connected to an excluded process."""
+
         def should_show(flow: Flow) -> bool:
             return not (
                 (flow.name in self.exclude_flows)
@@ -147,7 +148,6 @@ class GraphvizProcessGraphPlotter(ProcessGraphPlotter):
     system binaries (the ``dot`` executable).
 
     Example:
-
         >>> from flodym.export import GraphvizProcessGraphPlotter
         >>> dot = GraphvizProcessGraphPlotter(mfa=mfa).plot()
         >>> dot.render("system_structure", format="png")
@@ -227,7 +227,6 @@ class PlotlyProcessGraphPlotter(ProcessGraphPlotter):
         within each layer horizontally.
 
     Example:
-
         >>> from flodym.export import PlotlyProcessGraphPlotter
         >>> fig = PlotlyProcessGraphPlotter(mfa=mfa).plot()
         >>> fig.show()  # doctest: +SKIP
@@ -324,7 +323,8 @@ class PlotlyProcessGraphPlotter(ProcessGraphPlotter):
     ) -> list[tuple[int, int]]:
         """Return the edges of the graph with cycle-closing back-edges removed.
 
-        A depth-first traversal is used. Edges are colored white (unvisited), grey (currently in the stack), or black (fully explored).
+        A depth-first traversal is used. Edges are colored white (unvisited), grey (currently in the
+        stack), or black (fully explored).
         Back-edges are those that point to a grey node, and they are dropped.
         """
         white, grey, black = 0, 1, 2

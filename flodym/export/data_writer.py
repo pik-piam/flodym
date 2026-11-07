@@ -20,8 +20,8 @@ def export_mfa_to_pickle(mfa: MFASystem, export_path: str) -> None:
     """Write an MFA system to a pickle file.
 
     Args:
-        mfa (MFASystem): The MFA system to be exported.
-        export_path (str): The path to the file where the MFA system should be saved.
+        mfa: The MFA system to be exported.
+        export_path: The path to the file where the MFA system should be saved.
     """
     dict_out = convert_to_dict(mfa)
     with open(export_path, "wb") as f:
@@ -33,8 +33,8 @@ def export_mfa_flows_to_csv(mfa: MFASystem, export_directory: str) -> None:
     """Export flows of an MFA system to csv files.
 
     Args:
-        mfa (MFASystem): The MFA system from which the flows should be exported.
-        export_directory (str): The directory where the csv files should be saved.
+        mfa: The MFA system from which the flows should be exported.
+        export_directory: The directory where the csv files should be saved.
     """
     if not os.path.exists(export_directory):
         os.makedirs(export_directory)
@@ -50,9 +50,10 @@ def export_mfa_stocks_to_csv(
     """Export stocks of an MFA system to csv files.
 
     Args:
-        mfa (MFASystem): The MFA system from which the stocks should be exported.
-        export_directory (str): The directory where the csv files should be saved.
-        with_in_and_out (bool, optional): If True, the inflow and outflow of the stocks are also exported. Defaults to False.
+        mfa: The MFA system from which the stocks should be exported.
+        export_directory: The directory where the csv files should be saved.
+        with_in_and_out: If True, the inflow and outflow of the stocks are also exported.
+            Defaults to False.
     """
     if not os.path.exists(export_directory):
         os.makedirs(export_directory)
@@ -74,11 +75,14 @@ def convert_to_dict(mfa: MFASystem, type: Literal["numpy", "pandas"] = "numpy") 
     """Convert an MFA system to a dictionary which is readable without flodym.
 
     Args:
-        mfa (MFASystem): The MFA system to be converted.
-        type (str, optional): The type of the values in the flows and stocks. Options are 'numpy' and 'pandas'. Defaults to "numpy".
+        mfa: The MFA system to be converted.
+        type: The type of the values in the flows and stocks. Options are 'numpy' and 'pandas'.
+            Defaults to "numpy".
 
     Returns:
-        dict: The MFA system as a dictionary. Contains the items 'dimension_names', 'dimension_items', 'processes', 'flows', 'flow_dimensions', 'flow_processes', 'stocks', 'stock_dimensions', 'stock_processes'.
+        The MFA system as a dictionary. Contains the items 'dimension_names', 'dimension_items',
+        'processes', 'flows', 'flow_dimensions', 'flow_processes', 'stocks', 'stock_dimensions',
+        'stock_processes'.
 
     Raises:
         ValueError: If ``type`` is neither 'numpy' nor 'pandas'.

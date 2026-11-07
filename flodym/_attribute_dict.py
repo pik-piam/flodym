@@ -58,7 +58,8 @@ class AttributeDict(dict[str, ValueT]):
     Such keys are still accessible via ``[]``.
 
     Attribute assignment is not supported. To change the values of an array in place, use
-    ``flows.foo[...] = new_values``; to replace a dictionary entry, use ``flows["foo"] = new_value``.
+    ``flows.foo[...] = new_values``; to replace a dictionary entry, use
+    ``flows["foo"] = new_value``.
     """
 
     def __getattr__(self, name: str) -> ValueT:

@@ -13,8 +13,9 @@ from .mfa_definition import DimensionDefinition, ParameterDefinition
 
 
 class DataReader(ABC):
-    """Template for creating a data reader, showing required methods and data formats needed for
-    use in the MFASystem model.
+    """Template for creating a data reader.
+
+    Shows the required methods and data formats needed for use in the MFASystem model.
     """
 
     def read_dimensions(self, dimension_definitions: list[DimensionDefinition]) -> DimensionSet:
@@ -24,15 +25,14 @@ class DataReader(ABC):
             dimension_definitions: Definitions of the dimensions to read.
 
         Returns:
-            DimensionSet: The dimensions, in the order of the definitions.
+            The dimensions, in the order of the definitions.
         """
         dimensions = [self.read_dimension(definition) for definition in dimension_definitions]
         return DimensionSet(dim_list=dimensions)
 
     @abstractmethod
     def read_dimension(self, definition: DimensionDefinition) -> Dimension:
-        """Required method to read data for a single dimension,
-        corresponding to the dimension definition."""
+        """Required method to read data for a single dimension, given its definition."""
 
     @abstractmethod
     def read_parameter_values(self, parameter_name: str, dims: DimensionSet) -> Parameter:
@@ -49,7 +49,7 @@ class DataReader(ABC):
                 ``dim_letters`` of its definition.
 
         Returns:
-            dict[str, Parameter]: The parameters, keyed by parameter name.
+            The parameters, keyed by parameter name.
         """
         parameters = {}
         for parameter_definition in parameter_definitions:
@@ -62,21 +62,25 @@ class DataReader(ABC):
 
 
 class DimensionReader(ABC):
-    """Template for creating a dimension reader, showing required methods and data formats needed"""
+    """Template for creating a dimension reader.
+
+    Shows the required methods and data formats needed.
+    """
 
     read_dimensions = DataReader.read_dimensions
 
     @abstractmethod
     def read_dimension(self, definition: DimensionDefinition) -> Dimension:
-        """Required method to read data for a single dimension,
-        corresponding to the dimension definition."""
+        """Required method to read data for a single dimension, given its definition."""
 
 
 class CSVDimensionReader(DimensionReader):
-    """Read dimensions from a CSV file. Expects a single row or single columns csv file with no header containing the dimension items.
+    """Read dimensions from a CSV file.
+
+    Expects a single row or single column csv file with no header, containing the dimension items.
 
     Args:
-        dimension_files (dict): {dimension_name: file_path, ...}
+        dimension_files: {dimension_name: file_path, ...}
         read_csv_kwargs: Additional keyword arguments passed to pandas.read_csv.
             The default is {"header": None}. Not encouraged to use, since it may not lead to the
             intended DataFrame format. Sticking to recommended csv file format is preferred.
@@ -100,11 +104,14 @@ class CSVDimensionReader(DimensionReader):
 
 
 class ExcelDimensionReader(DimensionReader):
-    """Read dimensions from Excel file(s). Expects a single row or single columns excel sheet with no header containing the dimension items.
+    """Read dimensions from Excel file(s).
+
+    Expects a single row or single column excel sheet with no header, containing the dimension
+    items.
 
     Args:
-        dimension_files (dict): {dimension_name: file_path, ...}
-        dimension_sheets (dict): {dimension_name: sheet_name, ...}. If None, the first sheet is used.
+        dimension_files: {dimension_name: file_path, ...}
+        dimension_sheets: {dimension_name: sheet_name, ...}. If None, the first sheet is used.
         read_excel_kwargs: Additional keyword arguments passed to pandas.read_excel.
             The default is {"header": None}. Not encouraged to use, since it may not lead to the
             intended DataFrame format. Sticking to recommended excel file format is preferred.
@@ -121,8 +128,7 @@ class ExcelDimensionReader(DimensionReader):
         self.read_excel_kwargs = read_excel_kwargs
 
     def read_dimension(self, definition: DimensionDefinition) -> Dimension:
-        """Read the items of a dimension from the Excel file and sheet given for the dimension
-        name."""
+        """Read the items of a dimension from the Excel file and sheet given for its name."""
         path = self.dimension_files[definition.name]
         # load data from excel
         if self.dimension_sheets is None:
@@ -137,7 +143,10 @@ class ExcelDimensionReader(DimensionReader):
 
 
 class ParameterReader(ABC):
-    """Template for creating a parameter reader, showing required methods and data formats needed"""
+    """Template for creating a parameter reader.
+
+    Shows the required methods and data formats needed.
+    """
 
     @abstractmethod
     def read_parameter_values(self, parameter_name: str, dims: DimensionSet) -> Parameter:
@@ -148,17 +157,18 @@ class ParameterReader(ABC):
 
 class CSVParameterReader(ParameterReader):
     """Reads a csv file to a pandas data frame and calls :py:meth:`flodym.Parameter.from_df`.
+
     Expects comma separation and no header, apart from optional column names.
     For further detail on expected format, see :py:meth:`flodym.FlodymArray.from_df`.
 
     Args:
-        parameter_files (dict): Mapping of parameter names to file paths.
+        parameter_files: Mapping of parameter names to file paths.
             Format: {parameter_name: file_path, ...}
-        allow_missing_values (bool, optional): Whether to allow missing values in the DataFrame.
+        allow_missing_values: Whether to allow missing values in the DataFrame.
             This includes both missing rows, and NaN values in the value column.
             Defaults to False.
-        allow_extra_values (bool, optional): Whether to allow extra rows in the DataFrame,
-            i.e. tows with index items not present in the FlodymArray dimension items.
+        allow_extra_values: Whether to allow extra rows in the DataFrame,
+            i.e. rows with index items not present in the FlodymArray dimension items.
             Defaults to False.
         read_csv_kwargs: Additional keyword arguments passed to pandas.read_csv.
             Not encouraged to use, since it may not lead to the intended DataFrame format.
@@ -219,22 +229,23 @@ class CSVParameterReader(ParameterReader):
 
 class ExcelParameterReader(ParameterReader):
     """Reads an excel file to a pandas data frame and calls :py:meth:`flodym.Parameter.from_df`.
+
     Expects contiguous data starting in the upper left cell A1.
     For further detail on expected format, see :py:meth:`flodym.FlodymArray.from_df`.
 
     Args:
-        parameter_files (dict): Mapping of parameter names to file paths.
+        parameter_files: Mapping of parameter names to file paths.
             Can be the same file for multiple parameters if the sheets are different.
             Format: {parameter_name: file_path, ...}
-        parameter_sheets (dict): Mapping of parameter names to sheet names in the excel file.
+        parameter_sheets: Mapping of parameter names to sheet names in the excel file.
             If None, the first sheet is used.
             Format: {parameter_name: sheet_name, ...}
             Defaults to None.
-        allow_missing_values (bool, optional): Whether to allow missing values in the DataFrame.
+        allow_missing_values: Whether to allow missing values in the DataFrame.
             This includes both missing rows, and NaN values in the value column.
             Defaults to False.
-        allow_extra_values (bool, optional): Whether to allow extra rows in the DataFrame,
-            i.e. tows with index items not present in the FlodymArray dimension items.
+        allow_extra_values: Whether to allow extra rows in the DataFrame,
+            i.e. rows with index items not present in the FlodymArray dimension items.
             Defaults to False.
         read_excel_kwargs: Additional keyword arguments passed to pandas.read_excel.
             Not encouraged to use, since it may not lead to the intended DataFrame format.
@@ -256,8 +267,7 @@ class ExcelParameterReader(ParameterReader):
         self.read_excel_kwargs = read_excel_kwargs
 
     def read_parameter_values(self, parameter_name: str, dims: DimensionSet) -> Parameter:
-        """Read the values of a parameter from the Excel file and sheet given for the parameter
-        name."""
+        """Read the values of a parameter from the Excel file and sheet given for its name."""
         datasets_path = self.parameter_files[parameter_name]
         if self.parameter_sheets is None:
             sheet_name = 0  # first sheet; None would make pandas read all sheets into a dict
@@ -274,8 +284,9 @@ class ExcelParameterReader(ParameterReader):
 
 
 class CompoundDataReader(DataReader):
-    """Combines a DimensionReader and a ParameterReader to create a DataReader,
-    reading both dimensions and parameters.
+    """Combines a DimensionReader and a ParameterReader to create a DataReader.
+
+    The resulting reader reads both dimensions and parameters.
 
     Args:
         dimension_reader: Reader used for all dimensions.

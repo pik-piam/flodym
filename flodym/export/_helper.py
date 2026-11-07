@@ -30,7 +30,10 @@ class CustomNameDisplayer(PydanticBaseModel):
     """Base class for plotters that allow replacing names in figures by custom display names."""
 
     display_names: dict[str, str] = {}
-    """Dictionary for string replacement in figures. Keys are strings to be replaced (like process names, etc.), values are strings to display instead.
+    """Dictionary for string replacement in figures.
+
+    Keys are strings to be replaced (like process names, etc.), values are strings to display
+    instead.
     All strings not in this dictionary will be displayed as is.
     """
 

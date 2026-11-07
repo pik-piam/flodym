@@ -31,8 +31,9 @@ class FlodymDataFormat(PydanticBaseModel):
 
 
 class DataFrameToFlodymDataConverter:
-    """Converts a panda DataFrame with various possible formats to a numpy array that can be used
-    as values of a FlodymArray.
+    """Converts a pandas DataFrame to a numpy array that can be used as values of a FlodymArray.
+
+    Various DataFrame formats are possible.
 
     Usually not called by the user, but from within the FlodymArray from_df and
     set_values_from_df methods, where further documentation can be found.
@@ -68,7 +69,7 @@ class DataFrameToFlodymDataConverter:
         """Determine the DataFrame format and convert it to an array of the FlodymArray's shape.
 
         Returns:
-            np.ndarray: The values for the FlodymArray.
+            The values for the FlodymArray.
         """
         logger.debug(
             f"Start setting values for FlodymArray {self.flodym_array.name} with dimensions {self.flodym_array.dims.names} from dataframe."
@@ -86,8 +87,11 @@ class DataFrameToFlodymDataConverter:
 
     @staticmethod
     def same_items(arr: Iterable[Any], dim: Dimension) -> bool:
-        """Check if the items in ``arr`` (converted to the dimension dtype, if given) are exactly
-        the items of ``dim``, regardless of order and repetitions."""
+        """Check if the items in ``arr`` are exactly the items of ``dim``.
+
+        Items of ``arr`` are converted to the dimension dtype, if given. Order and repetitions are
+        disregarded.
+        """
         dim_items = set(dim.items)
         found_items = set()
         for item in arr:
@@ -151,7 +155,9 @@ class DataFrameToFlodymDataConverter:
         logger.debug(f"Recognized index columns by name: {self.dim_columns}")
 
     def _check_if_first_row_are_items(self) -> None:
-        """If data without columns names was read, but the first row was assumed to be column names,
+        """Restore the first row of the data if it was erroneously read as column names.
+
+        If data without columns names was read, but the first row was assumed to be column names,
         the first row of the data frame might erroneously end up as column names.
         This method checks if that is the case, and if so, prepends a row based on column names.
         """
@@ -266,13 +272,12 @@ class DataFrameToFlodymDataConverter:
         self.df[self.format.value_column] = self.df[self.format.value_column].astype(np.float64)
 
     def _sort_columns(self) -> None:
-        """Sort the columns of the data frame according to the order of the dimensions in the
-        FlodymArray.
-        """
+        """Sort the data frame columns according to the order of the FlodymArray dimensions."""
         self.df = self.df[list(self.flodym_array.dims.names) + [self.format.value_column]]
 
     def _check_data_complete(self) -> np.ndarray:
-        # Special handling of the scalar case: If the FlodymArray has no dimensions, we usually expect a single value in the df.
+        # Special handling of the scalar case: If the FlodymArray has no dimensions, we usually
+        # expect a single value in the df.
         if self.flodym_array.dims.ndim == 0:
             if len(self.df) == 0:
                 if self.allow_missing_values:
@@ -332,7 +337,8 @@ class DataFrameToFlodymDataConverter:
             if any(self.df[self.format.value_column].isna()):
                 raise ValueError("Empty cells/NaN values in value column!")
 
-        # for performance and memory reasons, we use numpy operations to convert the data to the numpy array
+        # for performance and memory reasons, we use numpy operations to convert the data to the
+        # numpy array
         # replace non-value items in df with their index in dims.items
         for dim in self.flodym_array.dims:
             self.df[dim.name] = self.df[dim.name].map({item: i for i, item in enumerate(dim.items)})

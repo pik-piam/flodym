@@ -50,8 +50,8 @@ def make_empty_flows(
     ``with flodym.config.override(flow_naming=...):``.
 
     If several flows without name_override get the same generated name, e.g. because they connect
-    the same pair of processes, a suffix ``__2``, ``__3``, ... is appended to the name of the second,
-    third, ... flow, and a warning is logged.
+    the same pair of processes, a suffix ``__2``, ``__3``, ... is appended to the name of the
+    second, third, ... flow, and a warning is logged.
 
     Args:
         processes: Dictionary of processes, with process names as keys.

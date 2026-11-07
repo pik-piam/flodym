@@ -33,8 +33,10 @@ def max_abs(array: Union["FlodymArray", np.ndarray, float]) -> float:
 def balance_failure(
     label: str, balance: Union["FlodymArray", float], tolerance: float
 ) -> str | None:
-    """Description of a failed mass balance check for use in an error message,
-    or None if the check passed. NaN errors fail the check."""
+    """Describe a failed mass balance check for use in an error message.
+
+    Returns None if the check passed. NaN errors fail the check.
+    """
     max_error = max_abs(balance)
     if max_error <= tolerance:
         return None

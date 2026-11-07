@@ -225,7 +225,10 @@ def get_stocks_by_quadrature(mean, std):
 
 
 def test_unequal_time_steps():
-    """Unequal time step lengths should not influence the development of the stock apart from numerical errors."""
+    """Unequal time step lengths should not influence the development of the stock.
+
+    Deviations due to numerical errors are allowed.
+    """
     # case with all years
     t_all = Dimension(
         name="time",

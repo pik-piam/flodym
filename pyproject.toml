@@ -61,23 +61,42 @@ module-root = ""
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+# notebooks are generated from the .py files in examples/ and howtos/
+extend-exclude = ["*.ipynb"]
 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
+docstring-code-format = true
 
 [tool.ruff.lint]
+extend-select = [
+    "D", # docstrings (pydocstyle)
+    "W505", # docstring and comment line length
+]
 ignore = [
     "E741", # ambiguous variable name
+    "D105", # docstrings of magic methods
+    "D107", # docstrings of __init__, arguments are documented in the class docstring
 ]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.pycodestyle]
+max-doc-length = 100
 
 [tool.ruff.lint.per-file-ignores]
 # Ignore a few import errors in howtos
 # B018: bare expressions are used for notebook display and in tests that expect an exception
-"howtos/*" = ["E402", "F401", "B018"]
-"examples/*" = ["B018"]
-"tests/*" = ["B018"]
+# D: docstring rules only apply to the flodym package
+# W505: markdown cells of notebooks are wrapped when rendered
+"howtos/*" = ["E402", "F401", "B018", "D", "W505"]
+"examples/*" = ["B018", "D", "W505"]
+"tests/*" = ["B018", "D"]
+"scripts/*" = ["D"]
+"docs/*" = ["D"]
 
 [tool.ty.rules]
 invalid-argument-type = "ignore"

@@ -22,8 +22,11 @@ from flodym import (
 
 
 class ExampleMFA(MFASystem):
-    """Simple steel/copper/manganese recycling system with shredding, demolition, remelting and
-    two flow-driven stocks (landfills and slag piles)."""
+    """Simple steel/copper/manganese recycling system.
+
+    It includes shredding, demolition, remelting and two flow-driven stocks (landfills and slag
+    piles).
+    """
 
     def compute(self) -> None:
         """Compute all flows and stocks from the parameters."""

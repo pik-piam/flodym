@@ -2,8 +2,8 @@
 
 import warnings
 from abc import abstractmethod
-from numbers import Number
 from collections.abc import Mapping
+from numbers import Number
 from types import MappingProxyType
 from typing import Any, ClassVar, Literal, SupportsFloat, TypeAlias
 
@@ -14,9 +14,9 @@ from pydantic import BaseModel as PydanticBaseModel
 from pydantic import ConfigDict, PrivateAttr, model_validator
 from typing_extensions import Self
 
+from ._gauss_lobatto import gl_nodes, gl_weights
 from .dimensions import Dimension, DimensionSet
 from .flodym_arrays import FlodymArray
-from ._gauss_lobatto import gl_nodes, gl_weights
 
 LifetimeArrayType: TypeAlias = FlodymArray | np.ndarray | SupportsFloat
 """Types accepted for lifetime model parameters: a FlodymArray with a subset of the lifetime model
@@ -74,8 +74,8 @@ class LifetimeModel(PydanticBaseModel):
     """Inflow into the stock is in reality quite uniform over time, while the cumulative survival
     only takes into account a single point in time. This can be alleviated here by using numerical
     integration over each inflow time period with n points. A value of 1 means that the inflow
-    is only evaluated once, depending on the inflow_at parameter. This is the default and should be used
-    for long life times, e.g. >> 1 year.
+    is only evaluated once, depending on the inflow_at parameter. This is the default and should
+    be used for long life times, e.g. >> 1 year.
     For n_pts > 1, the inflow is evaluated at n points in time within the time period.
     inflow_at is ignored in this case.
     A value of 2 means evaluation at the beginning and end of the time period, while higher
@@ -206,8 +206,9 @@ class LifetimeModel(PydanticBaseModel):
 
     @property
     def prms(self) -> Mapping[str, np.ndarray | None]:
-        """Read-only mapping of lifetime parameters, with parameter names as keys and parameter
-        values as numpy arrays (None if not set). Do NOT modify the values in this mapping
+        """Read-only mapping of lifetime parameter names to their values.
+
+        The values are numpy arrays (None if not set). Do NOT modify the values in this mapping
         (lifetime_model.prms["mean"][...] = 10) to update the lifetime model parameters. Use direct
         assignment instead, e.g. lifetime_model.mean = 10.
         """
@@ -219,10 +220,9 @@ class LifetimeModel(PydanticBaseModel):
 
     def _scale_prm(self, value: np.ndarray, factor: np.ndarray) -> np.ndarray:
         """Returns the parameter value for a lifetime extended by factor.
-        Must return a new array.
 
-        The simple multiplication is overridden for parameters which are not proportional to the
-        lifetime, such as in Leaching.
+        Must return a new array. The simple multiplication is overridden for parameters which are
+        not proportional to the lifetime, such as in Leaching.
         """
         return value * factor
 
@@ -240,9 +240,10 @@ class LifetimeModel(PydanticBaseModel):
 
     @property
     def cumulative_survival(self) -> np.ndarray:
-        """Cumulative survival by year and age-cohort: cum_surv(t,c) is the share of the inflow of
-        cohort c still present at the end of year t. Zero for c > t.
-        Shape (time, cohort, other dims).
+        """Cumulative survival by year and age-cohort.
+
+        cum_surv(t,c) is the share of the inflow of cohort c still present at the end of year t.
+        Zero for c > t. Shape (time, cohort, other dims).
         """
         if self._cumulative_survival is None:
             if self._has_period_effects:
@@ -265,8 +266,10 @@ class LifetimeModel(PydanticBaseModel):
         return self.cumulative_survival
 
     def _compute_base_cumulative_survival(self) -> np.ndarray:
-        """Cumulative survival of the lifetime distribution, including lifetime factors, but
-        without period effects."""
+        """Cumulative survival of the lifetime distribution.
+
+        Includes lifetime factors, but not period effects.
+        """
         cum_surv = np.zeros(self._shape_cohort)
         self._check_prms_set()
         self._scale_prms()
@@ -279,11 +282,12 @@ class LifetimeModel(PydanticBaseModel):
 
     @property
     def outflow_pmf(self) -> np.ndarray:
-        """Probability mass function of the outflow time: outflow_pmf(t,c) is the share of the
-        inflow of cohort c leaving the stock during year t. It is a share per time step, i.e. the
-        lifetime density integrated over the time step, not a density.
-        It equals cum_surv(t-1,c) - cum_surv(t,c) for c < t, 1 - cum_surv(t,t) for c = t, and
-        zero for c > t. Shape (time, cohort, other dims).
+        """Probability mass function of the outflow time.
+
+        outflow_pmf(t,c) is the share of the inflow of cohort c leaving the stock during year t.
+        It is a share per time step, i.e. the lifetime density integrated over the time step, not
+        a density. It equals cum_surv(t-1,c) - cum_surv(t,c) for c < t, 1 - cum_surv(t,t) for
+        c = t, and zero for c > t. Shape (time, cohort, other dims).
         """
         if self._outflow_pmf is None:
             self._outflow_pmf = np.zeros(self._shape_cohort)
@@ -303,10 +307,11 @@ class LifetimeModel(PydanticBaseModel):
 
     @property
     def conditional_survival(self) -> np.ndarray:
-        """Conditional one-step survival by year and age-cohort: cond_surv(t,c) is the share of
-        cohort c present at the end of year t-1 which is still present at the end of year t.
-        For the newest cohort (c = t), it is the share of the inflow during year t which is still
-        present at the end of year t.
+        """Conditional one-step survival by year and age-cohort.
+
+        cond_surv(t,c) is the share of cohort c present at the end of year t-1 which is still
+        present at the end of year t. For the newest cohort (c = t), it is the share of the inflow
+        during year t which is still present at the end of year t.
         It equals cum_surv(t,c) / cum_surv(t-1,c) for c < t, cum_surv(t,t) for c = t, and zero
         for c > t. Period effects are applied to it, and the cumulative survival is then computed
         from it. Shape (time, cohort, other dims).
@@ -344,8 +349,11 @@ class LifetimeModel(PydanticBaseModel):
         return cum_surv
 
     def _apply_period_effects(self, cond_surv: np.ndarray) -> None:
-        """Applies hazard_factor_by_year and removal_share_by_year to the conditional survival
-        cond_surv in place. Row t of cond_surv contains the values of all age-cohorts in year t."""
+        """Applies hazard_factor_by_year and removal_share_by_year to cond_surv in place.
+
+        cond_surv is the conditional survival. Row t of cond_surv contains the values of all
+        age-cohorts in year t.
+        """
         if self.hazard_factor_by_year is not None:
             hazard_factor = self.hazard_factor_by_year[:, np.newaxis, ...]
             if np.min(hazard_factor) < 0:
@@ -392,8 +400,7 @@ class LifetimeModel(PydanticBaseModel):
         return time_dim + cohort_dim + self.dims.drop(self.time_letter)
 
     def get_cumulative_survival(self, cohort_dim: Dimension | None = None) -> FlodymArray:
-        """:py:attr:`cumulative_survival` as FlodymArray with dimensions
-        (time, cohort, other dimensions).
+        """:py:attr:`cumulative_survival` as FlodymArray with dims (time, cohort, other dims).
 
         Args:
             cohort_dim: Cohort dimension with the same items as the time dimension. If not given,
@@ -405,8 +412,7 @@ class LifetimeModel(PydanticBaseModel):
         )
 
     def get_conditional_survival(self, cohort_dim: Dimension | None = None) -> FlodymArray:
-        """:py:attr:`conditional_survival` as FlodymArray with dimensions
-        (time, cohort, other dimensions).
+        """:py:attr:`conditional_survival` as FlodymArray with dims (time, cohort, other dims).
 
         Args:
             cohort_dim: Cohort dimension with the same items as the time dimension. If not given,
@@ -418,8 +424,7 @@ class LifetimeModel(PydanticBaseModel):
         )
 
     def get_outflow_pmf(self, cohort_dim: Dimension | None = None) -> FlodymArray:
-        """:py:attr:`outflow_pmf` as FlodymArray with dimensions
-        (time, cohort, other dimensions).
+        """:py:attr:`outflow_pmf` as FlodymArray with dimensions (time, cohort, other dimensions).
 
         Args:
             cohort_dim: Cohort dimension with the same items as the time dimension. If not given,
@@ -429,9 +434,9 @@ class LifetimeModel(PydanticBaseModel):
         return FlodymArray(dims=dims, values=self.outflow_pmf.copy(), name="outflow_pmf")
 
     def get_mean_lifetime_by_cohort(self, tail: Literal["constant_rate", "none"]) -> FlodymArray:
-        """Mean time the items of each age-cohort remain in the stock, including the effects of
-        lifetime factors, period effects and competing risks.
+        """Mean time the items of each age-cohort remain in the stock.
 
+        It includes the effects of lifetime factors, period effects and competing risks.
         The result has the dimensions of the lifetime model, where the time dimension denotes the
         age-cohort, i.e. the time step of inflow. It is computed by integrating the cumulative
         survival over time, interpolating linearly between the inflow time and the ends of the time
@@ -481,6 +486,7 @@ class LifetimeModel(PydanticBaseModel):
 
     def set_prms(self, *args: LifetimeArrayType, **kwargs: LifetimeArrayType) -> None:
         """Set parameters of the lifetime distribution, like mean and standard deviation.
+
         Parameters can be set either by positional arguments or by keyword arguments, but not both.
 
         Deprecated. Use direct assignment instead, e.g. lifetime_model.mean = 10.
@@ -513,42 +519,43 @@ class LifetimeModel(PydanticBaseModel):
         self.reset_cached_arrays()
 
     def reset_cached_arrays(self) -> None:
-        """Discards the cached cumulative survival, conditional survival and outflow pmf, such
-        that they are recomputed on the next access.
+        """Discards the cached cumulative survival, conditional survival and outflow pmf.
 
-        This happens automatically when a field is assigned. Call it after modifying a parameter
-        array in place, e.g. ``lifetime_model.mean[...] = 10``.
+        They are then recomputed on the next access. This happens automatically when a field is
+        assigned. Call it after modifying a parameter array in place, e.g.
+        ``lifetime_model.mean[...] = 10``.
         """
         self._cumulative_survival = None
         self._outflow_pmf = None
         self._conditional_survival = None
 
     def _tile(self, a: np.ndarray) -> np.ndarray:
-        """tiles the input array a to the shape of the lifetime model, by adding non-time dimensions
+        """Tiles the input array a to the shape of the lifetime model, adding non-time dimensions.
 
         Args:
-            a (np.ndarray): either of shape (n_t,) or (n_t, n_t), where the second dimension
+            a: either of shape (n_t,) or (n_t, n_t), where the second dimension
                 corresponds to the age cohort
 
         Returns:
-            np.ndarray: the tiled array
+            The tiled array
         """
         index = (slice(None),) * a.ndim + (np.newaxis,) * len(self._shape_no_t)
         out = a[index]
         return np.tile(out, self._shape_no_t)
 
     def _quad_point_time(self, m: int | np.ndarray, quad_point: float) -> float | np.ndarray:
-        """Returns the time point within the inflow time period m, given the quadrature point eta."""
+        """Returns the time point within inflow time period m, given the quadrature point eta."""
         return quad_point * self._t.bounds[m + 1] + (1 - quad_point) * self._t.bounds[m]
 
     def _remaining_ages(self, i_t: int, quad_point: float) -> np.ndarray:
         return self._tile(self._t.bounds[i_t + 1 :] - self._quad_point_time(i_t, quad_point))
 
     def _compute_cumulative_survival(self, cum_surv: np.ndarray) -> None:
-        """Computes the cumulative survival without lifetime extension by year and writes it into
-        cum_surv. cum_surv(t,c) is the share of the inflow of cohort c still present at the end of
-        year t, i.e. the survival function of the lifetime distribution evaluated at the age at
-        the end of year t, averaged over the inflow points within year c.
+        """Computes the cumulative survival without lifetime extension by year into cum_surv.
+
+        cum_surv(t,c) is the share of the inflow of cohort c still present at the end of year t,
+        i.e. the survival function of the lifetime distribution evaluated at the age at the end of
+        year t, averaged over the inflow points within year c.
         For a lifetime of 0, it is also 0, meaning that the age-cohort leaves during the year of
         inflow.
         This is the only method for the inflow-driven model where the lifetime distribution
@@ -560,9 +567,10 @@ class LifetimeModel(PydanticBaseModel):
                 cum_surv[i_c::, i_c, ...] += quad_weight * self._survival_by_cohort(ages, i_c)
 
     def _compute_cumulative_survival_with_nurture(self, cum_surv: np.ndarray) -> None:
-        """
-        Compute the cumulative survival in presence of lifetime extension by year, i.e. the
-        "nurture" approach in Krych et al. 2024, and write it into cum_surv.
+        """Compute the cumulative survival with lifetime extension by year into cum_surv.
+
+        Lifetime extension by year is the "nurture" approach in Krych et al. 2024.
+
         Math:
         sf_e = plain survival function with extended lifetime
         cum_surv = resulting combined cumulative survival based on previous survival
@@ -622,7 +630,7 @@ class LifetimeModel(PydanticBaseModel):
 
     @abstractmethod
     def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
-        """Survival function
+        """Survival function.
 
         Args:
             ages: array of ages, i.e. difference of a time vector to the inflow time of cohort i_c.
@@ -633,8 +641,10 @@ class LifetimeModel(PydanticBaseModel):
         """
 
     def _compute_outflow_pmf(self) -> None:
-        """Computes outflow_pmf(t,c), the probability that an item added to the stock in year c
-        (cohort c) leaves during year t, from the cumulative survival.
+        """Computes the outflow pmf from the cumulative survival.
+
+        outflow_pmf(t,c) is the probability that an item added to the stock in year c (cohort c)
+        leaves during year t.
         """
         cum_surv = self.cumulative_survival
         t_diag_indices = np.diag_indices(self._n_t) + (slice(None),) * len(self._shape_no_t)
@@ -644,8 +654,10 @@ class LifetimeModel(PydanticBaseModel):
 
 
 class FixedLifetime(LifetimeModel):
-    """Fixed lifetime, age-cohort leaves the stock in the model year when a certain age,
-    specified as 'Mean', is reached."""
+    """Fixed lifetime: the age-cohort leaves the stock when a certain age is reached.
+
+    The age-cohort leaves in the model year when the age specified as 'Mean' is reached.
+    """
 
     mean: LifetimeArrayType | None = None
     """The fixed lifetime, i.e. the age at which the age-cohort leaves the stock.
@@ -662,7 +674,8 @@ class FixedLifetime(LifetimeModel):
 
 
 class ExponentialLifetime(LifetimeModel):
-    """Exponentially distributed lifetime, i.e. a constant hazard rate 1 / mean:
+    """Exponentially distributed lifetime, i.e. a constant hazard rate 1 / mean.
+
     The share of the remaining stock leaving per time is the same for all ages.
     sf(age) = exp(-age / mean).
     """
@@ -682,8 +695,9 @@ class ExponentialLifetime(LifetimeModel):
 
 
 class Leaching(LifetimeModel):
-    """Loss of a fixed share of the remaining stock per unit of time (e.g. per year), independent
-    of age, for example by leaching, corrosion or dissipation.
+    """Loss of a fixed share of the remaining stock per unit of time (e.g. per year).
+
+    The loss is independent of age, for example by leaching, corrosion or dissipation.
     sf(age) = (1 - loss_rate) ** age.
     This is an exponential lifetime with mean -1 / ln(1 - loss_rate).
     Often combined with another lifetime model in a :py:class:`CompetingRisksLifetime`.
@@ -741,6 +755,7 @@ class StandardDeviationLifetimeModel(LifetimeModel):
 
 class NormalLifetime(StandardDeviationLifetimeModel):
     """Normally distributed lifetime with mean and standard deviation.
+
     Watch out for nonzero values, for negative ages, no correction or truncation done here.
     NOTE: As normal distributions have nonzero pdf for negative ages,
     which are physically impossible, these outflow contributions can either be ignored (
@@ -759,7 +774,8 @@ class NormalLifetime(StandardDeviationLifetimeModel):
 
 
 class FoldedNormalLifetime(StandardDeviationLifetimeModel):
-    """Folded normal distribution, cf. https://en.wikipedia.org/wiki/Folded_normal_distribution
+    """Folded normal distribution, cf. https://en.wikipedia.org/wiki/Folded_normal_distribution.
+
     NOTE: call this with the parameters of the normal distribution mu and sigma of curve
     BEFORE folding, curve after folding will have different mu and sigma.
     """
@@ -773,7 +789,8 @@ class FoldedNormalLifetime(StandardDeviationLifetimeModel):
 
 
 class LogNormalLifetime(StandardDeviationLifetimeModel):
-    """Lognormal distribution
+    """Lognormal distribution.
+
     Here, the mean and stddev of the lognormal curve, not those of the underlying normal
     distribution, need to be specified!
     Values chosen according to description on
@@ -794,6 +811,7 @@ class LogNormalLifetime(StandardDeviationLifetimeModel):
 
 class WeibullLifetime(LifetimeModel):
     """Weibull distribution with standard definition of scale and shape parameters.
+
     For a parametrization with mean and standard deviation, see
     :py:class:`WeibullMeanStdLifetime`.
     """
@@ -823,6 +841,7 @@ class WeibullLifetime(LifetimeModel):
 
 class WeibullMeanStdLifetime(StandardDeviationLifetimeModel):
     """Weibull distribution, parametrized by its mean and standard deviation.
+
     The Weibull shape parameter k is determined by the coefficient of variation std / mean via
     Gamma(1 + 2/k) / Gamma(1 + 1/k)^2 = 1 + (std / mean)^2,
     and the scale parameter by scale = mean / Gamma(1 + 1/k).
@@ -841,8 +860,9 @@ class WeibullMeanStdLifetime(StandardDeviationLifetimeModel):
 
     @classmethod
     def _weibull_shape_from_cv(cls, cv: np.ndarray) -> np.ndarray:
-        """Solves Gamma(1 + 2/k) / Gamma(1 + 1/k)^2 = 1 + cv^2 for the Weibull shape k by
-        bisection in log(k). The left-hand side decreases monotonically with k.
+        """Solves Gamma(1 + 2/k) / Gamma(1 + 1/k)^2 = 1 + cv^2 for the Weibull shape k.
+
+        Uses bisection in log(k). The left-hand side decreases monotonically with k.
         """
 
         def log_ratio(log_k: np.ndarray | float) -> np.ndarray | float:
@@ -876,9 +896,9 @@ class WeibullMeanStdLifetime(StandardDeviationLifetimeModel):
 
 
 class TabulatedLifetime(LifetimeModel):
-    """Lifetime model with the cumulative survival given directly by year and age-cohort, e.g. from
-    statistics or from an external model.
+    """Lifetime model with the cumulative survival given directly by year and age-cohort.
 
+    The cumulative survival can come e.g. from statistics or from an external model.
     As no distribution is known, lifetime factors cannot be used. Period effects can be used.
     inflow_at and n_pts_per_interval are only used for removal_share_by_year and
     :py:meth:`get_mean_lifetime_by_cohort`, and should match the inflow time assumed in the
@@ -966,10 +986,11 @@ class TabulatedLifetime(LifetimeModel):
 
 
 class CompetingRisksLifetime(LifetimeModel):
-    """Combination of several lifetime models, which describe independent causes of leaving the
-    stock, for example a product lifetime and a constant material loss (see :py:class:`Leaching`).
-    An item remains in the stock only if it survives all causes, so the cumulative survival, and
-    thereby the conditional survival, of the models are multiplied.
+    """Combination of several lifetime models describing independent causes of leaving the stock.
+
+    Examples of such causes are a product lifetime and a constant material loss
+    (see :py:class:`Leaching`). An item remains in the stock only if it survives all causes, so
+    the cumulative survival, and thereby the conditional survival, of the models are multiplied.
 
     dims and time_letter are taken from the first model if not given.
     Lifetime factors, inflow_at and n_pts_per_interval cannot be set here; set them in the
@@ -1026,26 +1047,42 @@ class CompetingRisksLifetime(LifetimeModel):
 
     @property
     def cumulative_survival(self) -> np.ndarray:
+        """Cumulative survival, see :py:attr:`LifetimeModel.cumulative_survival`.
+
+        Recomputed if the cumulative survival of any of the individual models has changed.
+        """
         self._reset_if_models_changed()
         return super().cumulative_survival
 
     @property
     def outflow_pmf(self) -> np.ndarray:
+        """Outflow pmf, see :py:attr:`LifetimeModel.outflow_pmf`.
+
+        Recomputed if the cumulative survival of any of the individual models has changed.
+        """
         self._reset_if_models_changed()
         return super().outflow_pmf
 
     @property
     def conditional_survival(self) -> np.ndarray:
+        """Conditional survival, see :py:attr:`LifetimeModel.conditional_survival`.
+
+        Recomputed if the cumulative survival of any of the individual models has changed.
+        """
         self._reset_if_models_changed()
         return super().conditional_survival
 
     def reset_cached_arrays(self) -> None:
+        """Discards the cached arrays, see :py:meth:`LifetimeModel.reset_cached_arrays`."""
         super().reset_cached_arrays()
         self._model_cumulative_survivals = None
 
     def _reset_if_models_changed(self) -> None:
-        """Resets the cached arrays if the cumulative survival of any model has changed since they
-        were computed, e.g. because its parameters were changed."""
+        """Resets the cached arrays if the cumulative survival of any model has changed.
+
+        Changes are detected relative to the time the cached arrays were computed, e.g. because
+        the parameters of a model were changed.
+        """
         model_cum_survs = tuple(model.cumulative_survival for model in self.models)
         previous = self._model_cumulative_survivals
         if previous is None or len(model_cum_survs) != len(previous):
@@ -1067,8 +1104,10 @@ class CompetingRisksLifetime(LifetimeModel):
         return cum_surv
 
     def _get_quad_points_and_weights(self) -> tuple[list[float], list[float]]:
-        """Inflow time within the time step, used for removal_share_by_year. Taken from the first
-        model, as it cannot be set in CompetingRisksLifetime."""
+        """Inflow time within the time step, used for removal_share_by_year.
+
+        Taken from the first model, as it cannot be set in CompetingRisksLifetime.
+        """
         return self.models[0]._get_quad_points_and_weights()
 
     def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
