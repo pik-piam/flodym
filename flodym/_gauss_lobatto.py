@@ -4,7 +4,7 @@ The dictionaries map the number of points n (1 to 10) to the list of nodes and w
 the midpoint rule is given, which is not a Gauss-Lobatto rule.
 """
 
-gl_nodes: dict[int, list[float]] = {
+GL_NODES: dict[int, list[float]] = {
     1: [
         0.00000000000000000,
     ],
@@ -82,7 +82,7 @@ gl_nodes: dict[int, list[float]] = {
     ],
 }
 
-gl_weights: dict[int, list[float]] = {
+GL_WEIGHTS: dict[int, list[float]] = {
     1: [
         2.0000000000000000,
     ],

@@ -14,20 +14,20 @@ from pydantic_core import ValidationError
 from flodym import Dimension, DimensionSet, FlodymArray, Flow, Parameter, Process, StockArray
 from flodym._df_to_flodym_array import DataFrameToFlodymDataConverter
 
-places = Dimension(name="place", letter="p", items=["Earth", "Sun", "Moon", "Venus"])
-time = Dimension(name="time", letter="t", items=[1990, 2000, 2010])
-historic_time = Dimension(name="historic time", letter="h", items=[1990, 2000])
-animals = Dimension(name="animal", letter="a", items=["cat", "mouse"])
+PLACES = Dimension(name="place", letter="p", items=["Earth", "Sun", "Moon", "Venus"])
+TIME = Dimension(name="time", letter="t", items=[1990, 2000, 2010])
+HISTORIC_TIME = Dimension(name="historic time", letter="h", items=[1990, 2000])
+ANIMALS = Dimension(name="animal", letter="a", items=["cat", "mouse"])
 
-base_dim_list = [places, time]
+BASE_DIM_LIST = [PLACES, TIME]
 
-dims = DimensionSet(dim_list=base_dim_list)
-values = np.random.rand(4, 3)
-numbers = FlodymArray(name="two", dims=dims, values=values)
+DIMS = DimensionSet(dim_list=BASE_DIM_LIST)
+VALUES = np.random.rand(4, 3)
+NUMBERS = FlodymArray(name="two", dims=DIMS, values=VALUES)
 
-dims_incl_animals = DimensionSet(dim_list=base_dim_list + [animals])
-animal_values = np.random.rand(4, 3, 2)
-space_animals = FlodymArray(name="space_animals", dims=dims_incl_animals, values=animal_values)
+DIMS_INCL_ANIMALS = DimensionSet(dim_list=BASE_DIM_LIST + [ANIMALS])
+ANIMAL_VALUES = np.random.rand(4, 3, 2)
+SPACE_ANIMALS = FlodymArray(name="space_animals", dims=DIMS_INCL_ANIMALS, values=ANIMAL_VALUES)
 
 
 class TestFlodymArrayInit:
@@ -35,19 +35,19 @@ class TestFlodymArrayInit:
     initialized, in particular the ``values`` coercion in the field validator."""
 
     def test_values_ndarray_correct_shape(self):
-        arr = FlodymArray(dims=dims, values=values)
-        assert_array_equal(arr.values, values)
-        assert arr.values is values  # a correctly-shaped ndarray is stored as-is
+        arr = FlodymArray(dims=DIMS, values=VALUES)
+        assert_array_equal(arr.values, VALUES)
+        assert arr.values is VALUES  # a correctly-shaped ndarray is stored as-is
 
     def test_values_omitted_fills_zeros(self):
-        arr = FlodymArray(dims=dims)
-        assert arr.values.shape == dims.shape
+        arr = FlodymArray(dims=DIMS)
+        assert arr.values.shape == DIMS.shape
         assert np.all(arr.values == 0)
 
     def test_values_none_fills_zeros(self):
         # passing values=None explicitly must take the same path as omitting it
-        arr = FlodymArray(dims=dims, values=None)
-        assert arr.values.shape == dims.shape
+        arr = FlodymArray(dims=DIMS, values=None)
+        assert arr.values.shape == DIMS.shape
         assert np.all(arr.values == 0)
 
     def test_scalar_number_wrapped_in_array(self):
@@ -60,24 +60,24 @@ class TestFlodymArrayInit:
     def test_scalar_number_with_multidim_dims_raises(self):
         # a scalar for a multi-dimensional array is a shape mismatch
         with pytest.raises(ValidationError):
-            FlodymArray(dims=dims, values=5)
+            FlodymArray(dims=DIMS, values=5)
 
     def test_transposed_shape_raises(self):
         # right number of elements, wrong axis order
         with pytest.raises(ValidationError):
-            FlodymArray(dims=dims, values=values.T)
+            FlodymArray(dims=DIMS, values=VALUES.T)
 
     def test_too_many_values_raises(self):
         with pytest.raises(ValidationError):
-            FlodymArray(dims=dims, values=np.zeros((4, 4)))
+            FlodymArray(dims=DIMS, values=np.zeros((4, 4)))
 
     def test_non_array_value_raises(self):
         # a list is neither an ndarray nor a Number and is not coerced
         with pytest.raises(ValidationError):
-            FlodymArray(dims=dims, values=[[1, 2, 3]] * 4)
+            FlodymArray(dims=DIMS, values=[[1, 2, 3]] * 4)
 
     def test_name_defaults_to_unnamed(self):
-        assert FlodymArray(dims=dims).name == "unnamed"
+        assert FlodymArray(dims=DIMS).name == "unnamed"
 
     def test_dims_required(self):
         # dims must be provided; omitting it raises a clean validation error
@@ -90,167 +90,167 @@ class TestFlodymArrayCastTo:
 
     def test_new_dim_duplicates_values(self):
         # e.g. same number of cats and mice
-        casted = numbers.cast_to(target_dims=dims_incl_animals)
-        assert casted.dims == dims_incl_animals
+        casted = NUMBERS.cast_to(target_dims=DIMS_INCL_ANIMALS)
+        assert casted.dims == DIMS_INCL_ANIMALS
         assert casted.values.shape == (4, 3, 2)
-        assert_almost_equal(np.sum(casted.values), 2 * np.sum(values))
+        assert_almost_equal(np.sum(casted.values), 2 * np.sum(VALUES))
 
     def test_name_preserved(self):
-        casted = numbers.cast_to(target_dims=dims_incl_animals)
-        assert casted.name == numbers.name
+        casted = NUMBERS.cast_to(target_dims=DIMS_INCL_ANIMALS)
+        assert casted.name == NUMBERS.name
 
     def test_reordered_new_dims_shape(self):
-        target_dims = DimensionSet(dim_list=[animals] + base_dim_list[::-1])
-        casted = numbers.cast_to(target_dims=target_dims)
+        target_dims = DimensionSet(dim_list=[ANIMALS] + BASE_DIM_LIST[::-1])
+        casted = NUMBERS.cast_to(target_dims=target_dims)
         assert casted.values.shape == (2, 3, 4)
 
     def test_same_dims_unchanged(self):
-        casted = numbers.cast_to(target_dims=dims)
-        assert casted.dims == dims
-        assert_array_equal(casted.values, values)
+        casted = NUMBERS.cast_to(target_dims=DIMS)
+        assert casted.dims == DIMS
+        assert_array_equal(casted.values, VALUES)
 
     def test_reordered_dims_transposes(self):
-        reordered_dims = DimensionSet(dim_list=base_dim_list[::-1])
-        casted = numbers.cast_to(target_dims=reordered_dims)
-        assert_array_equal(casted.values, values.T)
+        reordered_dims = DimensionSet(dim_list=BASE_DIM_LIST[::-1])
+        casted = NUMBERS.cast_to(target_dims=reordered_dims)
+        assert_array_equal(casted.values, VALUES.T)
 
     @pytest.mark.parametrize("dtype", [float, object])
     def test_scalar(self, dtype):
         scalar = FlodymArray(dims=DimensionSet(dim_list=[]), values=np.array(0.5, dtype=dtype))
-        casted_values = scalar.cast_values_to(target_dims=dims)
+        casted_values = scalar.cast_values_to(target_dims=DIMS)
         assert casted_values.shape == (4, 3)
         assert np.all(casted_values == 0.5)
 
 
 def test_sum_to():
     # sum over one dimension
-    summed_flodym_array = space_animals.sum_to(result_dims=("p", "t"))
-    assert summed_flodym_array.dims == DimensionSet(dim_list=base_dim_list)
-    assert_array_almost_equal(summed_flodym_array.values, np.sum(animal_values, axis=2))
+    summed_flodym_array = SPACE_ANIMALS.sum_to(result_dims=("p", "t"))
+    assert summed_flodym_array.dims == DimensionSet(dim_list=BASE_DIM_LIST)
+    assert_array_almost_equal(summed_flodym_array.values, np.sum(ANIMAL_VALUES, axis=2))
 
     # sum over two dimensions
-    summed_flodym_array = space_animals.sum_to(result_dims=("t"))
+    summed_flodym_array = SPACE_ANIMALS.sum_to(result_dims=("t"))
     assert_array_almost_equal(
-        summed_flodym_array.values, np.sum(np.sum(animal_values, axis=2), axis=0)
+        summed_flodym_array.values, np.sum(np.sum(ANIMAL_VALUES, axis=2), axis=0)
     )
 
     # example attempt to get a resulting dimension that does not exist
     with pytest.raises(KeyError):
-        space_animals.sum_to(result_dims=("s"))
+        SPACE_ANIMALS.sum_to(result_dims=("s"))
 
     # example where dimensions to sum over are specified rather than the remaining dimensions
-    summed_over = space_animals.sum_over(sum_over_dims=("p", "a"))
+    summed_over = SPACE_ANIMALS.sum_over(sum_over_dims=("p", "a"))
     assert_array_almost_equal(summed_over.values, summed_flodym_array.values)
 
     # example sum over dimension that doesn't exist
     with pytest.raises(KeyError):
-        space_animals.sum_over(sum_over_dims=("s"))
+        SPACE_ANIMALS.sum_over(sum_over_dims=("s"))
 
 
 def test_get_shares_over():
     # example of getting shares over one dimension
-    shares = space_animals.get_shares_over(dim_letters="p")
-    assert shares.dims == space_animals.dims
-    wanted_values = np.einsum("pta,ta->pta", animal_values, 1 / np.sum(animal_values, axis=0))
+    shares = SPACE_ANIMALS.get_shares_over(dim_letters="p")
+    assert shares.dims == SPACE_ANIMALS.dims
+    wanted_values = np.einsum("pta,ta->pta", ANIMAL_VALUES, 1 / np.sum(ANIMAL_VALUES, axis=0))
     assert_array_almost_equal(shares.values, wanted_values)
 
     # a single dimension can also be given as a tuple
-    shares = space_animals.get_shares_over(dim_letters=("p",))
+    shares = SPACE_ANIMALS.get_shares_over(dim_letters=("p",))
     assert_array_almost_equal(shares.values, wanted_values)
 
     # example of getting shares over two dimensions
-    shares = space_animals.get_shares_over(dim_letters=("p", "a"))
-    wanted_values = np.einsum("pta,t->pta", animal_values, 1 / np.sum(animal_values, axis=(0, 2)))
+    shares = SPACE_ANIMALS.get_shares_over(dim_letters=("p", "a"))
+    wanted_values = np.einsum("pta,t->pta", ANIMAL_VALUES, 1 / np.sum(ANIMAL_VALUES, axis=(0, 2)))
     assert_array_almost_equal(shares.values, wanted_values)
 
     # example of getting shares over all dimensions
-    shares = space_animals.get_shares_over(dim_letters=("p", "t", "a"))
-    assert_array_almost_equal(shares.values, animal_values / np.sum(animal_values))
+    shares = SPACE_ANIMALS.get_shares_over(dim_letters=("p", "t", "a"))
+    assert_array_almost_equal(shares.values, ANIMAL_VALUES / np.sum(ANIMAL_VALUES))
 
     # example of getting shares over a dimension that doesn't exist
     with pytest.raises(AssertionError):
-        space_animals.get_shares_over(dim_letters=("s",))
+        SPACE_ANIMALS.get_shares_over(dim_letters=("s",))
 
 
 def test_maths():
     # test minimum
-    minimum = space_animals.minimum(numbers)
-    assert minimum.dims == dims
-    assert_array_almost_equal(minimum.values, np.minimum(values, animal_values.sum(axis=2)))
+    minimum = SPACE_ANIMALS.minimum(NUMBERS)
+    assert minimum.dims == DIMS
+    assert_array_almost_equal(minimum.values, np.minimum(VALUES, ANIMAL_VALUES.sum(axis=2)))
 
     # test maximum
-    maximum = space_animals.maximum(numbers)
-    assert maximum.dims == dims
-    assert_array_almost_equal(maximum.values, np.maximum(values, animal_values.sum(axis=2)))
+    maximum = SPACE_ANIMALS.maximum(NUMBERS)
+    assert maximum.dims == DIMS
+    assert_array_almost_equal(maximum.values, np.maximum(VALUES, ANIMAL_VALUES.sum(axis=2)))
 
     # test sum
-    summed = space_animals + numbers
-    assert summed.dims == dims
-    assert_array_almost_equal(summed.values, animal_values.sum(axis=2) + values)
+    summed = SPACE_ANIMALS + NUMBERS
+    assert summed.dims == DIMS
+    assert_array_almost_equal(summed.values, ANIMAL_VALUES.sum(axis=2) + VALUES)
 
     # test minus
-    subtracted = space_animals - numbers
-    assert subtracted.dims == dims
-    assert_array_almost_equal(subtracted.values, animal_values.sum(axis=2) - values)
-    subtracted_flipped = numbers - space_animals
-    assert subtracted_flipped.dims == dims
-    assert_array_almost_equal(subtracted_flipped.values, values - animal_values.sum(axis=2))
+    subtracted = SPACE_ANIMALS - NUMBERS
+    assert subtracted.dims == DIMS
+    assert_array_almost_equal(subtracted.values, ANIMAL_VALUES.sum(axis=2) - VALUES)
+    subtracted_flipped = NUMBERS - SPACE_ANIMALS
+    assert subtracted_flipped.dims == DIMS
+    assert_array_almost_equal(subtracted_flipped.values, VALUES - ANIMAL_VALUES.sum(axis=2))
 
     # test multiply
-    multiplied = numbers * space_animals
-    assert multiplied.dims == dims_incl_animals  # different from behaviour of above methods
-    assert_array_almost_equal(multiplied.values[:, :, 0], values * animal_values[:, :, 0])
-    assert_array_almost_equal(multiplied.values[:, :, 1], values * animal_values[:, :, 1])
+    multiplied = NUMBERS * SPACE_ANIMALS
+    assert multiplied.dims == DIMS_INCL_ANIMALS  # different from behaviour of above methods
+    assert_array_almost_equal(multiplied.values[:, :, 0], VALUES * ANIMAL_VALUES[:, :, 0])
+    assert_array_almost_equal(multiplied.values[:, :, 1], VALUES * ANIMAL_VALUES[:, :, 1])
 
     # test divide
-    divided = space_animals / numbers
-    assert divided.dims == dims_incl_animals
-    assert_array_almost_equal(divided.values[:, :, 0], animal_values[:, :, 0] / values)
-    assert_array_almost_equal(divided.values[:, :, 1], animal_values[:, :, 1] / values)
-    divided_flipped = numbers / space_animals
-    assert divided_flipped.dims == dims_incl_animals
-    assert_array_almost_equal(divided_flipped.values[:, :, 0], values / (animal_values[:, :, 0]))
-    assert_array_almost_equal(divided_flipped.values[:, :, 1], values / (animal_values[:, :, 1]))
+    divided = SPACE_ANIMALS / NUMBERS
+    assert divided.dims == DIMS_INCL_ANIMALS
+    assert_array_almost_equal(divided.values[:, :, 0], ANIMAL_VALUES[:, :, 0] / VALUES)
+    assert_array_almost_equal(divided.values[:, :, 1], ANIMAL_VALUES[:, :, 1] / VALUES)
+    divided_flipped = NUMBERS / SPACE_ANIMALS
+    assert divided_flipped.dims == DIMS_INCL_ANIMALS
+    assert_array_almost_equal(divided_flipped.values[:, :, 0], VALUES / (ANIMAL_VALUES[:, :, 0]))
+    assert_array_almost_equal(divided_flipped.values[:, :, 1], VALUES / (ANIMAL_VALUES[:, :, 1]))
 
 
 def test_sub_array_handler():
-    space_cat = space_animals["cat"]  # space cat from str
-    another_space_cat = space_animals[{"a": "cat"}]  # space cat from dict
+    space_cat = SPACE_ANIMALS["cat"]  # space cat from str
+    another_space_cat = SPACE_ANIMALS[{"a": "cat"}]  # space cat from dict
     assert_array_equal(space_cat.values, another_space_cat.values)
 
-    space_1990 = space_animals[{"t": 1990}]  # space animals in 1990
+    space_1990 = SPACE_ANIMALS[{"t": 1990}]  # space animals in 1990
     assert space_1990.values.shape == (4, 2)
     assert space_1990.dims.letters == ("p", "a")
 
     with pytest.raises(ValueError):
-        space_animals[{"a": "dog"}]  # there isn't a dog in space_animals
+        SPACE_ANIMALS[{"a": "dog"}]  # there isn't a dog in space_animals
 
 
 def test_dimension_subsets():
-    historic_dims_incl_animals = DimensionSet(dim_list=[places, historic_time, animals])
+    historic_dims_incl_animals = DimensionSet(dim_list=[PLACES, HISTORIC_TIME, ANIMALS])
     historic_space_animals = FlodymArray(dims=historic_dims_incl_animals)
-    historic_space_animals[...] = space_animals[{"t": historic_time}]
+    historic_space_animals[...] = SPACE_ANIMALS[{"t": HISTORIC_TIME}]
 
     assert np.min(historic_space_animals.values) > 0.0
 
-    space_animals_copy = FlodymArray(dims=dims_incl_animals)
-    space_animals_copy[{"t": historic_time}] = 1.0 * historic_space_animals
-    space_animals_copy[{"t": 2010}] = 1.0 * space_animals[{"t": 2010}]
+    space_animals_copy = FlodymArray(dims=DIMS_INCL_ANIMALS)
+    space_animals_copy[{"t": HISTORIC_TIME}] = 1.0 * historic_space_animals
+    space_animals_copy[{"t": 2010}] = 1.0 * SPACE_ANIMALS[{"t": 2010}]
 
-    assert_array_equal(space_animals.values, space_animals_copy.values)
+    assert_array_equal(SPACE_ANIMALS.values, space_animals_copy.values)
 
     wrong_historic_time = (Dimension(name="historic time", letter="t", items=[1990, 2000]),)
     with pytest.raises(ValueError):
-        space_animals[{"t": wrong_historic_time}]  # same letter in original and subset
+        SPACE_ANIMALS[{"t": wrong_historic_time}]  # same letter in original and subset
 
     another_wrong_historic_time = (Dimension(name="historic time", letter="p", items=[1990, 2000]),)
     with pytest.raises(ValueError):
-        space_animals[
+        SPACE_ANIMALS[
             {"t": another_wrong_historic_time}
         ]  # same letter in other dim of original and subset
 
     with pytest.raises(ValueError):
-        historic_space_animals[{"h": time}]  # index is not a subset
+        historic_space_animals[{"h": TIME}]  # index is not a subset
 
 
 class TestFlodymArrayIndexing:
@@ -281,9 +281,9 @@ class TestFlodymArrayIndexing:
     mask: ClassVar[dict] = {"m": "M1", "r": subset_regions, "p": subset_products}
 
     def test_get_item(self):
-        cats_on_the_moon = space_animals["Moon"]["cat"]
+        cats_on_the_moon = SPACE_ANIMALS["Moon"]["cat"]
         assert isinstance(cats_on_the_moon, FlodymArray)
-        assert_array_almost_equal(cats_on_the_moon.values, space_animals.values[2, :, 0])
+        assert_array_almost_equal(cats_on_the_moon.values, SPACE_ANIMALS.values[2, :, 0])
         # note that this does not work for the time dimension (not strings)
         # and also assumes that no item appears in more than one dimension
 
@@ -300,12 +300,12 @@ class TestFlodymArrayIndexing:
         assert_array_equal(result.values, expected_values.values)
 
     def test_setitem(self):
-        array_1d = FlodymArray(dims=dims["t",])
+        array_1d = FlodymArray(dims=DIMS["t",])
         array_1d[...] = 1
         array_1d[1990] = 2
         assert_array_equal(array_1d.values, np.array([2, 1, 1]))
 
-        array_2d = FlodymArray(dims=dims["p", "t"])
+        array_2d = FlodymArray(dims=DIMS["p", "t"])
         array_2d[...] = 1
         array_2d[1990] = 2
         assert_array_equal(
@@ -327,7 +327,7 @@ class TestFlodymArrayIndexing:
 
 
 def test_to_df():
-    fda = deepcopy(space_animals)
+    fda = deepcopy(SPACE_ANIMALS)
     fda.values[...] = 0.0
     fda.values[0, 1, 0] = 1.0
 
@@ -354,7 +354,7 @@ def test_from_df_strips_whitespace_when_enabled():
             " value ": [1.0, 2.0, 3.0, 4.0],
         }
     )
-    dims_subset = DimensionSet(dim_list=[selected_places, historic_time])
+    dims_subset = DimensionSet(dim_list=[selected_places, HISTORIC_TIME])
 
     result = FlodymArray.from_df(dims=dims_subset, df=df, strip_whitespace=True)
 
@@ -370,7 +370,7 @@ def test_from_df_does_not_strip_whitespace_when_disabled():
             " value ": [1.0, 2.0, 3.0, 4.0],
         }
     )
-    dims_subset = DimensionSet(dim_list=[selected_places, historic_time])
+    dims_subset = DimensionSet(dim_list=[selected_places, HISTORIC_TIME])
 
     with pytest.raises(ValueError, match="More than one value columns"):
         FlodymArray.from_df(dims=dims_subset, df=df, strip_whitespace=False)
@@ -385,7 +385,7 @@ def test_from_df_strips_whitespace_in_categorical_column():
             "value": [1.0, 2.0, 3.0, 4.0],
         }
     )
-    dims_subset = DimensionSet(dim_list=[selected_places, historic_time])
+    dims_subset = DimensionSet(dim_list=[selected_places, HISTORIC_TIME])
 
     result = FlodymArray.from_df(dims=dims_subset, df=df)
 
@@ -400,17 +400,17 @@ def test_from_df_strips_whitespace_of_many_distinct_items(column_dtype):
         paddings[position % len(paddings)].format(item)
         for position, item in enumerate(regions.items)
     ]
-    expected = np.random.rand(len(regions.items), len(historic_time.items))
+    expected = np.random.rand(len(regions.items), len(HISTORIC_TIME.items))
     df = pd.DataFrame(
         {
             "region": pd.Series(
-                np.repeat(padded_regions, len(historic_time.items)), dtype=column_dtype
+                np.repeat(padded_regions, len(HISTORIC_TIME.items)), dtype=column_dtype
             ),
-            "historic time": np.tile(historic_time.items, len(regions.items)),
+            "historic time": np.tile(HISTORIC_TIME.items, len(regions.items)),
             "value": expected.flatten(),
         }
     )
-    dims_subset = DimensionSet(dim_list=[regions, historic_time])
+    dims_subset = DimensionSet(dim_list=[regions, HISTORIC_TIME])
 
     result = FlodymArray.from_df(dims=dims_subset, df=df)
 
@@ -446,7 +446,7 @@ def test_from_df_identifies_unnamed_dim_columns_by_items():
     ],
 )
 def test_same_items(arr, expected):
-    assert DataFrameToFlodymDataConverter.same_items(arr, places) == expected
+    assert DataFrameToFlodymDataConverter.same_items(arr, PLACES) == expected
 
 
 @pytest.mark.parametrize(
@@ -479,17 +479,17 @@ class TestFlodymArrayFull:
     """Tests for FlodymArray.full() class method with various fill value types."""
 
     def test_full_with_int(self):
-        filled = FlodymArray.full(dims, fill_value=3, name="int_filled")
+        filled = FlodymArray.full(DIMS, fill_value=3, name="int_filled")
         assert filled.name == "int_filled"
-        assert filled.dims == dims
-        assert filled.dims is not dims  # ensure dims is copied
+        assert filled.dims == DIMS
+        assert filled.dims is not DIMS  # ensure dims is copied
         assert np.all(filled.values == 3)
         assert filled.values.dtype == np.int_
 
     def test_full_with_float(self):
-        filled = FlodymArray.full(dims, fill_value=3.5, name="float_filled")
+        filled = FlodymArray.full(DIMS, fill_value=3.5, name="float_filled")
         assert filled.name == "float_filled"
-        assert filled.dims == dims
+        assert filled.dims == DIMS
         assert np.all(filled.values == 3.5)
         assert filled.values.dtype == np.float64
 
@@ -497,9 +497,9 @@ class TestFlodymArrayFull:
         """Test full with a numpy array that broadcasts across dimensions."""
         # Create a 1D array that broadcasts along the time dimension
         time_values = np.array([1.0, 2.0, 3.0])  # shape (3,) for 3 time steps
-        filled = FlodymArray.full(dims, fill_value=time_values, name="np_array_filled")
+        filled = FlodymArray.full(DIMS, fill_value=time_values, name="np_array_filled")
         assert filled.name == "np_array_filled"
-        assert filled.values.shape == dims.shape  # (4, 3)
+        assert filled.values.shape == DIMS.shape  # (4, 3)
         # Each row should have [1.0, 2.0, 3.0]
         assert_array_equal(filled.values[0], time_values)
         assert_array_equal(filled.values[1], time_values)
@@ -508,26 +508,26 @@ class TestFlodymArrayFull:
     def test_full_with_2d_np_array(self):
         """Test full with a 2D numpy array matching the full shape."""
         fill_array = np.arange(12).reshape(4, 3).astype(np.float64)
-        filled = FlodymArray.full(dims, fill_value=fill_array, name="2d_array_filled")
+        filled = FlodymArray.full(DIMS, fill_value=fill_array, name="2d_array_filled")
         assert filled.name == "2d_array_filled"
         assert_array_equal(filled.values, fill_array)
         assert filled.values.dtype == np.float64
 
     def test_full_dims_not_modified(self):
         """Ensure the original dims is not modified when creating a full array."""
-        original_dims = DimensionSet(dim_list=base_dim_list)
+        original_dims = DimensionSet(dim_list=BASE_DIM_LIST)
         filled = FlodymArray.full(original_dims, fill_value=1.0)
         # Modify the filled array's dims
-        filled.dims.dim_list[0] = animals
+        filled.dims.dim_list[0] = ANIMALS
         # Original should be unchanged
-        assert original_dims[0] == places
+        assert original_dims[0] == PLACES
 
 
 class TestFlodymArrayFullLike:
     """Tests for FlodymArray.full_like() class method with various fill value types."""
 
     def test_full_like_with_int(self):
-        template = FlodymArray.full(dims, fill_value=2.0, name="template")
+        template = FlodymArray.full(DIMS, fill_value=2.0, name="template")
         filled_like = FlodymArray.full_like(template, fill_value=5, name="int_filled")
         assert filled_like.name == "int_filled"
         assert filled_like.dims == template.dims
@@ -536,7 +536,7 @@ class TestFlodymArrayFullLike:
         assert filled_like.values.dtype == np.int_
 
     def test_full_like_with_float(self):
-        template = FlodymArray.full(dims, fill_value=2.0, name="template")
+        template = FlodymArray.full(DIMS, fill_value=2.0, name="template")
         filled_like = FlodymArray.full_like(template, fill_value=-1.5, name="float_filled")
         assert filled_like.name == "float_filled"
         assert np.all(filled_like.values == -1.5)
@@ -544,11 +544,11 @@ class TestFlodymArrayFullLike:
 
     def test_full_like_with_np_array(self):
         """Test full_like with a numpy array that broadcasts across dimensions."""
-        template = FlodymArray.full(dims, fill_value=2.0)
+        template = FlodymArray.full(DIMS, fill_value=2.0)
         # Create a 1D array that broadcasts along the time dimension
         time_values = np.array([10.0, 20.0, 30.0])  # shape (3,) for 3 time steps
         filled_like = FlodymArray.full_like(template, fill_value=time_values)
-        assert filled_like.values.shape == dims.shape  # (4, 3)
+        assert filled_like.values.shape == DIMS.shape  # (4, 3)
         # Each row should have [10.0, 20.0, 30.0]
         assert_array_equal(filled_like.values[0], time_values)
         assert_array_equal(filled_like.values[1], time_values)
@@ -556,7 +556,7 @@ class TestFlodymArrayFullLike:
 
     def test_full_like_with_2d_np_array(self):
         """Test full_like with a 2D numpy array matching the full shape."""
-        template = FlodymArray.full(dims, fill_value=2.0)
+        template = FlodymArray.full(DIMS, fill_value=2.0)
         fill_array = np.arange(12).reshape(4, 3).astype(np.int32)
         filled_like = FlodymArray.full_like(template, fill_value=fill_array)
         assert_array_equal(filled_like.values, fill_array)
@@ -564,22 +564,22 @@ class TestFlodymArrayFullLike:
 
     def test_full_like_with_explicit_dtype(self):
         """Test that explicit dtype parameter overrides fill_value dtype."""
-        template = FlodymArray.full(dims, fill_value=2.0)
+        template = FlodymArray.full(DIMS, fill_value=2.0)
         filled_like = FlodymArray.full_like(template, fill_value=5, dtype=np.float64)
         assert np.all(filled_like.values == 5.0)
         assert filled_like.values.dtype == np.float64
 
     def test_full_like_template_not_modified(self):
         """Ensure the template array is not modified."""
-        template = FlodymArray.full(dims, fill_value=2.0, name="template")
+        template = FlodymArray.full(DIMS, fill_value=2.0, name="template")
         original_values = template.values.copy()
         filled_like = FlodymArray.full_like(template, fill_value=-1.0)
         # Modify filled_like
         filled_like.values[...] = 999
-        filled_like.dims.dim_list[0] = animals
+        filled_like.dims.dim_list[0] = ANIMALS
         # Template should be unchanged
         assert_array_equal(template.values, original_values)
-        assert template.dims[0] == places
+        assert template.dims[0] == PLACES
 
 
 class TestFlodymArrayScalar:
@@ -610,41 +610,41 @@ class TestFlodymArrayCopy:
     """Tests for FlodymArray.copy() method ensuring deep copy behavior."""
 
     def test_copy_returns_new_object(self):
-        array = FlodymArray.full(dims, fill_value=4, name="original")
+        array = FlodymArray.full(DIMS, fill_value=4, name="original")
         array_copy = array.copy()
         assert array_copy is not array
 
     def test_copy_dims_equal_but_not_same_object(self):
         """Ensure dims is deep copied, not just referenced."""
-        array = FlodymArray.full(dims, fill_value=4, name="original")
+        array = FlodymArray.full(DIMS, fill_value=4, name="original")
         array_copy = array.copy()
         assert array_copy.dims == array.dims
         assert array_copy.dims is not array.dims
 
     def test_copy_dims_internal_dimensions_not_shared(self):
         """Ensure individual Dimension objects within dims are also copied."""
-        array = FlodymArray.full(dims, fill_value=4, name="original")
+        array = FlodymArray.full(DIMS, fill_value=4, name="original")
         array_copy = array.copy()
         # Check that internal dimension list is not the same object
         assert array_copy.dims.dim_list is not array.dims.dim_list
 
     def test_copy_values_equal_but_not_same_object(self):
         """Ensure values array is deep copied, not just referenced."""
-        array = FlodymArray.full(dims, fill_value=4, name="original")
+        array = FlodymArray.full(DIMS, fill_value=4, name="original")
         array_copy = array.copy()
         assert_array_equal(array_copy.values, array.values)
         assert array_copy.values is not array.values
 
     def test_copy_name_preserved(self):
         """Ensure name is copied correctly."""
-        array = FlodymArray.full(dims, fill_value=4, name="my_array")
+        array = FlodymArray.full(DIMS, fill_value=4, name="my_array")
         array_copy = array.copy()
         assert array_copy.name == array.name
         assert array_copy.name == "my_array"
 
     def test_copy_values_modification_independent(self):
         """Modifying copied values should not affect original."""
-        array = FlodymArray.full(dims, fill_value=4, name="original")
+        array = FlodymArray.full(DIMS, fill_value=4, name="original")
         array_copy = array.copy()
         array_copy.values[...] = 999
         assert np.all(array.values == 4)
@@ -652,30 +652,30 @@ class TestFlodymArrayCopy:
 
     def test_copy_dims_modification_independent(self):
         """Modifying copied dims should not affect original."""
-        array = FlodymArray.full(dims, fill_value=4, name="original")
+        array = FlodymArray.full(DIMS, fill_value=4, name="original")
         array_copy = array.copy()
         # Try to modify the copy's dims
-        array_copy.dims.dim_list[0] = animals
+        array_copy.dims.dim_list[0] = ANIMALS
         # Original should be unchanged
-        assert array.dims[0] == places
+        assert array.dims[0] == PLACES
 
 
 class TestToClass:
     """Tests for FlodymArray.to_class() ensuring correct re-tagging and deep copy behavior."""
 
     def test_returns_exact_target_type(self):
-        array = FlodymArray.full(dims, fill_value=4, name="original")
+        array = FlodymArray.full(DIMS, fill_value=4, name="original")
         assert type(array.to_class(Parameter)) is Parameter
         assert type(array.to_class(StockArray)) is StockArray
 
     def test_subclass_back_to_base(self):
-        param = Parameter(dims=dims, values=values.copy(), name="p")
+        param = Parameter(dims=DIMS, values=VALUES.copy(), name="p")
         base = param.to_class(FlodymArray)
         assert type(base) is FlodymArray
         assert_array_equal(base.values, param.values)
 
     def test_values_equal_but_independent(self):
-        array = FlodymArray.full(dims, fill_value=4, name="original")
+        array = FlodymArray.full(DIMS, fill_value=4, name="original")
         result = array.to_class(Parameter)
         assert_array_equal(result.values, array.values)
         assert result.values is not array.values
@@ -683,36 +683,36 @@ class TestToClass:
         assert np.all(array.values == 4)
 
     def test_dims_deep_copied(self):
-        array = FlodymArray.full(dims, fill_value=4, name="original")
+        array = FlodymArray.full(DIMS, fill_value=4, name="original")
         result = array.to_class(StockArray)
         assert result.dims == array.dims
         assert result.dims is not array.dims
 
     def test_name_preserved_by_default(self):
-        array = FlodymArray.full(dims, fill_value=4, name="my_array")
+        array = FlodymArray.full(DIMS, fill_value=4, name="my_array")
         assert array.to_class(Parameter).name == "my_array"
 
     def test_name_overridden_when_given(self):
-        array = FlodymArray.full(dims, fill_value=4, name="my_array")
+        array = FlodymArray.full(DIMS, fill_value=4, name="my_array")
         assert array.to_class(Parameter, name="renamed").name == "renamed"
 
     def test_kwargs_forwarded_to_flow(self):
         from_process = Process(name="a", id=1)
         to_process = Process(name="b", id=2)
-        flow = numbers.to_class(Flow, from_process=from_process, to_process=to_process)
+        flow = NUMBERS.to_class(Flow, from_process=from_process, to_process=to_process)
         assert type(flow) is Flow
         assert flow.from_process is from_process
         assert flow.to_process is to_process
-        assert_array_equal(flow.values, numbers.values)
+        assert_array_equal(flow.values, NUMBERS.values)
 
     def test_round_trip_preserves_values(self):
-        param = numbers.to_class(Parameter)
+        param = NUMBERS.to_class(Parameter)
         round_tripped = param.to_class(FlodymArray).to_class(Parameter)
         assert type(round_tripped) is Parameter
-        assert_array_equal(round_tripped.values, numbers.values)
+        assert_array_equal(round_tripped.values, NUMBERS.values)
 
     def test_invalid_target_raises_type_error(self):
-        array = FlodymArray.full(dims, fill_value=4, name="original")
+        array = FlodymArray.full(DIMS, fill_value=4, name="original")
         with pytest.raises(TypeError):
             array.to_class(dict)
         with pytest.raises(TypeError):
@@ -725,29 +725,29 @@ class TestFromArray:
     def test_base_from_array_delegates_to_to_class(self):
         # from_array delegates to to_class (copy behavior is covered by TestToClass),
         # so here we only check target type and name override.
-        assert type(Parameter.from_array(numbers)) is Parameter
-        assert Parameter.from_array(numbers).name == numbers.name
-        assert Parameter.from_array(numbers, name="renamed").name == "renamed"
+        assert type(Parameter.from_array(NUMBERS)) is Parameter
+        assert Parameter.from_array(NUMBERS).name == NUMBERS.name
+        assert Parameter.from_array(NUMBERS, name="renamed").name == "renamed"
 
     def test_flow_from_array_with_processes(self):
         from_process = Process(name="a", id=1)
         to_process = Process(name="b", id=2)
-        flow = Flow.from_array(numbers, from_process=from_process, to_process=to_process)
+        flow = Flow.from_array(NUMBERS, from_process=from_process, to_process=to_process)
         assert type(flow) is Flow
         assert flow.from_process is from_process
         assert flow.to_process is to_process
-        assert_array_equal(flow.values, numbers.values)
+        assert_array_equal(flow.values, NUMBERS.values)
 
     def test_flow_to_flow_inherits_processes(self):
         from_process = Process(name="a", id=1)
         to_process = Process(name="b", id=2)
-        original = Flow.from_array(numbers, from_process=from_process, to_process=to_process)
+        original = Flow.from_array(NUMBERS, from_process=from_process, to_process=to_process)
         copied = Flow.from_array(original)
         assert copied.from_process is from_process
         assert copied.to_process is to_process
 
     def test_missing_processes_on_non_flow_raises(self):
         with pytest.raises(ValueError):
-            Flow.from_array(numbers)
+            Flow.from_array(NUMBERS)
         with pytest.raises(ValueError):
-            Flow.from_array(numbers, from_process=Process(name="a", id=1))
+            Flow.from_array(NUMBERS, from_process=Process(name="a", id=1))

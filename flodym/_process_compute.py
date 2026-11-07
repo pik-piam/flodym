@@ -661,7 +661,7 @@ class Snapshot:
     computation fails.
     """
 
-    _STOCK_PRIVATE_ARRAYS = ("_stock_by_cohort", "_outflow_by_cohort")
+    _stock_private_arrays = ("_stock_by_cohort", "_outflow_by_cohort")
 
     def __init__(self, process: "Process") -> None:
         stock = process.stock
@@ -679,7 +679,7 @@ class Snapshot:
         # cohort arrays of dynamic stock models are replaced, not modified, so references suffice
         self.stock_private: dict[str, np.ndarray] = {
             name: getattr(stock, name)
-            for name in self._STOCK_PRIVATE_ARRAYS
+            for name in self._stock_private_arrays
             if hasattr(stock, name)
         }
 

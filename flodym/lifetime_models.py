@@ -14,7 +14,7 @@ from pydantic import BaseModel as PydanticBaseModel
 from pydantic import ConfigDict, PrivateAttr, model_validator
 from typing_extensions import Self
 
-from ._gauss_lobatto import gl_nodes, gl_weights
+from ._gauss_lobatto import GL_NODES, GL_WEIGHTS
 from .dimensions import Dimension, DimensionSet
 from .flodym_arrays import FlodymArray
 
@@ -617,8 +617,8 @@ class LifetimeModel(PydanticBaseModel):
                 f"n_pts_per_interval must be between 1 and 10, got {self.n_pts_per_interval}."
             )
         if self.n_pts_per_interval > 1:
-            points = [(x + 1) / 2 for x in gl_nodes[self.n_pts_per_interval]]
-            weights = [w / 2 for w in gl_weights[self.n_pts_per_interval]]
+            points = [(x + 1) / 2 for x in GL_NODES[self.n_pts_per_interval]]
+            weights = [w / 2 for w in GL_WEIGHTS[self.n_pts_per_interval]]
             return points, weights
         else:
             if self.inflow_at == "start":

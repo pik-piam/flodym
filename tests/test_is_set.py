@@ -15,13 +15,13 @@ from flodym import (
     config,
 )
 
-dims = DimensionSet(
+DIMS = DimensionSet(
     dim_list=[
         Dimension(name="time", letter="t", items=[2000, 2001, 2002]),
         Dimension(name="place", letter="p", items=["Earth", "Moon"]),
     ]
 )
-values = np.arange(6.0).reshape(3, 2) + 1.0
+VALUES = np.arange(6.0).reshape(3, 2) + 1.0
 
 
 @pytest.fixture
@@ -32,51 +32,51 @@ def unset_array_error():
 
 class TestIsSetInference:
     def test_values_given(self):
-        assert FlodymArray(dims=dims, values=values).is_set
+        assert FlodymArray(dims=DIMS, values=VALUES).is_set
 
     def test_values_omitted(self):
-        assert not FlodymArray(dims=dims).is_set
+        assert not FlodymArray(dims=DIMS).is_set
 
     def test_values_none(self):
-        assert not FlodymArray(dims=dims, values=None).is_set
+        assert not FlodymArray(dims=DIMS, values=None).is_set
 
     def test_mark_set_and_unset(self):
-        arr = FlodymArray(dims=dims, values=values)
+        arr = FlodymArray(dims=DIMS, values=VALUES)
         assert arr.mark_unset() is arr
         assert not arr.is_set
-        np.testing.assert_array_equal(arr.values, values)  # values are kept
-        assert FlodymArray(dims=dims).mark_set().is_set
+        np.testing.assert_array_equal(arr.values, VALUES)  # values are kept
+        assert FlodymArray(dims=DIMS).mark_set().is_set
 
     def test_set_values(self):
-        arr = FlodymArray(dims=dims)
-        arr.set_values(values)
+        arr = FlodymArray(dims=DIMS)
+        arr.set_values(VALUES)
         assert arr.is_set
 
     def test_setitem(self):
-        arr = FlodymArray(dims=dims)
-        arr[...] = FlodymArray(dims=dims, values=values)
+        arr = FlodymArray(dims=DIMS)
+        arr[...] = FlodymArray(dims=DIMS, values=VALUES)
         assert arr.is_set
 
     def test_direct_values_access_does_not_mark_set(self):
-        arr = FlodymArray(dims=dims)
+        arr = FlodymArray(dims=DIMS)
         arr.values[0, ...] = 1.0
         assert not arr.is_set
 
     def test_operation_result_is_set(self):
-        assert (2 * FlodymArray(dims=dims)).is_set
+        assert (2 * FlodymArray(dims=DIMS)).is_set
 
     def test_conversions_keep_flag(self):
-        unset = FlodymArray(dims=dims)
+        unset = FlodymArray(dims=DIMS)
         assert not unset.to_class(Parameter).is_set
-        assert not unset.cast_to(dims).is_set
+        assert not unset.cast_to(DIMS).is_set
         assert not unset.copy().is_set
-        assert FlodymArray(dims=dims, values=values).to_class(Parameter).is_set
+        assert FlodymArray(dims=DIMS, values=VALUES).to_class(Parameter).is_set
 
 
 class TestUnsetArrayUsed:
     def test_default_ignore(self, caplog):
         with caplog.at_level(logging.WARNING):
-            2 * FlodymArray(dims=dims)
+            2 * FlodymArray(dims=DIMS)
         assert not caplog.records
 
     def test_warn(self, caplog):
@@ -84,7 +84,7 @@ class TestUnsetArrayUsed:
             config.override(error_behaviors={"unset_array_used": "warn"}),
             caplog.at_level(logging.WARNING),
         ):
-            2 * FlodymArray(dims=dims, name="foo")
+            2 * FlodymArray(dims=DIMS, name="foo")
         assert "'foo'" in caplog.text
 
     @pytest.mark.usefixtures("unset_array_error")
@@ -92,29 +92,29 @@ class TestUnsetArrayUsed:
         "operation",
         [
             lambda a: 2 * a,
-            lambda a: a + FlodymArray(dims=dims, values=values),
+            lambda a: a + FlodymArray(dims=DIMS, values=VALUES),
             lambda a: -a,
             lambda a: 1 / a,
             lambda a: a.sum_over("p"),
             lambda a: a.sum_to("t"),
-            lambda a: a.cast_to(dims),
+            lambda a: a.cast_to(DIMS),
             lambda a: a.abs(),
             lambda a: a[{"p": "Moon"}],
         ],
     )
     def test_error(self, operation):
         with pytest.raises(ValueError, match="not set"):
-            operation(FlodymArray(dims=dims))
+            operation(FlodymArray(dims=DIMS))
 
     @pytest.mark.usefixtures("unset_array_error")
     def test_error_on_assignment(self):
-        target = FlodymArray(dims=dims)
+        target = FlodymArray(dims=DIMS)
         with pytest.raises(ValueError, match="not set"):
-            target[...] = FlodymArray(dims=dims)
+            target[...] = FlodymArray(dims=DIMS)
 
     @pytest.mark.usefixtures("unset_array_error")
     def test_no_error_for_direct_access_and_export(self):
-        arr = FlodymArray(dims=dims)
+        arr = FlodymArray(dims=DIMS)
         arr.values[0, ...] = 1.0
         arr.sum_values_to(("t",))
         arr.to_df()
@@ -135,7 +135,7 @@ class TestUnsetArrayUsed:
 
 class TestStocks:
     def test_compute_marks_set(self):
-        stock = SimpleFlowDrivenStock(dims=dims, inflow=StockArray(dims=dims, values=values))
+        stock = SimpleFlowDrivenStock(dims=DIMS, inflow=StockArray(dims=DIMS, values=VALUES))
         assert not stock.stock.is_set
         stock.compute()
         assert stock.stock.is_set and stock.inflow.is_set and stock.outflow.is_set
@@ -144,15 +144,15 @@ class TestStocks:
         assert "stocks and outflows" in InflowDrivenDSM.compute.__doc__
 
     def test_zero_warning_kept(self, caplog):
-        stock = InflowDrivenDSM(dims=dims, lifetime_model=FixedLifetime(dims=dims, mean=1))
+        stock = InflowDrivenDSM(dims=DIMS, lifetime_model=FixedLifetime(dims=DIMS, mean=1))
         with caplog.at_level(logging.WARNING):
             stock.compute()
         assert "Inflow is zero" in caplog.text
 
     @pytest.mark.usefixtures("unset_array_error")
     def test_unset_inflow_error(self):
-        stock = InflowDrivenDSM(dims=dims, lifetime_model=FixedLifetime(dims=dims, mean=1))
-        stock.inflow.values[...] = values
+        stock = InflowDrivenDSM(dims=DIMS, lifetime_model=FixedLifetime(dims=DIMS, mean=1))
+        stock.inflow.values[...] = VALUES
         with pytest.raises(ValueError, match="not set"):
             stock.compute()
         stock.inflow.mark_set()
@@ -164,7 +164,7 @@ class TestStocks:
                 super().compute()
                 self.stock.values[...] *= 2
 
-        stock = MyStock(dims=dims, inflow=StockArray(dims=dims, values=values))
+        stock = MyStock(dims=DIMS, inflow=StockArray(dims=DIMS, values=VALUES))
         stock.compute()
         assert stock.stock.is_set
-        np.testing.assert_allclose(stock.stock.values, 2 * np.cumsum(values, axis=0))
+        np.testing.assert_allclose(stock.stock.values, 2 * np.cumsum(VALUES, axis=0))
