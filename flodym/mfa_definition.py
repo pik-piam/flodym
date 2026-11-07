@@ -26,9 +26,9 @@ class DimensionDefinition(PydanticBaseModel):
 
     **Examples**
 
-        >>> from flodym import DimensionDefinition
-        >>> time_definition = DimensionDefinition(name="Time", letter="t", dtype=int)
-        >>> region_definition = DimensionDefinition(name="Region", letter="r", dtype=str)
+        >>> import flodym as fd
+        >>> time_definition = fd.DimensionDefinition(name="Time", letter="t", dtype=int)
+        >>> region_definition = fd.DimensionDefinition(name="Region", letter="r", dtype=str)
     """
 
     model_config = ConfigDict(protected_namespaces=())
@@ -65,11 +65,11 @@ class FlowDefinition(_DefinitionWithDimLetters):
 
     **Examples**
 
-        >>> from flodym import FlowDefinition
-        >>> flow_one = FlowDefinition(
+        >>> import flodym as fd
+        >>> flow_one = fd.FlowDefinition(
         ...     from_process_name="fabrication", to_process_name="use", dim_letters=("r", "t")
         ... )
-        >>> flow_two = FlowDefinition(
+        >>> flow_two = fd.FlowDefinition(
         ...     from_process_name="use", to_process_name="end_of_life", dim_letters=("r", "t")
         ... )
 
@@ -217,8 +217,8 @@ class ProcessDefinition(PydanticBaseModel):
 
     **Examples**
 
-        >>> from flodym import ProcessDefinition
-        >>> ProcessDefinition(name="shredder", outflow_shares={"remelting": "shredder yield"})
+        >>> import flodym as fd
+        >>> fd.ProcessDefinition(name="shredder", outflow_shares={"remelting": "shredder yield"})
     """
 
     name: str

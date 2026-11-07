@@ -48,14 +48,7 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 
-from flodym import (
-    Dimension,
-    DimensionSet,
-    InflowDrivenDSM,
-    Parameter,
-    StockArray,
-)
-from flodym.lifetime_models import NormalLifetime
+import flodym as fd
 
 # %% [markdown]
 # ## 2. Define system dimensions and load data
@@ -87,16 +80,16 @@ relative_std = 0.3
 
 # %%
 years = sorted(steel_consumption["Time"].unique())
-dimensions = DimensionSet(
+dimensions = fd.DimensionSet(
     dim_list=[
-        Dimension(letter="t", name="Time", dtype=np.int64, items=years),
-        Dimension(letter="r", name="Region", dtype=str, items=list(country_lifetimes.keys())),
+        fd.Dimension(letter="t", name="Time", dtype=np.int64, items=years),
+        fd.Dimension(letter="r", name="Region", dtype=str, items=list(country_lifetimes.keys())),
     ]
 )
 
-inflow = StockArray.from_df(dims=dimensions, df=steel_consumption)
+inflow = fd.StockArray.from_df(dims=dimensions, df=steel_consumption)
 lifetime_values = np.array(list(country_lifetimes.values()))
-lifetime_mean = Parameter(dims=dimensions[("r",)], values=lifetime_values)
+lifetime_mean = fd.Parameter(dims=dimensions[("r",)], values=lifetime_values)
 lifetime_std = relative_std * lifetime_mean
 
 
@@ -106,14 +99,14 @@ lifetime_std = relative_std * lifetime_mean
 # In this example, we do not need to build a whole MFA system, since we are only considering one dynamic stock. To make a dynamic stock in flodym, we first need to define a lifetime model; in this case we assume a normal distribution of lifetimes. Then, we can initiate the dynamic stock model. Here we choose an inflow driven stock model, because we have data that specifies the inflow and from this and the lifetime model we want to calculate the stock and the outflow.
 
 # %%
-normal_lifetime_model = NormalLifetime(
+normal_lifetime_model = fd.NormalLifetime(
     dims=dimensions,
     time_letter="t",
     mean=lifetime_mean,
     std=lifetime_std,
 )
 
-dynamic_stock = InflowDrivenDSM(
+dynamic_stock = fd.InflowDrivenDSM(
     name="steel",
     dims=dimensions,
     lifetime_model=normal_lifetime_model,

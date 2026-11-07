@@ -19,10 +19,10 @@
 # Of course, this requires knowledge about the flows, stocks and parameters you intend to put in, which are described later.
 
 # %%
-from flodym import MFASystem
+import flodym as fd
 
 
-class MyMFASystem(MFASystem):
+class MyMFASystem(fd.MFASystem):
     def compute(self):
 
         self.flows["sysenv => process_a"][...] = self.parameters["extraction"]
@@ -54,13 +54,11 @@ class MyMFASystem(MFASystem):
 # Let's prepare the attributes we need. We start with the dimensions:
 
 # %%
-from flodym import Dimension, DimensionSet, Flow, Parameter, Process
-
-dims = DimensionSet(
+dims = fd.DimensionSet(
     dim_list=[
-        Dimension(name="Region", letter="r", items=["EU", "US", "MEX"]),
-        Dimension(name="Product", letter="p", items=["A", "B"]),
-        Dimension(name="Time", letter="t", items=[2020]),
+        fd.Dimension(name="Region", letter="r", items=["EU", "US", "MEX"]),
+        fd.Dimension(name="Product", letter="p", items=["A", "B"]),
+        fd.Dimension(name="Time", letter="t", items=[2020]),
     ]
 )
 
@@ -75,9 +73,9 @@ dims = DimensionSet(
 
 # %%
 processes = {
-    "sysenv": Process(name="sysenv", id=0),
-    "process_a": Process(name="process_a", id=1),
-    "process_b": Process(name="process_b", id=2),
+    "sysenv": fd.Process(name="sysenv", id=0),
+    "process_a": fd.Process(name="process_a", id=1),
+    "process_b": fd.Process(name="process_b", id=2),
 }
 
 # %% [markdown]
@@ -92,25 +90,25 @@ processes = {
 
 # %%
 flows = {
-    "sysenv => process_a": Flow(
+    "sysenv => process_a": fd.Flow(
         name="sysenv => process_a",
         dims=dims["r", "t"],
         from_process=processes["sysenv"],
         to_process=processes["process_a"],
     ),
-    "process_a => process_b": Flow(
+    "process_a => process_b": fd.Flow(
         name="process_a => process_b",
         dims=dims,
         from_process=processes["process_a"],
         to_process=processes["process_b"],
     ),
-    "process_a => sysenv": Flow(
+    "process_a => sysenv": fd.Flow(
         name="process_a => sysenv",
         dims=dims,
         from_process=processes["process_a"],
         to_process=processes["sysenv"],
     ),
-    "process_b => sysenv": Flow(
+    "process_b => sysenv": fd.Flow(
         name="process_b => sysenv",
         dims=dims["r", "t"],
         from_process=processes["process_b"],
@@ -125,11 +123,13 @@ flows = {
 import numpy as np
 
 parameters = {
-    "extraction": Parameter(name="extraction", dims=dims["r", "t"], values=3.0 * np.ones((3, 1))),
-    "product_shares": Parameter(
+    "extraction": fd.Parameter(
+        name="extraction", dims=dims["r", "t"], values=3.0 * np.ones((3, 1))
+    ),
+    "product_shares": fd.Parameter(
         name="product_shares", dims=dims[("p",)], values=np.array([0.6, 0.4])
     ),
-    "process_a_yield": Parameter(
+    "process_a_yield": fd.Parameter(
         name="process_a_yield", dims=dims[("p",)], values=np.array([0.8, 0.9])
     ),
 }
@@ -199,14 +199,12 @@ my_mfa_system.check_mass_balance()
 # The `error_behavior` and `tolerance` arguments of the check methods override the configuration for a single call.
 
 # %%
-import flodym
+fd.config.error_behaviors.check_flows = "error"
 
-flodym.config.error_behaviors.check_flows = "error"
-
-with flodym.config.override(relative_tolerance=1000.0, error_behaviors={"mass_balance": "warn"}):
+with fd.config.override(relative_tolerance=1000.0, error_behaviors={"mass_balance": "warn"}):
     my_mfa_system.check_mass_balance()
 
-with flodym.config.override(checks={"mass_balance_after_compute": True}):
+with fd.config.override(checks={"mass_balance_after_compute": True}):
     my_mfa_system.compute()
 
 my_mfa_system.check_flows(error_behavior="info")
@@ -249,12 +247,10 @@ for name, f in my_mfa_system.flows.items():
 # `Process.compute()` computes a single process. If it is underdetermined, i.e. not enough values are given, it raises an `UnderdeterminedError` and leaves the process unchanged:
 
 # %%
-from flodym import UnderdeterminedError
-
 my_mfa_system.mark_all_unset()
 try:
     my_mfa_system.processes["process_a"].compute()
-except UnderdeterminedError as error:
+except fd.UnderdeterminedError as error:
     print(error)
 
 # %% [markdown]
@@ -302,39 +298,37 @@ print("Not computed:", my_mfa_system.compute_all_possible())
 # For processes, all that's needed for definition is a list of names, so there's no dedicated definition object.
 
 # %%
-from flodym import make_processes
-
 process_names = [
     "sysenv",
     "process_a",
     "process_b",
 ]
-processes = make_processes(process_names)
+processes = fd.make_processes(process_names)
 
 # %% [markdown]
 # For flows, there is a dedicated definition object:
 
 # %%
-from flodym import FlowDefinition
-
 flow_definitions = [
-    FlowDefinition(from_process_name="sysenv", to_process_name="process_a", dim_letters=("r", "t")),
-    FlowDefinition(
+    fd.FlowDefinition(
+        from_process_name="sysenv", to_process_name="process_a", dim_letters=("r", "t")
+    ),
+    fd.FlowDefinition(
         from_process_name="process_a", to_process_name="process_b", dim_letters=("r", "p", "t")
     ),
-    FlowDefinition(
+    fd.FlowDefinition(
         from_process_name="process_a", to_process_name="sysenv", dim_letters=("r", "p", "t")
     ),
-    FlowDefinition(from_process_name="process_b", to_process_name="sysenv", dim_letters=("r", "t")),
+    fd.FlowDefinition(
+        from_process_name="process_b", to_process_name="sysenv", dim_letters=("r", "t")
+    ),
 ]
 
 # %% [markdown]
 # It can then be transformed, for which the actual `DimensionSet` and `Process` objects are needed:
 
 # %%
-from flodym import make_empty_flows
-
-flows = make_empty_flows(processes=processes, flow_definitions=flow_definitions, dims=dims)
+flows = fd.make_empty_flows(processes=processes, flow_definitions=flow_definitions, dims=dims)
 
 print("Flow names:\n ", "\n  ".join(flows))
 
@@ -343,20 +337,15 @@ print("Flow names:\n ", "\n  ".join(flows))
 # If you don't like this, you can either choose a different naming function in the global config option `flodym.config.flow_naming`, write your own (not shown), or override the names in the `FlowDefinition` with the `name_override` attribute:
 
 # %%
-import flodym
-from flodym.flow_naming import (
-    # shown below
-    process_ids,
-    # not shown here. Good to generate valid file and variable names.
-    process_names_no_spaces,
-    # the default
-    process_names_with_arrow,
-)
+# predefined naming functions:
+# - fd.process_ids: shown below
+# - fd.process_names_no_spaces: not shown here. Good to generate valid file and variable names.
+# - fd.process_names_with_arrow: the default
 
 # other naming function, here only within the with block.
-# Use flodym.config.flow_naming = process_ids to change it permanently.
-with flodym.config.override(flow_naming=process_ids):
-    flows_a = make_empty_flows(
+# Use fd.config.flow_naming = fd.process_ids to change it permanently.
+with fd.config.override(flow_naming=fd.process_ids):
+    flows_a = fd.make_empty_flows(
         processes=processes,
         flow_definitions=flow_definitions,
         dims=dims,
@@ -365,14 +354,14 @@ print("Flow names with ids:\n ", "\n  ".join(flows_a), "\n")
 
 # custom name
 flow_definitions_b = [
-    FlowDefinition(
+    fd.FlowDefinition(
         from_process_name="sysenv",
         to_process_name="process_a",
         dim_letters=("r", "t"),
         name_override="my_custom_name",
     )
 ]
-flows_b = make_empty_flows(
+flows_b = fd.make_empty_flows(
     processes=processes,
     flow_definitions=flow_definitions_b,
     dims=dims,
