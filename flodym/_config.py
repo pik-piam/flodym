@@ -109,6 +109,13 @@ class ErrorBehaviors(BaseModel, validate_assignment=True):
     were set are changed by the computation. Also applies to processes whose flows were all set
     by the computation of neighboring processes. Inconsistent mass balances are handled by
     :py:attr:`mass_balance`. If ``"ignore"``, the checks are skipped."""
+    extensivity: ErrorBehavior = ErrorBehavior.WARN
+    """What to do if an operation is inconsistent with the extensivity of arrays (see
+    :py:attr:`flodym.FlodymArray.extensive`): If an array which is not extensive is summed over
+    dimensions, an array which is not intensive is copied along new dimensions, arrays of
+    different extensivity are added, subtracted, compared or assigned to each other, an array is
+    converted to a class of different default extensivity, or a parameter's extensivity
+    contradicts its use in :py:meth:`flodym.MFASystem.link_parameters`."""
     unused_dimension_splitter: ErrorBehavior = ErrorBehavior.WARN
     """What to do if a process has a dimension splitter, but it is not used when computing the
     flows of its side in :py:meth:`flodym.Process.compute`, since no dimensions have to be

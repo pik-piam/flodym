@@ -202,6 +202,10 @@ class ParameterDefinition(_DefinitionWithDimLetters):
 
     name: str
     """Name of the parameter."""
+    extensive: bool | None = None
+    """Whether the parameter is extensive, see :py:attr:`flodym.FlodymArray.extensive`. If
+    None, it is set by :py:meth:`flodym.MFASystem.link_parameters` for parameters used as shares,
+    dimension splitters or prescribed arrays."""
 
 
 class ProcessDefinition(PydanticBaseModel):

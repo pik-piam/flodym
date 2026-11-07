@@ -234,6 +234,7 @@ class Stock(PydanticBaseModel):
             dims=self.dims,
             values=np.diff(self.stock.values, axis=0, prepend=0),
             name=f"{self.name}_stock_change",
+            extensive=True,
         )
 
     def get_mass_balance(self) -> FlodymArray:
@@ -248,6 +249,7 @@ class Stock(PydanticBaseModel):
             dims=self.dims,
             values=net_inflow_whole_period - self.stock_change.values,
             name=f"{self.name}_mass_balance",
+            extensive=True,
         )
 
     @property

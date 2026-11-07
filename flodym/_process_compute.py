@@ -529,7 +529,8 @@ class ProcessComputation:
         if config.error_behaviors.process_shares == ErrorBehavior.IGNORE:
             return
         added_dims = splitter.dims - total_dims
-        splitter_sum = splitter.sum_to((splitter.dims & total_dims).letters)
+        # values level, since summing the intensive splitter is intended here
+        splitter_sum = splitter.sum_values_to((splitter.dims & total_dims).letters)
         tolerance = share_tolerance(n_summed=int(np.prod(added_dims.shape)))
         max_error = max_abs(splitter_sum - 1.0)
         if not max_error <= tolerance:
