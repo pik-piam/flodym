@@ -12,6 +12,7 @@
    :caption: Getting Started
 
    getting_started
+   migration_v2
 
 .. toctree::
    :hidden:
