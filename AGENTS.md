@@ -14,7 +14,9 @@ uv run pytest
 CI runs both of these on Python 3.10 to 3.12, on Linux, macOS and Windows.
 
 Never run any formatter, linter, pre-commit - except if you work on the linter configuration itself.
-In that case, run `uvx pre-commit run --all-files` to check the linter configuration.
+In that case, run only the ruff hooks, `uvx pre-commit run ruff-check --all-files` and
+`uvx pre-commit run ruff-format --all-files`, to check the linter configuration. Running all hooks
+would also sync the notebooks (see below).
 
 # Repository structure
 
@@ -43,6 +45,18 @@ files. Both are tracked in git, but the `.py` file is the source of truth.
   (`D` rules and `W505` in `pyproject.toml`).
 - Do not repeat types in the `Args:` and `Returns:` sections of docstrings. Sphinx takes them from
   the type hints.
+- `__init__` and dunder methods need no docstring. Document constructor arguments in the class
+  docstring. Examples in docstrings use doctest syntax (`>>>`, and `...` for continuation lines).
+- Naming: module-level constants in `ALL_CAPS`; class-level constants (`ClassVar`) in lowercase,
+  e.g. `_prm_names`; `TypeVar`s and type aliases in `CapWords`.
+- Types that appear in public signatures must be public as well: either export them, or write
+  them inline, e.g. `Literal["forward", "backward"]`. Base classes and types that users should
+  not use directly are listed under "Base classes and types" in the API docs, as `py:class` or
+  `py:data` entries with a short description and without their full API.
+- Order class members as follows: fields and private attributes, validators (keep their relative
+  order, pydantic runs them in definition order), `__init__` and other dunder methods, alternative
+  constructors (`from_*`), properties, public methods, private methods. Keep related methods
+  together, e.g. a method and its alias.
 - Add pytests for critical functionality
 - Modules whose name starts with `_`, such as `flodym/_df_to_flodym_array.py`, are private.
   Names inside private modules need no leading underscore.
@@ -55,5 +69,10 @@ files. Both are tracked in git, but the `.py` file is the source of truth.
 - Adding something to the public API takes three edits: the definition, an explicit re-export in
   `flodym/__init__.py` using the `X as X` form that the rest of that file uses, and an entry in the
   matching `docs/source/api.*.rst`.
+- Renaming or removing public API requires a deprecation, unless it was never released. Keep the
+  old name working and emit a `DeprecationWarning` with `stacklevel=2` and the message
+  `"<old> is deprecated since v<X>. It will be removed in v3.0.0. Use <new> instead."`.
+- Changes that can affect existing models, including deprecations, belong in
+  `docs/source/migration_v2.rst`.
 - `flodym/example_objects.py` provides a ready-made `ExampleMFA` for tests
 - use [Conventional Commits](https://www.conventionalcommits.org/) restricted to the types `feat`, `fix`, `docs`, and `chore`.
