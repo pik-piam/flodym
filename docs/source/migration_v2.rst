@@ -7,8 +7,8 @@ the API reference.
 
 Most models run under v2 without changes. The changes that are most likely to matter are:
 
-- stricter checks of the model structure, which turn silent overwrites into errors
-  (see :ref:`v2-structure`);
+- stricter checks of the model structure and of class arguments, which turn silent overwrites
+  and ignored arguments into errors (see :ref:`v2-structure`);
 - a stricter mass balance check (see :ref:`v2-mass-balance`);
 - changed results of dynamic stock models with unequal time steps (see :ref:`v2-stocks`);
 - internal names that now start with an underscore, which matters if you override a validator
@@ -42,6 +42,13 @@ objects instead.
 - **Subclasses of** ``DataReader`` must implement both ``read_dimension()`` and
   ``read_parameter_values()``, since ``DataReader`` is now an abstract base class. Otherwise,
   creating an instance raises a ``TypeError``.
+- **Unknown arguments** of flodym classes raise a ``ValidationError``. In v1, most classes
+  ignored them, so that a misspelled argument with a default value went unnoticed, e.g.
+  ``FlowDefinition(..., name_overide="x")``. This also applies to definitions loaded from
+  dictionaries or configuration files.
+- **Attributes of** ``MFASystem`` **subclasses** must be declared as fields, e.g.
+  ``cfg: MyConfig`` in the class body. In v1, ``MFASystem`` accepted undeclared keyword
+  arguments and attributes. The same applies to the array and process graph plotters.
 
 
 .. _v2-mass-balance:

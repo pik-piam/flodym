@@ -9,12 +9,12 @@ from typing import Any, Literal, overload
 import numpy as np
 import pandas as pd
 from pydantic import AliasChoices, Field, model_validator
-from pydantic import BaseModel as PydanticBaseModel
 
+from ._base_model import FlodymBaseModel
 from .mfa_definition import DimensionDefinition
 
 
-class Dimension(PydanticBaseModel):
+class Dimension(FlodymBaseModel):
     """One of multiple dimensions over which MFA arrays are defined.
 
     Defined by a name, a letter for shorter addressing, and a list of items.
@@ -145,7 +145,7 @@ class Dimension(PydanticBaseModel):
         return DimensionSet(dim_list=[self])
 
 
-class DimensionSet(PydanticBaseModel):
+class DimensionSet(FlodymBaseModel):
     """A set of Dimension objects which MFA arrays are defined over.
 
     **Example**

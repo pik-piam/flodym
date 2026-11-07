@@ -14,10 +14,6 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 from pydantic import (
-    BaseModel as PydanticBaseModel,
-)
-from pydantic import (
-    ConfigDict,
     Field,
     ModelWrapValidatorHandler,
     ValidationInfo,
@@ -26,6 +22,7 @@ from pydantic import (
 )
 from typing_extensions import Self
 
+from ._base_model import FlodymBaseModel
 from ._config import config, handle_error
 from ._df_to_flodym_array import DataFrameToFlodymDataConverter
 from .dimensions import Dimension, DimensionSet
@@ -39,7 +36,7 @@ def _is_iterable(arg: object) -> bool:
     return isinstance(arg, Iterable) and not isinstance(arg, (str, Dimension))
 
 
-class FlodymArray(PydanticBaseModel):
+class FlodymArray(FlodymBaseModel):
     """Parent class for an array with pre-defined dimensions, which are addressed by name.
 
     Operations between different multi-dimensional arrays can then be performed conveniently, as
@@ -92,8 +89,6 @@ class FlodymArray(PydanticBaseModel):
     The dimensions of a FlodymArray stored as a :py:class:`flodym.DimensionSet` object in the
     'dims' attribute.
     """
-
-    model_config = ConfigDict(arbitrary_types_allowed=True, protected_namespaces=())
 
     dims: DimensionSet
     """Dimensions of the FlodymArray. A single :py:class:`flodym.Dimension` is converted to a
@@ -1233,8 +1228,6 @@ class Flow(_PrescribableArray):
     and these would get filled with zeros.
     See the validation (filling) method in :py:class:`FlodymArray`.
     """
-
-    model_config = ConfigDict(protected_namespaces=())
 
     from_process: Process
     """Process from which the flow originates."""

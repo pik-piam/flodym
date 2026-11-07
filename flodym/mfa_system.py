@@ -9,11 +9,11 @@ from os import PathLike
 from typing import Any, SupportsFloat
 
 import numpy as np
-from pydantic import BaseModel as PydanticBaseModel
-from pydantic import ConfigDict, model_validator
+from pydantic import model_validator
 from typing_extensions import Self
 
 from ._attribute_dict import AttributeDict
+from ._base_model import FlodymBaseModel
 from ._checks import config_hint, report_balance_failures
 from ._config import ErrorBehavior, config, handle_error
 from .data_reader import (
@@ -35,7 +35,7 @@ from .stocks import Stock
 logger = logging.getLogger(__name__)
 
 
-class MFASystem(PydanticBaseModel):
+class MFASystem(FlodymBaseModel):
     """Base class for the calculation of a Material Flow Analysis (MFA) system.
 
     An MFA system consists of a set of processes, flows, stocks defined over a set of dimensions.
@@ -59,8 +59,6 @@ class MFASystem(PydanticBaseModel):
     attributes, e.g. ``mfa.flows.sysenv__to__process_1``. Dictionaries assigned to these fields
     after initialization are not converted.
     """
-
-    model_config = ConfigDict(protected_namespaces=(), extra="allow")
 
     dims: DimensionSet
     """All dimensions that appear in the MFA system."""
