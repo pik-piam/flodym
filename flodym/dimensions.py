@@ -280,9 +280,7 @@ class Dimension(PydanticBaseModel):
         **Example**
 
         >>> building_types = Dimension(name="Building type", letter="b", items=["Com", "Res"])
-        >>> residential_types = Dimension(
-        ...     name="Residential type", letter="r", items=["Sin", "Mul"]
-        ... )
+        >>> residential_types = Dimension(name="Residential type", letter="r", items=["Sin", "Mul"])
         >>> sub_types = building_types.split(
         ...     name="Building sub-type", letter="s", splitting={"Res": residential_types}
         ... )

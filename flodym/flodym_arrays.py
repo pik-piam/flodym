@@ -553,8 +553,7 @@ class FlodymArray(PydanticBaseModel):
         fine_dim = self._dim_related_to(target, finer=True)
         if fine_dim is None:
             raise ValueError(
-                f"Array '{self.name}' has no dimension which is a sub-dimension of "
-                f"'{target.name}'."
+                f"Array '{self.name}' has no dimension which is a sub-dimension of '{target.name}'."
             )
         if weights is None:
             return self._aggregated_to(target)
@@ -595,8 +594,7 @@ class FlodymArray(PydanticBaseModel):
         coarse_dim = self._dim_related_to(target, finer=False)
         if coarse_dim is None:
             raise ValueError(
-                f"Array '{self.name}' has no dimension which '{target.name}' is a sub-dimension "
-                "of."
+                f"Array '{self.name}' has no dimension which '{target.name}' is a sub-dimension of."
             )
         result = self._disaggregated_to(target)
         if weights is None:
