@@ -310,14 +310,14 @@ show_array(flow_b)
 # the product of an extensive and an intensive array is extensive.
 
 # %%
-share_a = FlodymArray(
+share_a = fd.FlodymArray(
     dims=dims.get_subset(("r",)), values=np.array([0.1, 0.2, 0.3]), extensive=False
 )
-share_b = FlodymArray(dims=dims.get_subset(("p",)), values=np.array([0.4, 0.5]), extensive=False)
+share_b = fd.FlodymArray(dims=dims.get_subset(("p",)), values=np.array([0.4, 0.5]), extensive=False)
 share_sum = share_a + share_b
 print("dimensions of the sum of intensive arrays:", share_sum.dims.letters)
 
-mass = FlodymArray(dims=dims["r", "p"], values=np.ones((3, 2)), extensive=True)
+mass = fd.FlodymArray(dims=dims["r", "p"], values=np.ones((3, 2)), extensive=True)
 print("extensive flag of extensive * intensive:", (mass * share_a).extensive)
 print("extensive flag of extensive / extensive:", (mass / mass.sum_to(("r",))).extensive)
 
