@@ -1,5 +1,31 @@
 # Changelog
 
+## [2.0.0-rc.1](https://github.com/pik-piam/flodym/compare/v1.1.0...v2.0.0-rc.1) (2026-11-07)
+
+
+### 🔖 Features
+
+* attribute access for MFASystem flows, stocks, processes and parameters ([#203](https://github.com/pik-piam/flodym/issues/203)) ([9270773](https://github.com/pik-piam/flodym/commit/92707731db1515fe54f865d9304061f04df4f5e3))
+* auto-compute processes ([#202](https://github.com/pik-piam/flodym/issues/202)) ([3e7c89b](https://github.com/pik-piam/flodym/commit/3e7c89bb2b4a2b5d8c3bce35cc2f2d561ef6cb56))
+* dynamic stock compute modes, initial stock and inflow by cohort ([#200](https://github.com/pik-piam/flodym/issues/200)) ([100fdd6](https://github.com/pik-piam/flodym/commit/100fdd6f995c65697967b03d40134552805dee99))
+* is_set property ([#124](https://github.com/pik-piam/flodym/issues/124)) ([0b78f04](https://github.com/pik-piam/flodym/commit/0b78f04b8598be47baf3d697be5ed33b44511b67))
+* new lifetime models, competing risks, period effects and mean lifetime ([#201](https://github.com/pik-piam/flodym/issues/201)) ([d991a94](https://github.com/pik-piam/flodym/commit/d991a94c42b5dd24b06659c6e474687b3ec79591))
+* new mass balance ([#127](https://github.com/pik-piam/flodym/issues/127)) ([2df41da](https://github.com/pik-piam/flodym/commit/2df41da9e420fecd4d1afc38008a8552e67da382))
+* process links ([#126](https://github.com/pik-piam/flodym/issues/126)) ([8df3ff1](https://github.com/pik-piam/flodym/commit/8df3ff1619633631990e8655e584e98c6bf632ea))
+
+
+### 📚 Documentation
+
+* add migration guide from v1 to v2 ([#205](https://github.com/pik-piam/flodym/issues/205)) ([4e3081f](https://github.com/pik-piam/flodym/commit/4e3081f479c523ac9e0cde06ca6c969ff7ebff37))
+
+
+### 🧹 Miscellaneous
+
+* configure prerelease 2.0.0-rc.1 on v2 branch ([7997bcf](https://github.com/pik-piam/flodym/commit/7997bcf39b73d30a92843504d9a2a35f45bf77a9))
+* deprecated interfaces to be removed in v3.0.0 ([#206](https://github.com/pik-piam/flodym/issues/206)) ([851fe0c](https://github.com/pik-piam/flodym/commit/851fe0cf406c43f48069fd431142bf790ac4fabd))
+* type hints, docstrings, private names and docstring linting ([#210](https://github.com/pik-piam/flodym/issues/210)) ([26a36a5](https://github.com/pik-piam/flodym/commit/26a36a5c63d3cec65b63fce86c21313d7081a413))
+* update pre-commit ([#181](https://github.com/pik-piam/flodym/issues/181)) ([ee27639](https://github.com/pik-piam/flodym/commit/ee27639aaaa6355e775b064f13621d6ba1fc1484))
+
 ## [1.1.0](https://github.com/pik-piam/flodym/compare/v1.0.0...v1.1.0) (2026-10-09)
 
 
