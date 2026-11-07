@@ -1,3 +1,8 @@
+"""flodym: Flexible Open Dynamic Material Systems Model.
+
+The public API is re-exported here; see the API section of the documentation.
+"""
+
 from flodym._attribute_dict import AttributeDict as AttributeDict
 from flodym._process_compute import (
     UnderdeterminedError as UnderdeterminedError,

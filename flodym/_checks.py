@@ -24,8 +24,8 @@ def config_hint(error_behavior: str, tolerance: bool = False, check: str | None 
     return " Configure with " + ", ".join(options) + "."
 
 
-def max_abs(array: Union["FlodymArray", float]) -> float:
-    """Largest absolute value of a FlodymArray or scalar. NaN if any value is NaN."""
+def max_abs(array: Union["FlodymArray", np.ndarray, float]) -> float:
+    """Largest absolute value of a FlodymArray, numpy array or scalar. NaN if any value is NaN."""
     values = np.asarray(getattr(array, "values", array))
     return float(np.max(np.abs(values), initial=0.0))
 
@@ -47,8 +47,17 @@ def report_balance_failures(
     hint: str,
     success_message: str,
 ) -> bool:
-    """Handle the results of one or several mass balance checks, given as returned by
-    :py:func:`balance_failure`. Returns whether all checks passed."""
+    """Handle the results of one or several mass balance checks.
+
+    Args:
+        failures: Results of the checks, as returned by :py:func:`balance_failure`.
+        error_behavior: What to do if any check failed.
+        hint: Appended to the error message, e.g. from :py:func:`config_hint`.
+        success_message: Logged at info level if all checks passed.
+
+    Returns:
+        Whether all checks passed.
+    """
     failed = [f for f in failures if f is not None]
     if failed:
         message = "Mass balance check failed for " + ", ".join(failed) + "." + hint

@@ -7,11 +7,12 @@ import logging
 import warnings
 from abc import abstractmethod
 from collections.abc import Callable
-from typing import TYPE_CHECKING, ClassVar, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Concatenate, ParamSpec, TypeVar
 
 import numpy as np
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import ConfigDict, model_validator
+from typing_extensions import Self
 
 from ._checks import balance_failure, config_hint, report_balance_failures
 from ._process_compute import UnderdeterminedError
@@ -27,15 +28,21 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 StockSubtype = TypeVar("StockSubtype", bound="Stock")
+_ComputeParams = ParamSpec("_ComputeParams")
+_ComputeReturn = TypeVar("_ComputeReturn")
 
 
-def _wrap_compute(compute: Callable) -> Callable:
+def _wrap_compute(
+    compute: Callable[Concatenate[StockSubtype, _ComputeParams], _ComputeReturn],
+) -> Callable[Concatenate[StockSubtype, _ComputeParams], _ComputeReturn]:
     """Adds checks before a stock compute routine, and marks the stock arrays as set and checks
     the mass balance of the stock (if ``flodym.config.checks.mass_balance_after_compute``) after it.
     Nested calls (e.g. via ``super().compute()``) only run the outermost checks."""
 
     @functools.wraps(compute)
-    def wrapper(self: "Stock", *args, **kwargs):
+    def wrapper(
+        self: StockSubtype, *args: _ComputeParams.args, **kwargs: _ComputeParams.kwargs
+    ) -> _ComputeReturn:
         if self._in_compute:
             return compute(self, *args, **kwargs)
         self._check_needed_arrays()
@@ -85,13 +92,13 @@ class Stock(PydanticBaseModel):
     """Process the stock is associated with, if any. Needed for example for the mass balance."""
     time_letter: str = "t"
     """Letter of the time dimension in the dimensions set, to make sure it's the first one."""
-    _t: UnevenTimeDim = None
+    _t: UnevenTimeDim | None = None
     _in_compute: bool = False
     _n_equations: ClassVar[int] = 1
     """Number of equations relating inflow, outflow and stock. Used to detect overdetermined
     processes in :py:attr:`flodym.Process.is_overdetermined`."""
 
-    def __init_subclass__(cls, **kwargs):
+    def __init_subclass__(cls, **kwargs: Any) -> None:
         """Wrap the compute method of every subclass with checks before and
         marking the stock arrays as set afterwards."""
         super().__init_subclass__(**kwargs)
@@ -100,7 +107,9 @@ class Stock(PydanticBaseModel):
             cls.compute = _wrap_compute(compute)
 
     @model_validator(mode="after")
-    def validate_stock_arrays(self):
+    def validate_stock_arrays(self) -> Self:
+        """Create stock, inflow and outflow arrays if not given, and check the dimensions of
+        given ones."""
         if self.stock is None:
             self.stock = StockArray(dims=self.dims, name=f"{self.name}_stock")
         elif self.stock.dims.letters != self.dims.letters:
@@ -122,7 +131,8 @@ class Stock(PydanticBaseModel):
         return self
 
     @model_validator(mode="after")
-    def validate_time_first_dim(self):
+    def validate_time_first_dim(self) -> Self:
+        """Check that the time dimension is the first dimension."""
         if self.dims.letters[0] != self.time_letter:
             raise ValueError(
                 f"Time dimension must be the first dimension, i.e. time_letter (now {self.time_letter}) must be the first letter in dims.letters (now {self.dims.letters[0]})."
@@ -130,12 +140,14 @@ class Stock(PydanticBaseModel):
         return self
 
     @model_validator(mode="after")
-    def init_t(self):
+    def init_t(self) -> Self:
+        """Initialize the time interval bounds used to convert between annual and whole-period
+        flows."""
         self._t = UnevenTimeDim(dim=self.dims[self.time_letter])
         return self
 
     @abstractmethod
-    def compute(self):
+    def compute(self) -> None:
         """Compute the missing stock arrays from the known ones.
 
         In all subclasses, ``_check_needed_arrays()`` is automatically called before, and the
@@ -143,10 +155,10 @@ class Stock(PydanticBaseModel):
         """
 
     @abstractmethod
-    def _check_needed_arrays(self):
+    def _check_needed_arrays(self) -> None:
         pass
 
-    def _compute_process(self, computation: "ProcessComputation"):
+    def _compute_process(self, computation: "ProcessComputation") -> None:
         """Compute the stock together with the unknown in- and outflows of its process, as part
         of :py:meth:`flodym.Process.compute`. The inflows of the process sum to the stock
         inflow, the outflows to the stock outflow.
@@ -187,20 +199,20 @@ class Stock(PydanticBaseModel):
                 ),
             )
 
-    def mark_all_set(self):
+    def mark_all_set(self) -> None:
         """Mark all StockArrays (inflow, outflow, stock) as set."""
         self.inflow.mark_set()
         self.outflow.mark_set()
         self.stock.mark_set()
 
-    def mark_all_unset(self):
+    def mark_all_unset(self) -> None:
         """Mark all StockArrays (inflow, outflow, stock) as unset."""
         self.inflow.mark_unset()
         self.outflow.mark_unset()
         self.stock.mark_unset()
 
     @property
-    def shape(self) -> tuple:
+    def shape(self) -> tuple[int, ...]:
         """Shape of the stock, inflow, outflow arrays, defined by the dimensions."""
         return self.dims.shape
 
@@ -209,14 +221,16 @@ class Stock(PydanticBaseModel):
         """ID of the process the stock is associated with."""
         return self.process.id
 
-    def to_stock_type(self, desired_stock_type: type[StockSubtype], **kwargs) -> StockSubtype:
+    def to_stock_type(
+        self, desired_stock_type: type[StockSubtype], **kwargs: Any
+    ) -> StockSubtype:
         """Return an object of a new stock type with values and dimensions the same as the original.
         `**kwargs` can be used to pass additional model attributes as required by the desired stock
         type, if these are not contained in the original stock type.
         """
         return desired_stock_type(**self.__dict__, **kwargs)
 
-    def copy(self) -> "Stock":
+    def copy(self) -> Self:
         """Return a copy of the Stock.
 
         The copy has its own :py:class:`flodym.DimensionSet` and its own stock, inflow and
@@ -353,7 +367,7 @@ class Stock(PydanticBaseModel):
         """divide flow over whole period by interval length to get annual flow"""
         return np.einsum("t...,t->t...", whole_period_flow, 1.0 / self._t.interval_lengths)
 
-    def __str__(self):
+    def __str__(self) -> str:
         base = f"{self.__class__.__name__} '{self.name}'"
         dims = f" with dims ({','.join(self.dims.letters)}) and shape {self.shape};"
         return base + dims
@@ -362,7 +376,7 @@ class Stock(PydanticBaseModel):
 class SimpleFlowDrivenStock(Stock):
     """Given inflows and outflows, the stock can be calculated without a lifetime model or cohorts."""
 
-    def _check_needed_arrays(self):
+    def _check_needed_arrays(self) -> None:
         if (
             np.max(np.abs(self.inflow.values)) < 1e-10
             and np.max(np.abs(self.outflow.values)) < 1e-10
@@ -377,12 +391,13 @@ class SimpleFlowDrivenStock(Stock):
                 ),
             )
 
-    def compute(self):
+    def compute(self) -> None:
+        """Compute the stock as the cumulative sum of the net inflow."""
         annual_net_inflow = self.inflow.values - self.outflow.values
         net_inflow_whole_period = self._to_whole_period(annual_net_inflow)
         self.stock.values[...] = np.cumsum(net_inflow_whole_period, axis=0)
 
-    def _compute_process(self, computation: "ProcessComputation"):
+    def _compute_process(self, computation: "ProcessComputation") -> None:
         """Compute the stock and the unknown in- and outflows of its process.
 
         If the stock is already computed, its inflow and outflow are the totals of the in- and
@@ -433,20 +448,30 @@ class DynamicStockModel(Stock):
     LifetimeModel subclass. For available subclasses, see `flodym.lifetime_models`.
     """
     cohort_dim: Dimension | None = None
+    """Cohort (age-cohort or production year) dimension. Must have the same items as the time
+    dimension, but a different letter and name. Required for :py:attr:`dims_cohort`,
+    ``inflow_by_cohort``, and for returning the arrays by cohort as :py:class:`flodym.StockArray`.
+    """
     inflow_by_cohort: StockArray | None = None
     """Annual inflow by year and age-cohort, which can also enter older cohorts.
     Requires ``cohort_dim``. Only used by :py:meth:`compute_inflow_by_cohort_driven`.
     """
 
-    _outflow_by_cohort: np.ndarray = None
-    _stock_by_cohort: np.ndarray = None
-    _dims_cohort: DimensionSet = None
+    _outflow_by_cohort: np.ndarray | None = None
+    _stock_by_cohort: np.ndarray | None = None
+    _dims_cohort: DimensionSet | None = None
     _initial_stock_by_cohort: np.ndarray | None = None
-    _initial_stock_year: int = None
+    _initial_stock_year: int | None = None
     _initial_stock_included_in_inflow: bool = False
     _n_equations: ClassVar[int] = 2
 
-    def validate_cohort_dim(self):
+    def validate_cohort_dim(self) -> None:
+        """Check that the cohort dimension is consistent with the time dimension and not part of
+        the stock dimensions.
+
+        Raises:
+            ValueError: If the cohort dimension is invalid.
+        """
         t = self.dims[self.time_letter]
         c = self.cohort_dim
         if c.letter == t.letter or c.name == t.name:
@@ -459,13 +484,16 @@ class DynamicStockModel(Stock):
             raise ValueError("Cohort dimension must not be part of the stock dimensions.")
 
     @model_validator(mode="after")
-    def init_cohort_arrays(self):
+    def init_cohort_arrays(self) -> Self:
+        """Initialize the stock and outflow by cohort with zeros."""
         self._stock_by_cohort = np.zeros(self._shape_cohort)
         self._outflow_by_cohort = np.zeros(self._shape_cohort)
         return self
 
     @model_validator(mode="after")
-    def init_inflow_by_cohort(self):
+    def init_inflow_by_cohort(self) -> Self:
+        """Create ``inflow_by_cohort`` if not given and ``cohort_dim`` is given, and check the
+        dimensions of a given one."""
         if self.inflow_by_cohort is None:
             if self.cohort_dim is not None:
                 self.inflow_by_cohort = StockArray(
@@ -478,7 +506,8 @@ class DynamicStockModel(Stock):
         return self
 
     @model_validator(mode="after")
-    def init_lifetime_model(self):
+    def init_lifetime_model(self) -> Self:
+        """Instantiate the lifetime model if given as a class, and check its dimensions."""
         if isinstance(self.lifetime_model, type):
             if not issubclass(self.lifetime_model, LifetimeModel):
                 raise TypeError("lifetime_model must be a subclass of LifetimeModel.")
@@ -487,10 +516,10 @@ class DynamicStockModel(Stock):
             raise ValueError("Lifetime model dimensions do not match stock dimensions.")
         return self
 
-    def _check_needed_arrays(self):
+    def _check_needed_arrays(self) -> None:
         self.lifetime_model._check_prms_set()
 
-    def _check_inflow_by_cohort_known(self):
+    def _check_inflow_by_cohort_known(self) -> None:
         if self.inflow_by_cohort is None:
             raise ValueError(
                 "Inflow by cohort driven computation requires cohort_dim to be given at DSM initialization."
@@ -499,7 +528,7 @@ class DynamicStockModel(Stock):
             self.inflow_by_cohort, "Inflow by cohort", "This will lead to a zero stock and outflow."
         )
 
-    def mark_all_unset(self):
+    def mark_all_unset(self) -> None:
         """Mark all StockArrays (inflow, outflow, stock, and inflow_by_cohort, if present) as
         unset."""
         super().mark_all_unset()
@@ -507,7 +536,12 @@ class DynamicStockModel(Stock):
             self.inflow_by_cohort.mark_unset()
 
     @property
-    def dims_cohort(self):
+    def dims_cohort(self) -> DimensionSet:
+        """Dimensions of the arrays by cohort: time, cohort, and the other stock dimensions.
+
+        Raises:
+            ValueError: If no ``cohort_dim`` is given, or it is invalid.
+        """
         if self._dims_cohort is None:
             if self.cohort_dim is None:
                 raise ValueError("Cohort dimension must be provided at DSM initialization")
@@ -522,26 +556,36 @@ class DynamicStockModel(Stock):
         return next(iter(self.shape))
 
     @property
-    def _shape_cohort(self) -> tuple:
+    def _shape_cohort(self) -> tuple[int, ...]:
         return (self._n_t,) + self.shape
 
     @property
-    def _shape_no_t(self) -> tuple:
+    def _shape_no_t(self) -> tuple[int, ...]:
         return tuple(list(self.shape)[1:])
 
     @property
-    def _t_diag_indices(self) -> tuple:
+    def _t_diag_indices(self) -> tuple[np.ndarray | slice, ...]:
         return np.diag_indices(self._n_t) + (slice(None),) * len(self._shape_no_t)
 
-    def get_outflow_by_cohort(self) -> StockArray:
-        """Outflow by cohort, i.e. the outflow of each production year at each time step."""
+    def get_outflow_by_cohort(self) -> StockArray | np.ndarray:
+        """Outflow by cohort, i.e. the outflow of each production year at each time step.
+
+        Returns:
+            The outflow by cohort with dimensions :py:attr:`dims_cohort`. If no ``cohort_dim``
+            is given, its raw values are returned instead, with a warning.
+        """
         return self._get_by_cohort_array(self._outflow_by_cohort, "outflow_by_cohort")
 
-    def get_stock_by_cohort(self) -> StockArray:
-        """Stock by cohort, i.e. the stock of each production year at each time step."""
+    def get_stock_by_cohort(self) -> StockArray | np.ndarray:
+        """Stock by cohort, i.e. the stock of each production year at each time step.
+
+        Returns:
+            The stock by cohort with dimensions :py:attr:`dims_cohort`. If no ``cohort_dim``
+            is given, its raw values are returned instead, with a warning.
+        """
         return self._get_by_cohort_array(self._stock_by_cohort, "stock_by_cohort")
 
-    def _get_by_cohort_array(self, values: np.ndarray, name: str) -> StockArray:
+    def _get_by_cohort_array(self, values: np.ndarray, name: str) -> StockArray | np.ndarray:
         if self.cohort_dim is None:  # leave in for backwards compatibility
             logger.warning(
                 f"Cohort dimension is not defined; {name} cannot be retrieved as FlodymArray. Returning raw ndarray instead."
@@ -554,7 +598,7 @@ class DynamicStockModel(Stock):
         self,
         get_newest_cohort_inflow: Callable[[int, np.ndarray], np.ndarray],
         use_inflow_by_cohort: bool = False,
-    ):
+    ) -> None:
         """Step through time with the stock by cohort as state, and set stock, inflow and outflow.
 
         The inflow consists of two parts:
@@ -640,7 +684,9 @@ class DynamicStockModel(Stock):
         return older_inflow_by_cohort
 
     @staticmethod
-    def _check_consistent_with_survival(values: np.ndarray, cum_surv: np.ndarray, passed_as: str):
+    def _check_consistent_with_survival(
+        values: np.ndarray, cum_surv: np.ndarray, passed_as: str
+    ) -> None:
         if np.any((values > 0) & (cum_surv == 0)):
             raise ValueError(
                 f"The given {passed_as} is inconsistent with the lifetime model: survival function "
@@ -651,7 +697,7 @@ class DynamicStockModel(Stock):
     def _is_initial_year(self, i_t: int) -> bool:
         return self._initial_stock_by_cohort is not None and i_t == self._initial_year_index
 
-    def compute(self):
+    def compute(self) -> None:
         """Compute the dynamic stock model in the mode given by which of stock, inflow and
         inflow_by_cohort is set (see :py:attr:`flodym.FlodymArray.is_set`).
 
@@ -678,7 +724,7 @@ class DynamicStockModel(Stock):
             self._choose_driving_array()
         return set_arrays[0] if set_arrays else "inflow"
 
-    def _compute_process(self, computation: "ProcessComputation"):
+    def _compute_process(self, computation: "ProcessComputation") -> None:
         """Compute the stock and the unknown in- and outflows of its process.
 
         If the stock is already computed, it is not computed again. Otherwise, the computation
@@ -738,7 +784,7 @@ class DynamicStockModel(Stock):
         )
 
     @_wrap_compute
-    def compute_inflow_driven(self):
+    def compute_inflow_driven(self) -> None:
         """Compute stock and outflow from the given inflow and the lifetime model.
 
         The inflow need not be marked as set (see ``config.error_behaviors.unset_array_used``).
@@ -752,7 +798,7 @@ class DynamicStockModel(Stock):
         self._check_inflow_at_initial_year()
         self._compute_cohorts(self._newest_cohort_inflow_from_inflow)
 
-    def _compute_inflow_driven_vectorized(self):
+    def _compute_inflow_driven_vectorized(self) -> None:
         """Same result as the time stepping in :py:meth:`_compute_cohorts`, but faster.
         Only valid without initial stock and inflow by cohort."""
         inflow_whole_period = self._to_whole_period(self.inflow.values)
@@ -771,7 +817,7 @@ class DynamicStockModel(Stock):
         self.outflow.values[...] = self._outflow_by_cohort.sum(axis=1)
 
     @_wrap_compute
-    def compute_stock_driven(self):
+    def compute_stock_driven(self) -> None:
         """Compute inflow and outflow from the given stock and the lifetime model.
 
         This involves solving the lower triangular equation system A*x=b, where A is the survival
@@ -784,7 +830,7 @@ class DynamicStockModel(Stock):
         self._compute_cohorts(self._newest_cohort_inflow_from_stock)
 
     @_wrap_compute
-    def compute_inflow_by_cohort_driven(self):
+    def compute_inflow_by_cohort_driven(self) -> None:
         """Compute inflow, stock and outflow from the given ``inflow_by_cohort`` and the lifetime
         model. Requires ``cohort_dim``.
 
@@ -852,7 +898,7 @@ class DynamicStockModel(Stock):
             newest_cohort_inflow = np.maximum(newest_cohort_inflow, 0.0)
         return newest_cohort_inflow
 
-    def _check_inflow_at_initial_year(self):
+    def _check_inflow_at_initial_year(self) -> None:
         if np.any(self.inflow.values[: self._initial_year_index, ...] > 0):
             raise ValueError(
                 f"Prescribed inflow before the initial stock year {self._initial_stock_year} is non-zero."
@@ -867,7 +913,7 @@ class DynamicStockModel(Stock):
                 f"Moreover, the inflow in that year will be overwritten to introduce all initial stock, to ensure mass balance."
             )
 
-    def _check_stock_at_initial_year(self):
+    def _check_stock_at_initial_year(self) -> None:
         if np.any(self.stock.values[: self._initial_year_index, ...] > 0):
             raise ValueError(
                 f"Prescribed stock before the initial stock year {self._initial_stock_year} is non-zero."
@@ -886,7 +932,7 @@ class DynamicStockModel(Stock):
 
     def set_initial_stock(
         self, initial_stock: FlodymArray, initial_year: int, included_in_inflow: bool = False
-    ):
+    ) -> None:
         """Set an initial stock by cohort at the end of a given year.
 
         The initial stock enters the stock during the initial year, and is part of the inflow of
@@ -895,15 +941,20 @@ class DynamicStockModel(Stock):
         including the survivors of the initial stock.
 
         Args:
-            initial_stock (FlodymArray): Initial stock to be set. Must have same dimensions as the stock, except for time dimension.
-            initial_year (int): Year in which the initial stock is given. Must be an item of the time dimension.
-            included_in_inflow (bool): Only relevant for inflow-driven computation. If False
+            initial_stock: Initial stock by cohort. Must have the dimensions of
+                :py:attr:`dims_cohort` without the time dimension.
+            initial_year: Year in which the initial stock is given. Must be an item of the time
+                dimension.
+            included_in_inflow: Only relevant for inflow-driven computation. If False
                 (default), the prescribed inflow in the initial year is the inflow of the newest
                 cohort, and the maximum of it and the initial stock of that cohort is used. If True,
                 the prescribed inflow in the initial year already contains the inflow of the
                 initial stock of all cohorts, as written by a previous computation, e.g. when an
                 inflow corrected after a stock-driven computation is used to recompute
                 inflow-driven.
+
+        Raises:
+            ValueError: If the dimensions of ``initial_stock`` or ``initial_year`` do not match.
         """
         if initial_stock.dims.letters != self.dims_cohort.drop(self.time_letter).letters:
             raise ValueError(
@@ -918,10 +969,10 @@ class DynamicStockModel(Stock):
         self._initial_stock_included_in_inflow = included_in_inflow
 
     @property
-    def _initial_year_index(self):
+    def _initial_year_index(self) -> int:
         return self.dims[self.time_letter].items.index(self._initial_stock_year)
 
-    def copy(self) -> "Stock":
+    def copy(self) -> Self:
         """Return a copy of the Stock, as :py:meth:`flodym.Stock.copy`, but additionally
         giving the copy its own independent ``lifetime_model`` so that, for example, calling
         ``set_prms`` on the copy does not affect the original.
@@ -936,7 +987,7 @@ class DynamicStockModel(Stock):
         new_stock._initial_stock_included_in_inflow = self._initial_stock_included_in_inflow
         return new_stock
 
-    def __str__(self):
+    def __str__(self) -> str:
         base = super().__str__()
         lifetime_model = self.lifetime_model.__class__.__name__
         return base + "\n  Lifetime model: " + lifetime_model
@@ -948,7 +999,7 @@ class InflowDrivenDSM(DynamicStockModel):
     Equivalent to :py:meth:`flodym.DynamicStockModel.compute_inflow_driven`.
     """
 
-    def compute(self):
+    def compute(self) -> None:
         """Determine stocks and outflows and store values in the class instance."""
         self.compute_inflow_driven()
 
@@ -962,7 +1013,7 @@ class StockDrivenDSM(DynamicStockModel):
     Equivalent to :py:meth:`flodym.DynamicStockModel.compute_stock_driven`.
     """
 
-    def compute(self):
+    def compute(self) -> None:
         """Determine inflows and outflows and store values in the class instance."""
         self.compute_stock_driven()
 

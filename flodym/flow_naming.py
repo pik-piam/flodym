@@ -1,3 +1,9 @@
+"""Predefined functions to generate flow names from the processes a flow connects.
+
+One of them, or a custom function with the same signature, can be set as
+:py:attr:`flodym.config.Config.flow_naming`.
+"""
+
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:

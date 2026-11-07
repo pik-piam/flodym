@@ -1,13 +1,31 @@
+"""Sankey diagrams of MFA systems."""
+
+from typing import Any
+
 import plotly.graph_objects as go
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import ConfigDict, model_validator
+from typing_extensions import Self
 
 from ..flodym_arrays import Flow
 from ..mfa_system import MFASystem
+from ..processes import Process
 from .helper import CustomNameDisplayer
 
 
 class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
+    """Plot the flows of an MFA system as a plotly Sankey diagram.
+
+    Flow values are summed over all dimensions not selected in ``slice_dict``. Flows can be split
+    into several colored links along one dimension via ``flow_color_dict``.
+
+    Example:
+
+        >>> from flodym.export import PlotlySankeyPlotter
+        >>> fig = PlotlySankeyPlotter(mfa=mfa).plot()
+        >>> fig.show()  # doctest: +SKIP
+    """
+
     model_config = ConfigDict(arbitrary_types_allowed=True, protected_namespaces=())
 
     mfa: MFASystem
@@ -28,14 +46,16 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
     """flows that won't show up in the plot"""
 
     @model_validator(mode="after")
-    def check_dims(self):
+    def check_dims(self) -> Self:
+        """Check that all dimensions in ``slice_dict`` are in the MFA system."""
         for dim_letter in self.slice_dict:
             if dim_letter not in self.mfa.dims.letters:
                 raise ValueError(f"Dimension {dim_letter} given in slice_dict not in DimensionSet.")
         return self
 
     @model_validator(mode="after")
-    def check_excluded(self):
+    def check_excluded(self) -> Self:
+        """Check that all excluded processes and flows exist in the MFA system."""
         for p in self.exclude_processes:
             if p not in self.mfa.processes:
                 raise ValueError(f"Process {p} given in exclude_processes not in MFASystem.")
@@ -45,7 +65,8 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
         return self
 
     @model_validator(mode="after")
-    def check_flow_colors(self):
+    def check_flow_colors(self) -> Self:
+        """Validate ``flow_color_dict`` and fill in the default color for missing flows."""
         for f in self.shown_flows.values():
             if "default" not in self.flow_color_dict:
                 raise ValueError(
@@ -60,7 +81,8 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
         return self
 
     @model_validator(mode="after")
-    def check_node_colors(self):
+    def check_node_colors(self) -> Self:
+        """Validate ``node_color_dict`` and fill in the default color for missing processes."""
         for p in self.shown_processes:
             if "default" not in self.node_color_dict:
                 raise ValueError(
@@ -77,7 +99,7 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
                 )
         return self
 
-    def _check_flow_color(self, f: Flow, fallback_str):
+    def _check_flow_color(self, f: Flow, fallback_str: str) -> None:
         color = self.flow_color_dict[f.name]
         if isinstance(color, str):
             return
@@ -104,18 +126,21 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
             )
 
     @property
-    def shown_processes(self):
+    def shown_processes(self) -> list[Process]:
+        """Processes that are not excluded."""
         return [p for p in self.mfa.processes.values() if p.name not in self.exclude_processes]
 
     @property
-    def excluded_process_ids(self):
+    def excluded_process_ids(self) -> list[int]:
+        """IDs of the excluded processes."""
         return [p.id for p in self.mfa.processes.values() if p.name in self.exclude_processes]
 
     @property
     def shown_flows(self) -> dict[str, Flow]:
+        """Flows that are neither excluded nor connected to an excluded process, by name."""
         return {f.name: f for f in self.mfa.flows.values() if self._flow_is_shown(f)}
 
-    def _flow_is_shown(self, f: Flow):
+    def _flow_is_shown(self, f: Flow) -> bool:
         return not (
             (f.name in self.exclude_flows)
             or (f.from_process_id in self.excluded_process_ids)
@@ -123,21 +148,27 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
         )
 
     @property
-    def ids_in_sankey(self):
+    def ids_in_sankey(self) -> dict[int, int]:
+        """Mapping from process IDs to node indices in the Sankey diagram."""
         return {p.id: i for i, p in enumerate(self.shown_processes)}
 
-    def plot(self):
+    def plot(self) -> go.Figure:
+        """Create the Sankey diagram.
+
+        Returns:
+            The plotly figure.
+        """
         links = self._get_links_dict()
         nodes = self._get_nodes_dict()
         return self._get_fig(links, nodes)
 
-    def _get_links_dict(self):
+    def _get_links_dict(self) -> dict[str, list[Any]]:
         links = DictOfLists(list_names=["source", "target", "value", "label", "color"])
         for f in self.shown_flows.values():
             self._append_flow(f, links)
         return links.dict
 
-    def _append_flow(self, f: Flow, links: "DictOfLists"):
+    def _append_flow(self, f: Flow, links: "DictOfLists") -> None:
         source = self.ids_in_sankey[f.from_process.id]
         target = self.ids_in_sankey[f.to_process.id]
         label = self.display_name(f.name)
@@ -161,14 +192,14 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
                 value=f_slice.sum_values(),
             )
 
-    def _get_nodes_dict(self):
+    def _get_nodes_dict(self) -> dict[str, Any]:
         return {
             "label": [self.display_name(p.name) for p in self.shown_processes],
             "color": [self.node_color_dict[p.name] for p in self.shown_processes],
             "pad": 10,
         }
 
-    def _get_fig(self, links: dict, nodes: dict) -> go.Figure:
+    def _get_fig(self, links: dict[str, Any], nodes: dict[str, Any]) -> go.Figure:
         fig = go.Figure(
             go.Sankey(
                 arrangement="snap",
@@ -180,9 +211,12 @@ class PlotlySankeyPlotter(CustomNameDisplayer, PydanticBaseModel):
 
 
 class DictOfLists:
-    def __init__(self, list_names: list[str]):
-        self.dict = {l: [] for l in list_names}
+    """Dictionary of lists, to which values can be appended for several keys at once."""
 
-    def append(self, **kwargs):
+    def __init__(self, list_names: list[str]) -> None:
+        self.dict: dict[str, list[Any]] = {l: [] for l in list_names}
+
+    def append(self, **kwargs: Any) -> None:
+        """Append each keyword argument value to the list of the same name."""
         for k, v in kwargs.items():
             self.dict[k].append(v)

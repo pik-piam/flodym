@@ -1,3 +1,5 @@
+"""Plotting, Sankey diagrams, process graphs and data export for MFA systems."""
+
 from .array_plotter import (
     ArrayPlotter as ArrayPlotter,
 )

@@ -4,12 +4,13 @@ as well as applications of the `FlodymArray` for specific model components.
 """
 
 from collections import defaultdict
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Hashable, Iterable
 from copy import copy, deepcopy
 from numbers import Number
 from typing import Any, Literal, Optional, SupportsFloat, TypeVar, Union, overload
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 from pydantic import (
     BaseModel as PydanticBaseModel,
@@ -18,6 +19,7 @@ from pydantic import (
     ConfigDict,
     Field,
     ModelWrapValidatorHandler,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
@@ -29,7 +31,8 @@ from .dimensions import Dimension, DimensionSet
 from .processes import Process
 
 
-def _is_iterable(arg):
+def _is_iterable(arg: object) -> bool:
+    """Whether ``arg`` is an iterable of items, i.e. not a string or a :py:class:`Dimension`."""
     return isinstance(arg, Iterable) and not isinstance(arg, (str, Dimension))
 
 
@@ -82,7 +85,7 @@ class FlodymArray(PydanticBaseModel):
 
     @field_validator("values", mode="before")
     @classmethod
-    def _values_to_numpy(cls, value, info):
+    def _values_to_numpy(cls, value: Any, info: ValidationInfo) -> Any:
         """Convert the ``values`` input to a numpy array: fill a missing/None value
         with zeros of the correct shape, and wrap a scalar Number in a numpy array.
         This keeps the field type ``np.ndarray`` while preserving the flexible
@@ -104,6 +107,7 @@ class FlodymArray(PydanticBaseModel):
 
     @model_validator(mode="after")
     def validate_values(self) -> Self:
+        """Check that the values are a numpy array with the shape of the dimensions."""
         self._check_value_format()
         return self
 
@@ -120,6 +124,7 @@ class FlodymArray(PydanticBaseModel):
     @model_validator(mode="wrap")
     @classmethod
     def mark_set_or_unset(cls, data: Any, handler: ModelWrapValidatorHandler[Self]) -> Self:
+        """Mark the array as set if values are given at initialization, else as unset."""
         obj = handler(data)
         if isinstance(data, dict):
             obj._is_set = data.get("values") is not None
@@ -127,15 +132,18 @@ class FlodymArray(PydanticBaseModel):
 
     @classmethod
     def from_dims_superset(
-        cls, dims_superset: DimensionSet, dim_letters: tuple | None = None, **kwargs
+        cls,
+        dims_superset: DimensionSet,
+        dim_letters: tuple[str, ...] | None = None,
+        **kwargs: Any,
     ) -> Self:
         """Create a FlodymArray object from a superset of dimensions, by specifying which
         dimensions to take.
 
-        Parameters:
+        Args:
             dims_superset: DimensionSet from which the objects dimensions are derived
             dim_letters: specify which dimensions to take from dims_superset
-            kwargs: additional keyword arguments passed to the FlodymArray constructor
+            **kwargs: additional keyword arguments passed to the FlodymArray constructor
 
         Returns:
             cls instance
@@ -148,11 +156,11 @@ class FlodymArray(PydanticBaseModel):
         cls,
         dims: DimensionSet,
         fill_value: SupportsFloat | np.ndarray,
-        **kwargs,
+        **kwargs: Any,
     ) -> Self:
         """Create a FlodymArray filled with a constant value for the provided dimensions.
 
-        Parameters:
+        Args:
             dims (DimensionSet): DimensionSet defining the dimensions of the FlodymArray.
             fill_value: Value to fill the array with.
                 Can be a scalar or an array that is broadcastable to the shape of dims.
@@ -170,11 +178,11 @@ class FlodymArray(PydanticBaseModel):
         other: "FlodymArray",
         fill_value: SupportsFloat | np.ndarray,
         dtype: type | np.dtype | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> Self:
         """Create a FlodymArray filled with a constant value, matching another array's dimensions.
 
-        Parameters:
+        Args:
             other (FlodymArray): FlodymArray whose dimensions will be used for the new array.
             fill_value: Value to fill the array with.
                 Can be a scalar or an array that is broadcastable to the shape of other.
@@ -199,11 +207,11 @@ class FlodymArray(PydanticBaseModel):
     def scalar(
         cls,
         value: SupportsFloat,
-        **kwargs,
+        **kwargs: Any,
     ) -> Self:
         """Create a scalar (zero-dimensional) FlodymArray.
 
-        Parameters:
+        Args:
             value: The scalar value to store in the FlodymArray.
             **kwargs: Additional keyword arguments passed to the FlodymArray constructor
                 (e.g., name).
@@ -221,12 +229,12 @@ class FlodymArray(PydanticBaseModel):
         allow_missing_values: bool = False,
         allow_extra_values: bool = False,
         strip_whitespace: bool = True,
-        **kwargs,
+        **kwargs: Any,
     ) -> Self:
         """Create a FlodymArray object from a DataFrame.
         In case of errors, turning on debug logging might help to understand the process.
 
-        Parameters:
+        Args:
             dims (DimensionSet): Dimensions of the FlodymArray
             df (DataFrame): pandas DataFrame containing the values of the FlodymArray.
                 Dimensions of the named dim array can be given in DataFrame columns or the index.
@@ -247,6 +255,8 @@ class FlodymArray(PydanticBaseModel):
                 Defaults to False.
             strip_whitespace (bool, optional): Whether to strip whitespace from string values in the DataFrame.
                 Defaults to True.
+            **kwargs: Additional keyword arguments passed to the FlodymArray constructor
+                (e.g., name).
 
         Returns:
             FlodymArray: FlodymArray object with the values from the DataFrame
@@ -260,7 +270,7 @@ class FlodymArray(PydanticBaseModel):
         )
         return flodym_array
 
-    def _sub_array_handler(self, definition) -> "SubArrayHandler":
+    def _sub_array_handler(self, definition: dict[str, Any] | Hashable) -> "SubArrayHandler":
         return SubArrayHandler(self, definition)
 
     @property
@@ -273,13 +283,17 @@ class FlodymArray(PydanticBaseModel):
         """The number of elements in the array."""
         return int(np.prod(self.shape))
 
-    def set_values(self, values: np.ndarray) -> None:
+    def set_values(self, values: npt.ArrayLike) -> None:
         """Set the values of the FlodymArray and check if the shape is correct.
 
         For safety reasons, broadcasting smaller arrays is not allowed,
         i.e. the shape of the values must match the shape of the FlodymArray.
 
         As a less safe but more flexible alternative, you can use e.g. flodym_array.values[...] = foo to set the values directly.
+
+        Args:
+            values: A numpy array of the shape of the FlodymArray, or a scalar or nested sequence
+                that is written into the existing values array.
         """
         if isinstance(values, (np.ndarray, FlodymArray)):
             # FlodymArray will actually throw an error in _check_value_format.
@@ -365,6 +379,9 @@ class FlodymArray(PydanticBaseModel):
 
         Args:
             result_dims (optional): Tuple of the dimensions to sum to. If not given, the sum over all dimensions is returned.
+
+        Returns:
+            np.ndarray: The partially summed values of the FlodymArray.
         """
         result_letters = self._tuple_to_letters(result_dims)
         return np.einsum(f"{self.dims.string}->{''.join(result_letters)}", self.values)
@@ -404,7 +421,7 @@ class FlodymArray(PydanticBaseModel):
             name=self.name,
         )
 
-    def _tuple_to_letters(self, dim_tuple: tuple) -> tuple:
+    def _tuple_to_letters(self, dim_tuple: tuple[str | Dimension, ...]) -> tuple[str, ...]:
         """Ensure that an input dimension tuple is converted to a tuple of dimension letters,
         if e.g. names or Dimension objects are given instead.
 
@@ -494,6 +511,11 @@ class FlodymArray(PydanticBaseModel):
         return FlodymArray(dims=self.dims, values=values_out)
 
     def minimum(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
+        """Element-wise minimum of this array and another array or scalar.
+
+        As for addition, the result has the dimensions shared by both arrays; other dimensions
+        are summed over before the comparison.
+        """
         other = self._prepare_other(other)
         dims_out = self.dims.intersect_with(other.dims)
         values_out = np.minimum(
@@ -502,6 +524,11 @@ class FlodymArray(PydanticBaseModel):
         return FlodymArray(dims=dims_out, values=values_out)
 
     def maximum(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
+        """Element-wise maximum of this array and another array or scalar.
+
+        As for addition, the result has the dimensions shared by both arrays; other dimensions
+        are summed over before the comparison.
+        """
         other = self._prepare_other(other)
         dims_out = self.dims.intersect_with(other.dims)
         values_out = np.maximum(
@@ -510,7 +537,10 @@ class FlodymArray(PydanticBaseModel):
         return FlodymArray(dims=dims_out, values=values_out)
 
     def apply(
-        self, func: Callable, kwargs: dict | None = None, inplace: bool = False
+        self,
+        func: Callable[..., np.ndarray],
+        kwargs: dict[str, Any] | None = None,
+        inplace: bool = False,
     ) -> Optional["FlodymArray"]:
         """Apply a function to the values of the FlodymArray.
 
@@ -520,7 +550,8 @@ class FlodymArray(PydanticBaseModel):
             inplace (bool, optional): Whether to apply the function in place. Defaults to False.
 
         Returns:
-            FlodymArray: FlodymArray object with the values transformed by the function.
+            FlodymArray: FlodymArray object with the values transformed by the function,
+                or None if ``inplace`` is True.
         """
         self._check_is_set("apply()")
         if kwargs is None:
@@ -541,7 +572,7 @@ class FlodymArray(PydanticBaseModel):
         """
         return self.model_copy(update={"dims": self.dims.copy(), "values": self.values.copy()})
 
-    def to_class(self, array_class: type[T], name: str | None = None, **kwargs) -> T:
+    def to_class(self, array_class: type[T], name: str | None = None, **kwargs: Any) -> T:
         """Return an instance of a FlodymArray subclass with copied dimensions and values.
 
         Re-tags this array as a different FlodymArray (sub)class — e.g. converting a plain
@@ -557,6 +588,9 @@ class FlodymArray(PydanticBaseModel):
 
         Returns:
             An ``array_class`` instance with copied values and dimensions.
+
+        Raises:
+            TypeError: If ``array_class`` is not a FlodymArray subclass.
         """
         if not (isinstance(array_class, type) and issubclass(array_class, FlodymArray)):
             raise TypeError(f"array_class must be a FlodymArray subclass, got {array_class!r}.")
@@ -570,7 +604,7 @@ class FlodymArray(PydanticBaseModel):
         return result
 
     @classmethod
-    def from_array(cls, array: "FlodymArray", name: str | None = None, **kwargs) -> Self:
+    def from_array(cls, array: "FlodymArray", name: str | None = None, **kwargs: Any) -> Self:
         """Create an instance of this class from an existing FlodymArray, copying its dimensions
         and values.
 
@@ -592,6 +626,14 @@ class FlodymArray(PydanticBaseModel):
     @overload
     def abs(self, inplace: Literal[True]) -> None: ...
     def abs(self, inplace: bool = False) -> Optional["FlodymArray"]:
+        """Element-wise absolute value.
+
+        Args:
+            inplace: Whether to modify the values of this array instead of returning a new one.
+
+        Returns:
+            A new FlodymArray with the absolute values, or None if ``inplace`` is True.
+        """
         return self.apply(np.abs, inplace=inplace)
 
     @overload
@@ -599,6 +641,14 @@ class FlodymArray(PydanticBaseModel):
     @overload
     def sign(self, inplace: Literal[True]) -> None: ...
     def sign(self, inplace: bool = False) -> Optional["FlodymArray"]:
+        """Element-wise sign (-1, 0 or 1).
+
+        Args:
+            inplace: Whether to modify the values of this array instead of returning a new one.
+
+        Returns:
+            A new FlodymArray with the signs of the values, or None if ``inplace`` is True.
+        """
         return self.apply(np.sign, inplace=inplace)
 
     @overload
@@ -613,7 +663,8 @@ class FlodymArray(PydanticBaseModel):
             inplace (bool, optional): Whether to apply the cumulative sum in place. Defaults to False.
 
         Returns:
-            FlodymArray: FlodymArray object with the cumulative sum along the given dimension.
+            FlodymArray: FlodymArray object with the cumulative sum along the given dimension,
+                or None if ``inplace`` is True.
         """
         i_axis = self.dims.letters.index(dim_letter)
         return self.apply(np.cumsum, kwargs={"axis": i_axis}, inplace=inplace)
@@ -640,14 +691,16 @@ class FlodymArray(PydanticBaseModel):
         inv_self = FlodymArray(dims=self.dims, values=1 / self.values)
         return inv_self * other
 
-    def __getitem__(self, keys) -> "FlodymArray":
+    def __getitem__(self, keys: dict[str, Any] | Hashable) -> "FlodymArray":
         """Defines what is returned when the object with square brackets stands on the right-hand side of an assignment,
-        e.g. foo = foo = bar[{'e': 'C'}] Here, it is solely used for slicing, the the input tot the square brackets must
-        be a dictionary defining the slice."""
+        e.g. foo = bar[{'e': 'C'}]. Here, it is solely used for slicing. For allowed values in the square brackets,
+        see the docstring of the SubArrayHandler class."""
         self._check_is_set("slicing")
         return self._sub_array_handler(keys).to_flodym_array()
 
-    def __setitem__(self, keys, item) -> None:
+    def __setitem__(
+        self, keys: dict[str, Any] | Hashable, item: "FlodymArray | npt.ArrayLike"
+    ) -> None:
         """Defines what is returned when the object with square brackets stands on the left-hand side of an assignment,
         i.e. 'foo[bar] = baz' For allowed values in the square brackets (bar), see the docstring of the SubArrayHandler
         class.
@@ -681,7 +734,7 @@ class FlodymArray(PydanticBaseModel):
         if sparse:
             non_zero_ids: tuple[np.ndarray, ...] = np.nonzero(self.values)
 
-            def to_index(i):
+            def to_index(i: int) -> np.ndarray:
                 dim = self.dims[i]
                 ids = non_zero_ids[i]
                 return np.array(dim.items)[ids]
@@ -719,8 +772,8 @@ class FlodymArray(PydanticBaseModel):
         """Set the values of the FlodymArray from a pandas DataFrame.
         In case of errors, turning on debug logging might help to understand the process.
 
-        Parameters:
-            df (DataFrame): pandas DataFrame containing the values of the FlodymArray.
+        Args:
+            df_in (DataFrame): pandas DataFrame containing the values of the FlodymArray.
                 Dimensions of the named dim array can be given in DataFrame columns or the index.
                 The DataFrame can be in long or wide format, that is there can either be one value column,
                 or the value columns are named by items of one FlodymArray dimension.
@@ -753,6 +806,13 @@ class FlodymArray(PydanticBaseModel):
         """Reverse the flodym_array_stack, returns a dictionary of FlodymArray objects
         associated with the item in the dimension that has been split.
         Method can be applied to classes FlodymArray, StockArray, Parameter and Flow.
+
+        Args:
+            dim_letter: Letter of the dimension to split along.
+
+        Returns:
+            Dictionary with the items of the split dimension as keys and the corresponding
+            slices (without the split dimension) as values.
         """
         return {item: self[{dim_letter: item}] for item in self.dims[dim_letter].items}
 
@@ -777,7 +837,7 @@ class FlodymArray(PydanticBaseModel):
 
         return self / self.sum_over(sum_over_dims=dim_letters)
 
-    def items_where(self, condition: Callable) -> np.ndarray:
+    def items_where(self, condition: Callable[[np.ndarray], np.ndarray]) -> np.ndarray:
         """Get the dimension item tuples of all entries where a condition is met.
 
         Args:
@@ -886,14 +946,15 @@ class SubArrayHandler:
     However, one can use it to create a FlodymArray object with the `to_flodym_array()` method.
     """
 
-    def __init__(self, flodym_array: FlodymArray, definition) -> None:
+    def __init__(self, flodym_array: FlodymArray, definition: dict[str, Any] | Hashable) -> None:
         self.flodym_array = flodym_array
         self._get_def_dict(definition)
         self.invalid_flodym_array = any(_is_iterable(v) for v in self.def_dict.values())
         self._init_dims_out()
         self._init_ids()
 
-    def _get_def_dict(self, definition) -> None:
+    def _get_def_dict(self, definition: dict[str, Any] | Hashable) -> None:
+        self.def_dict: dict[str, Any]
         if isinstance(definition, type(Ellipsis)):
             self.def_dict = {}
         elif isinstance(definition, dict):
@@ -903,7 +964,7 @@ class SubArrayHandler:
         else:
             self.def_dict = {self._get_key_single_item(definition): definition}
 
-    def _get_key_single_item(self, item) -> str:
+    def _get_key_single_item(self, item: Hashable) -> str:
         if isinstance(item, slice):
             raise TypeError(
                 "Numpy indexing of FlodymArrays is not supported. Details are given in the FlodymArray class "
@@ -922,8 +983,8 @@ class SubArrayHandler:
             raise ValueError(f"Slicing item '{item}' not found in any dimension.")
         return key
 
-    def _to_dict_tuple(self, slice_def) -> dict:
-        dict_out = defaultdict(list)
+    def _to_dict_tuple(self, slice_def: tuple[Hashable, ...]) -> dict[str, Any]:
+        dict_out: defaultdict[str, list[Hashable]] = defaultdict(list)
         for item in slice_def:
             key = self._get_key_single_item(item)
             dict_out[key].append(item)
@@ -931,7 +992,7 @@ class SubArrayHandler:
         return {k: v if len(v) > 1 else v[0] for k, v in dict_out.items()}
 
     @property
-    def ids(self) -> tuple:
+    def ids(self) -> tuple[slice | int | list[int] | np.ndarray, ...]:
         """Indices used for slicing the values array."""
         return tuple(self._ids_all_dims)
 
@@ -949,7 +1010,7 @@ class SubArrayHandler:
                 self.dims_out.drop(letter, inplace=True)
 
     @property
-    def dim_letters(self) -> tuple:
+    def dim_letters(self) -> tuple[str, ...]:
         """Updated dimension letters, where sliced dimensions with only one item along that direction are removed."""
         return self.dims_out.letters
 
@@ -976,7 +1037,9 @@ class SubArrayHandler:
           indexes along one dimension) and replace the slice(None) with it.
         - convert lists of indexes to meshgrid arrays, if there are several dimensions with lists
         """
-        self._ids_all_dims: list = [slice(None) for _ in self.flodym_array.dims.letters]
+        self._ids_all_dims: list[slice | int | list[int] | np.ndarray] = [
+            slice(None) for _ in self.flodym_array.dims.letters
+        ]
         for dim_letter, item_or_items in self.def_dict.items():
             self._set_ids_single_dim(dim_letter, item_or_items)
         self._convert_lists_to_meshgrid()
@@ -1012,7 +1075,7 @@ class SubArrayHandler:
         for i_axis, ids_mesh in zip(axes_with_id_list, mesh_of_ids):
             self._ids_all_dims[i_axis] = ids_mesh
 
-    def _set_ids_single_dim(self, dim_letter, item_or_items) -> None:
+    def _set_ids_single_dim(self, dim_letter: str, item_or_items: Any) -> None:
         """Given either a single item name or a list of item names, return the corresponding item IDs, along one
         dimension 'dim_letter'."""
         items_ids: int | list[int]
@@ -1031,7 +1094,7 @@ class SubArrayHandler:
             items_ids = self._get_single_item_id(dim_letter, item_or_items)  # single item
         self._ids_all_dims[self.flodym_array.dims.index(dim_letter)] = items_ids
 
-    def _get_single_item_id(self, dim_letter, item_name) -> int:
+    def _get_single_item_id(self, dim_letter: str, item_name: Hashable) -> int:
         return self.flodym_array.dims[dim_letter].items.index(item_name)
 
 

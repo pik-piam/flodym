@@ -3,6 +3,7 @@
 import warnings
 from abc import abstractmethod
 from numbers import Number
+from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Any, ClassVar, Literal, SupportsFloat, TypeAlias
 
@@ -11,30 +12,41 @@ import scipy.special
 import scipy.stats
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import ConfigDict, PrivateAttr, model_validator
+from typing_extensions import Self
 
 from .dimensions import Dimension, DimensionSet
 from .flodym_arrays import FlodymArray
 from .gauss_lobatto import gl_nodes, gl_weights
 
 LifetimeArrayType: TypeAlias = FlodymArray | np.ndarray | SupportsFloat
+"""Types accepted for lifetime model parameters: a FlodymArray with a subset of the lifetime model
+dimensions, a numpy array broadcastable to the lifetime model shape, or a number."""
 
 
 class UnevenTimeDim(PydanticBaseModel):
+    """Time dimension with possibly uneven spacing, where each item is the center of a time step.
+
+    The bounds of the time steps lie halfway between neighboring items. The outer bounds are
+    extrapolated with the length of the neighboring time step.
+    """
+
     dim: Dimension
-    _bounds: np.ndarray = None
+    _bounds: np.ndarray | None = None
 
     @property
-    def bounds(self):
+    def bounds(self) -> np.ndarray:
+        """Bounds of the time steps, with one more entry than the time dimension."""
         if self._bounds is None:
             self.compute_t_bounds()
         return self._bounds
 
     @property
-    def interval_lengths(self):
+    def interval_lengths(self) -> np.ndarray:
         """Returns the length of the time intervals, i.e. the difference between the bounds."""
         return np.diff(self.bounds)
 
-    def compute_t_bounds(self):
+    def compute_t_bounds(self) -> None:
+        """Computes the bounds of the time steps from the items of the time dimension."""
         middle = (np.array(self.dim.items[:-1]) + np.array(self.dim.items[1:])) / 2.0
         self._bounds = np.concatenate(
             (
@@ -120,7 +132,7 @@ class LifetimeModel(PydanticBaseModel):
     _prm_names_to_scale: ClassVar[list[str]] = []
 
     @model_validator(mode="after")
-    def _init_t(self):
+    def _init_t(self) -> Self:
         if self.dims.letters[0] != self.time_letter:
             raise ValueError(
                 f"Lifetime model expects time dimension to be the first dimension. "
@@ -131,7 +143,7 @@ class LifetimeModel(PydanticBaseModel):
         return self
 
     @model_validator(mode="after")
-    def _cast_all(self):
+    def _cast_all(self) -> Self:
         array_fields = [
             "lt_factor_by_year",
             "lt_factor_by_cohort",
@@ -146,7 +158,7 @@ class LifetimeModel(PydanticBaseModel):
         self.reset_cached_arrays()
         return self
 
-    def _any_to_np(self, prm_in: LifetimeArrayType, name: str):
+    def _any_to_np(self, prm_in: LifetimeArrayType, name: str) -> np.ndarray:
         if isinstance(prm_in, FlodymArray):
             if not all(dim in self.dims for dim in prm_in.dims):
                 raise ValueError(
@@ -170,33 +182,34 @@ class LifetimeModel(PydanticBaseModel):
             )
         return prm_out
 
-    def _check_prms_set(self):
+    def _check_prms_set(self) -> None:
         unset_prms = [prm_name for prm_name in self._prm_names if getattr(self, prm_name) is None]
         if unset_prms:
             raise ValueError(f"Lifetime parameters {unset_prms} must be set before use.")
 
     @property
-    def shape(self):
+    def shape(self) -> tuple[int, ...]:
+        """Shape of the lifetime model dimensions."""
         return self.dims.shape
 
     @property
-    def _n_t(self):
+    def _n_t(self) -> int:
         return self._t.dim.len
 
     @property
-    def _shape_cohort(self):
+    def _shape_cohort(self) -> tuple[int, ...]:
         return (self._n_t,) + self.shape
 
     @property
-    def _shape_no_t(self):
+    def _shape_no_t(self) -> tuple[int, ...]:
         return tuple(list(self.shape)[1:])
 
     @property
-    def prms(self) -> dict[str, np.ndarray]:
-        """Dictionary of lifetime parameters, with parameter names as keys and parameter values as
-        numpy arrays. Do NOT modify the values in this dictionary (lifetime_model.prms["mean"] = 10)
-        to update the lifetime model parameters. Use direct assignment instead, e.g.
-        lifetime_model.mean = 10.
+    def prms(self) -> Mapping[str, np.ndarray | None]:
+        """Read-only mapping of lifetime parameters, with parameter names as keys and parameter
+        values as numpy arrays (None if not set). Do NOT modify the values in this mapping
+        (lifetime_model.prms["mean"][...] = 10) to update the lifetime model parameters. Use direct
+        assignment instead, e.g. lifetime_model.mean = 10.
         """
         return MappingProxyType({prm_name: getattr(self, prm_name) for prm_name in self._prm_names})
 
@@ -213,7 +226,7 @@ class LifetimeModel(PydanticBaseModel):
         """
         return value * factor
 
-    def _scale_prms(self):
+    def _scale_prms(self) -> None:
         names_to_scale = self._get_prm_names_to_scale()
         for prm_name in self._prm_names:
             value = getattr(self, prm_name)
@@ -330,7 +343,7 @@ class LifetimeModel(PydanticBaseModel):
         cum_surv[np.broadcast_to(upper_triangle, cum_surv.shape)] = 0.0
         return cum_surv
 
-    def _apply_period_effects(self, cond_surv: np.ndarray):
+    def _apply_period_effects(self, cond_surv: np.ndarray) -> None:
         """Applies hazard_factor_by_year and removal_share_by_year to the conditional survival
         cond_surv in place. Row t of cond_surv contains the values of all age-cohorts in year t."""
         if self.hazard_factor_by_year is not None:
@@ -353,7 +366,7 @@ class LifetimeModel(PydanticBaseModel):
             cond_surv[t_diag_indices] = newest_cohort_cond_surv * (1.0 - exposed_fraction * share)
 
     @property
-    def _t_diag_indices(self) -> tuple:
+    def _t_diag_indices(self) -> tuple[np.ndarray | slice, ...]:
         """Indices of the main diagonal of the time and cohort axes of a (t, c, ...) array."""
         return np.diag_indices(self._n_t) + (slice(None),) * len(self._shape_no_t)
 
@@ -480,14 +493,14 @@ class LifetimeModel(PydanticBaseModel):
         out = a[index]
         return np.tile(out, self._shape_no_t)
 
-    def _quad_point_time(self, m, quad_point):
+    def _quad_point_time(self, m: int | np.ndarray, quad_point: float) -> float | np.ndarray:
         """Returns the time point within the inflow time period m, given the quadrature point eta."""
         return quad_point * self._t.bounds[m + 1] + (1 - quad_point) * self._t.bounds[m]
 
-    def _remaining_ages(self, i_t, quad_point):
+    def _remaining_ages(self, i_t: int, quad_point: float) -> np.ndarray:
         return self._tile(self._t.bounds[i_t + 1 :] - self._quad_point_time(i_t, quad_point))
 
-    def _compute_cumulative_survival(self, cum_surv: np.ndarray):
+    def _compute_cumulative_survival(self, cum_surv: np.ndarray) -> None:
         """Computes the cumulative survival without lifetime extension by year and writes it into
         cum_surv. cum_surv(t,c) is the share of the inflow of cohort c still present at the end of
         year t, i.e. the survival function of the lifetime distribution evaluated at the age at
@@ -502,7 +515,7 @@ class LifetimeModel(PydanticBaseModel):
                 ages = self._remaining_ages(i_c, quad_point)
                 cum_surv[i_c::, i_c, ...] += quad_weight * self._survival_by_cohort(ages, i_c)
 
-    def _get_quad_points_and_weights(self):
+    def _get_quad_points_and_weights(self) -> tuple[list[float], list[float]]:
         """Returns the quadrature points and weights for the inflow time periods."""
         if self.n_pts_per_interval > 10:
             raise ValueError("quad_order must be between 0 and 9.")
@@ -530,7 +543,7 @@ class LifetimeModel(PydanticBaseModel):
             i_c: cohort index or a slice of cohorts.
         """
 
-    def set_prms(self, *args, **kwargs):
+    def set_prms(self, *args: LifetimeArrayType, **kwargs: LifetimeArrayType) -> None:
         """Set parameters of the lifetime distribution, like mean and standard deviation.
         Parameters can be set either by positional arguments or by keyword arguments, but not both.
 
@@ -563,12 +576,18 @@ class LifetimeModel(PydanticBaseModel):
                 setattr(self, prm_name, prm_value)
         self.reset_cached_arrays()
 
-    def reset_cached_arrays(self):
+    def reset_cached_arrays(self) -> None:
+        """Discards the cached cumulative survival, conditional survival and outflow pmf, such
+        that they are recomputed on the next access.
+
+        This happens automatically when a field is assigned. Call it after modifying a parameter
+        array in place, e.g. ``lifetime_model.mean[...] = 10``.
+        """
         self._cumulative_survival = None
         self._outflow_pmf = None
         self._conditional_survival = None
 
-    def _compute_outflow_pmf(self):
+    def _compute_outflow_pmf(self) -> None:
         """Computes outflow_pmf(t,c), the probability that an item added to the stock in year c
         (cohort c) leaves during year t, from the cumulative survival.
         """
@@ -578,7 +597,7 @@ class LifetimeModel(PydanticBaseModel):
         for i_c in range(self._n_t):
             self._outflow_pmf[i_c + 1 :, i_c, ...] = -1 * np.diff(cum_surv[i_c:, i_c, ...], axis=0)
 
-    def _compute_cumulative_survival_with_nurture(self, cum_surv: np.ndarray):
+    def _compute_cumulative_survival_with_nurture(self, cum_surv: np.ndarray) -> None:
         """
         Compute the cumulative survival in presence of lifetime extension by year, i.e. the
         "nurture" approach in Krych et al. 2024, and write it into cum_surv.
@@ -688,6 +707,8 @@ class Leaching(LifetimeModel):
 
 
 class StandardDeviationLifetimeModel(LifetimeModel):
+    """Base class for lifetime distributions parametrized by mean and standard deviation."""
+
     mean: LifetimeArrayType | None = None
     """Mean lifetime.
     """
@@ -722,7 +743,8 @@ class NormalLifetime(StandardDeviationLifetimeModel):
     NOTE: As normal distributions have nonzero pdf for negative ages,
     which are physically impossible, these outflow contributions can either be ignored (
     violates the mass balance) or allocated to the zeroth year of residence,
-    the latter being implemented in the method compute compute_o_c_from_s_c.
+    the latter being implemented here, as the cumulative survival is evaluated at the end of
+    the inflow year.
     As alternative, use lognormal or folded normal distribution options.
     """
 
@@ -810,7 +832,7 @@ class WeibullMeanStdLifetime(StandardDeviationLifetimeModel):
     _shape_bounds: ClassVar[tuple[float, float]] = (0.05, 1.0e4)
     """Range of Weibull shape parameters considered in the computation from mean and std."""
 
-    def _scale_prms(self):
+    def _scale_prms(self) -> None:
         super()._scale_prms()
         cv = self.std if self.relative_std else self.std / self.mean
         self._weibull_shape = self._weibull_shape_from_cv(cv)
@@ -821,7 +843,7 @@ class WeibullMeanStdLifetime(StandardDeviationLifetimeModel):
         bisection in log(k). The left-hand side decreases monotonically with k.
         """
 
-        def log_ratio(log_k):
+        def log_ratio(log_k: np.ndarray | float) -> np.ndarray | float:
             k_inv = np.exp(-log_k)
             return scipy.special.gammaln(1 + 2 * k_inv) - 2 * scipy.special.gammaln(1 + k_inv)
 
@@ -874,7 +896,7 @@ class TabulatedLifetime(LifetimeModel):
     """
 
     @model_validator(mode="after")
-    def _cast_cumulative_survival_table(self):
+    def _cast_cumulative_survival_table(self) -> Self:
         if self.lt_factor_by_year is not None or self.lt_factor_by_cohort is not None:
             raise ValueError("Lifetime factors cannot be used with TabulatedLifetime.")
         value = self.cumulative_survival_table
@@ -911,7 +933,7 @@ class TabulatedLifetime(LifetimeModel):
         self.reset_cached_arrays()
         return self
 
-    def _check_cumulative_survival_table(self, values: np.ndarray):
+    def _check_cumulative_survival_table(self, values: np.ndarray) -> None:
         tolerance = 1e-12
         if np.min(values) < -tolerance or np.max(values) > 1 + tolerance:
             raise ValueError("cumulative_survival_table must be between 0 and 1.")
@@ -929,7 +951,7 @@ class TabulatedLifetime(LifetimeModel):
                 "cumulative_survival_table must not increase over time for an age-cohort."
             )
 
-    def _check_prms_set(self):
+    def _check_prms_set(self) -> None:
         if self.cumulative_survival_table is None:
             raise ValueError("Lifetime parameter cumulative_survival_table must be set before use.")
 
@@ -978,7 +1000,7 @@ class CompetingRisksLifetime(LifetimeModel):
         return data
 
     @model_validator(mode="after")
-    def _check_models(self):
+    def _check_models(self) -> Self:
         if len(self.models) < 2:
             raise ValueError("CompetingRisksLifetime needs at least two lifetime models.")
         fields_set_here = sorted(self.model_fields_set & set(self._fields_of_models))
@@ -1000,15 +1022,15 @@ class CompetingRisksLifetime(LifetimeModel):
                 raise ValueError("Time dimension of all lifetime models must match.")
         return self
 
-    def _check_prms_set(self):
+    def _check_prms_set(self) -> None:
         for model in self.models:
             model._check_prms_set()
 
-    def reset_cached_arrays(self):
+    def reset_cached_arrays(self) -> None:
         super().reset_cached_arrays()
         self._model_cumulative_survivals = None
 
-    def _reset_if_models_changed(self):
+    def _reset_if_models_changed(self) -> None:
         """Resets the cached arrays if the cumulative survival of any model has changed since they
         were computed, e.g. because its parameters were changed."""
         model_cum_survs = tuple(model.cumulative_survival for model in self.models)
@@ -1027,23 +1049,23 @@ class CompetingRisksLifetime(LifetimeModel):
             cum_surv *= model_cum_surv
         return cum_surv
 
-    def _get_quad_points_and_weights(self):
+    def _get_quad_points_and_weights(self) -> tuple[list[float], list[float]]:
         """Inflow time within the time step, used for removal_share_by_year. Taken from the first
         model, as it cannot be set in CompetingRisksLifetime."""
         return self.models[0]._get_quad_points_and_weights()
 
     @property
-    def cumulative_survival(self):
+    def cumulative_survival(self) -> np.ndarray:
         self._reset_if_models_changed()
         return super().cumulative_survival
 
     @property
-    def outflow_pmf(self):
+    def outflow_pmf(self) -> np.ndarray:
         self._reset_if_models_changed()
         return super().outflow_pmf
 
     @property
-    def conditional_survival(self):
+    def conditional_survival(self) -> np.ndarray:
         self._reset_if_models_changed()
         return super().conditional_survival
 

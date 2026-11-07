@@ -1,7 +1,12 @@
-from typing import TYPE_CHECKING, Optional, Union
+"""Home to the :py:class:`flodym.Process` class, the nodes of an MFA system, and
+:py:func:`flodym.make_processes`."""
+
+from collections.abc import Iterator
+from typing import TYPE_CHECKING, Any, Optional, Union
 
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import PrivateAttr, model_validator
+from typing_extensions import Self
 
 from ._checks import balance_failure, config_hint, report_balance_failures
 from ._process_compute import (
@@ -27,7 +32,7 @@ class Process(PydanticBaseModel):
     Flows are defined between two processes. Stocks are connected to a process.
     Processes do not contain values themselves.
 
-    Processes get an ID by the order they are defined in the :py:attribute::`MFASystem.definition`,
+    Processes get an ID by the order they are defined in the :py:attr:`flodym.MFASystem.definition`,
     or explicitly by a :py:class:`flodym.ProcessDefinition`.
     The process with ID 0 necessarily contains everything outside the system boundary.
     It has to be named 'sysenv'.
@@ -57,7 +62,7 @@ class Process(PydanticBaseModel):
     )
 
     @model_validator(mode="after")
-    def check_id0(self):
+    def check_id0(self) -> Self:
         """Ensure that the process with ID 0 is named 'sysenv', and vice versa."""
         if (self.id == 0) != (self.name == "sysenv"):
             raise ValueError(
@@ -67,7 +72,7 @@ class Process(PydanticBaseModel):
             )
         return self
 
-    def __repr_args__(self):
+    def __repr_args__(self) -> Iterator[tuple[str, Any]]:
         """Arguments shown by ``repr()`` and ``str()``. Linked flows and the stock are shown by
         name only, since they link back to the process."""
         yield "name", self.name
@@ -257,18 +262,21 @@ class Process(PydanticBaseModel):
         return dict(self._outflow_shares)
 
     @property
-    def forward_dimension_splitter(self) -> Optional["FlodymArray"]:
+    def forward_dimension_splitter(self) -> Union["FlodymArray", str, None]:
         """Array by which the total throughput of the process is multiplied in
         :py:meth:`compute` before computing the outflows, to add dimensions which the total does
         not have, but the outflows to compute do. Set it with :py:meth:`set_dimension_splitter`.
+        A splitter from a :py:class:`flodym.ProcessDefinition` is a parameter name until it is
+        linked by :py:meth:`flodym.MFASystem.link_parameters`.
         """
         return self._dimension_splitters.get("forward")
 
     @property
-    def backward_dimension_splitter(self) -> Optional["FlodymArray"]:
+    def backward_dimension_splitter(self) -> Union["FlodymArray", str, None]:
         """Array by which the total throughput of the process is multiplied in
         :py:meth:`compute` before computing the inflows, to add dimensions which the total does
         not have, but the inflows to compute do. Set it with :py:meth:`set_dimension_splitter`.
+        See also :py:attr:`forward_dimension_splitter`.
         """
         return self._dimension_splitters.get("backward")
 
@@ -551,6 +559,15 @@ def make_processes(definitions: list[str | ProcessDefinition]) -> dict[str, Proc
     stored in the processes. They are replaced by the parameters in
     :py:meth:`flodym.MFASystem.link_parameters`.
     The process with ID 0 must be named 'sysenv'.
+
+    Args:
+        definitions: Process names or process definitions.
+
+    Returns:
+        The processes, keyed by name.
+
+    Raises:
+        ValueError: If explicit IDs are negative or not unique, or if a name is given twice.
     """
     explicit_ids = [
         d.id for d in definitions if isinstance(d, ProcessDefinition) and d.id is not None

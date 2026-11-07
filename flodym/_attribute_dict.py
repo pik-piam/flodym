@@ -72,12 +72,13 @@ class AttributeDict(dict[str, ValueT]):
         return alias_map
 
     def _build_alias_map(self) -> dict[str, str]:
+        """Map aliases to keys, excluding ambiguous aliases and aliases of dict attributes."""
         keys_by_alias: dict[str, list[str]] = {}
         for key in self.keys():
             if isinstance(key, str):
                 keys_by_alias.setdefault(_to_attribute_name(key), []).append(key)
 
-        alias_map = {}
+        alias_map: dict[str, str] = {}
         for alias, keys in keys_by_alias.items():
             if len(keys) > 1:
                 logger.warning(
@@ -94,6 +95,7 @@ class AttributeDict(dict[str, ValueT]):
         return alias_map
 
     def __getattr__(self, name: str) -> ValueT:
+        """Return the value whose key has the attribute alias ``name``."""
         if name.startswith("__") or name == "_alias_cache":
             raise AttributeError(name)
         alias_map = self._alias_map()
@@ -117,6 +119,7 @@ class AttributeDict(dict[str, ValueT]):
         )
 
     def __dir__(self) -> list[str]:
+        """List the dict attributes together with the attribute aliases of the keys."""
         return sorted(set(super().__dir__()) | set(self._alias_map()))
 
     @classmethod

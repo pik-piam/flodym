@@ -14,6 +14,11 @@ logger = logging.getLogger(__name__)
 
 
 class ErrorBehavior(str, Enum):
+    """What to do if a check fails: raise an error, log a warning or info message, or ignore it.
+
+    Wherever an ``ErrorBehavior`` is expected, its string value (e.g. ``"warn"``) can be given.
+    """
+
     ERROR = "error"
     WARN = "warn"
     INFO = "info"
@@ -21,10 +26,21 @@ class ErrorBehavior(str, Enum):
 
 
 def handle_error(
-    behavior: ErrorBehavior, message: str | None = None, error: Exception | None = None
-):
+    behavior: ErrorBehavior | str, message: str | None = None, error: Exception | None = None
+) -> None:
     """Raise, log, or ignore an error, depending on the given behavior.
     Exactly one of message or error must be given.
+
+    Args:
+        behavior: What to do with the error.
+        message: Message of the error. If raised, a ``ValueError`` is used.
+        error: Exception to raise, or whose message to log.
+
+    Raises:
+        ValueError: If not exactly one of message and error is given, or if behavior is not a valid
+            :py:class:`ErrorBehavior`.
+        Exception: The given error, or a ``ValueError`` with the given message, if behavior is
+            ``"error"``.
     """
 
     # ensures valid ErrorBehavior
@@ -134,6 +150,10 @@ class Config(BaseModel, validate_assignment=True):
         """Absolute tolerance for checks, given the float precision of the checked values
         (machine epsilon times the largest absolute value).
         Returns :py:attr:`absolute_tolerance` if set, else ``relative_tolerance * float_precision``.
+
+        Args:
+            float_precision: Machine epsilon of the data type of the checked values, times their
+                largest absolute value.
         """
         if self.absolute_tolerance is not None:
             return self.absolute_tolerance
@@ -144,11 +164,19 @@ class Config(BaseModel, validate_assignment=True):
         """Temporarily change config options within a ``with`` block.
         Nested options are given as dictionaries.
 
+        Args:
+            **changes: New values of config options, with option names as keys. For nested
+                options such as ``error_behaviors``, a dictionary of the options to change.
+
+        Yields:
+            This config object, with the changed options. The previous values are restored when
+            the block is left.
+
         Example:
             >>> with config.override(error_behaviors={"unset_array_used": "error"}):
             ...     ...
         """
-        old_values = {}
+        old_values: dict[str, Any] = {}
         try:
             for name, value in changes.items():
                 old_values[name] = getattr(self, name)
@@ -163,3 +191,4 @@ class Config(BaseModel, validate_assignment=True):
 
 
 config = Config()
+"""Global configuration object, accessible as ``flodym.config``."""

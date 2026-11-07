@@ -11,11 +11,19 @@ from .stocks import Stock
 
 
 def stock_stack(stocks: list[Stock], dimension: Dimension) -> Stock:
-    """Make a `FlowDrivenStock` object as a combination of `Stock` objects,
-    by combining them on a new dimension.
+    """Combine `Stock` objects into one stock of the class of the first one, by stacking their
+    stock, inflow and outflow arrays along a new dimension.
+
     For example, we could have one stock for each material of interest, and
     with this function we can combine them to a stock object that contains
     information about all the materials.
+
+    Args:
+        stocks: Stocks to combine. Name and process are taken from the first one.
+        dimension: The new dimension to stack along, see :py:func:`flodym.flodym_array_stack`.
+
+    Returns:
+        The combined stock.
     """
     stacked_stock = flodym_array_stack([stock.stock for stock in stocks], dimension=dimension)
     stacked_inflow = flodym_array_stack([stock.inflow for stock in stocks], dimension=dimension)
@@ -64,6 +72,10 @@ def make_empty_stocks(
 
     Returns:
         Dictionary of stocks, with stock names as keys.
+
+    Raises:
+        KeyError: If the process of a stock definition is not found in processes.
+        ValueError: If a prescribed array does not exist in the created stock.
     """
     empty_stocks = {}
     for stock_definition in stock_definitions:

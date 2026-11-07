@@ -29,12 +29,14 @@ from .dimensions import DimensionSet
 if TYPE_CHECKING:
     from .flodym_arrays import FlodymArray, Flow
     from .processes import Process
+    from .stocks import Stock
 
 logger = logging.getLogger(__name__)
 
 Side = Literal["in", "out"]
 """Side of a process: ``"in"`` for its inflows, ``"out"`` for its outflows."""
 SIDES: tuple[Side, Side] = ("in", "out")
+"""Both sides of a process."""
 
 Direction = Literal["forward", "backward"]
 """Direction of a dimension splitter: ``"forward"`` splitters are used to compute outflows,
@@ -42,6 +44,7 @@ Direction = Literal["forward", "backward"]
 SPLITTER_SIDES: dict[Direction, Side] = {"forward": "out", "backward": "in"}
 """The side whose flows a dimension splitter of each direction is used for."""
 SPLITTER_DIRECTIONS: dict[Side, Direction] = {side: d for d, side in SPLITTER_SIDES.items()}
+"""The direction of the dimension splitter used for the flows of each side."""
 
 TotalMethod = Literal["sum", "share", "remainder"]
 """Ways to compute the total of a side from its flows, in order of preference
@@ -54,11 +57,13 @@ class UnderdeterminedError(Exception):
     given flows, shares and stock values, or if its stock type does not support the automatic
     computation."""
 
-    def __init__(self, process: "Process", message: str):
+    def __init__(self, process: "Process", message: str) -> None:
         self.process_name = process.name
+        """Name of the process."""
         self.reason = message
         """Explanation why the process cannot be computed."""
         self.short_message = f"Process '{process.name}' is underdetermined. Skip computation."
+        """One-line message, used when underdetermined processes are skipped."""
         super().__init__(
             f"Cannot compute process '{process.name}' (ID {process.id}), as it is "
             f"underdetermined.\n{message}" + config_hint("process_underdetermined")
@@ -110,7 +115,7 @@ class ProcessSide:
     Flows count as known if they are set (see :py:attr:`flodym.FlodymArray.is_set`).
     """
 
-    def __init__(self, process: "Process", side: Side):
+    def __init__(self, process: "Process", side: Side) -> None:
         self.process = process
         self.side = side
         self.flows: dict[str, Flow] = process._inflows if side == "in" else process._outflows
@@ -354,7 +359,7 @@ class ProcessSide:
         if config.error_behaviors.process_overdetermined == ErrorBehavior.IGNORE:
             return
         tolerance = self.process.tolerance
-        failures = []
+        failures: list[str] = []
         for name, share in self.shares.items():
             if share.dims - total.dims:
                 continue
@@ -383,7 +388,7 @@ class ProcessComputation:
     :py:meth:`compute_side`.
     """
 
-    def __init__(self, process: "Process"):
+    def __init__(self, process: "Process") -> None:
         process._check_parameters_linked()
         self.process = process
         self.sides: dict[Side, ProcessSide] = {side: ProcessSide(process, side) for side in SIDES}
@@ -396,7 +401,7 @@ class ProcessComputation:
     def require_total(self, sides: Sequence[Side] = SIDES) -> list[Side]:
         """Sides from which the total can be computed, sorted by the preference of their
         method (see :py:data:`TOTAL_METHODS`). Raises an UnderdeterminedError if there is none."""
-        candidates = []
+        candidates: list[tuple[int, Side]] = []
         for side in sides:
             method = self.sides[side].total_method()
             if method is not None:
@@ -434,7 +439,7 @@ class ProcessComputation:
     def compute_total(self, sides: Sequence[Side]) -> "FlodymArray":
         """Total, computed from the flows of the first of the given sides from which this is
         possible (see :py:meth:`require_total`). Raises an UnderdeterminedError if none."""
-        errors = []
+        errors: list[str] = []
         for side in self.require_total(sides):
             try:
                 return self.sides[side].compute_total()
@@ -596,7 +601,7 @@ def is_overdetermined(process: "Process") -> bool:
     return n_equations > n_unknowns
 
 
-def _stock_arrays(stock) -> list["FlodymArray"]:
+def _stock_arrays(stock: "Stock") -> list["FlodymArray"]:
     """Inflow, outflow, stock and, if present, inflow by cohort of a stock."""
     arrays = [stock.inflow, stock.outflow, stock.stock]
     inflow_by_cohort = getattr(stock, "inflow_by_cohort", None)
@@ -612,23 +617,28 @@ class _Snapshot:
 
     _STOCK_PRIVATE_ARRAYS = ("_stock_by_cohort", "_outflow_by_cohort")
 
-    def __init__(self, process: "Process"):
+    def __init__(self, process: "Process") -> None:
         stock = process.stock
         self.stock = stock
-        stock_arrays = [] if stock is None else _stock_arrays(stock)
+        stock_arrays: list[FlodymArray] = [] if stock is None else _stock_arrays(stock)
         flows = list(process.inflows.values()) + list(process.outflows.values())
-        self.arrays = [(a, a.values.copy(), a.is_set) for a in flows + stock_arrays]
+        self.arrays: list[tuple[FlodymArray, np.ndarray, bool]] = [
+            (a, a.values.copy(), a.is_set) for a in flows + stock_arrays
+        ]
         """Arrays with their values and ``is_set`` flags."""
-        self.given_stock_arrays = [(a, v) for a, v, was_set in self.arrays[len(flows) :] if was_set]
+        self.given_stock_arrays: list[tuple[FlodymArray, np.ndarray]] = [
+            (a, v) for a, v, was_set in self.arrays[len(flows) :] if was_set
+        ]
         """Stock arrays which were set, with their values."""
         # cohort arrays of dynamic stock models are replaced, not modified, so references suffice
-        self.stock_private = {
+        self.stock_private: dict[str, np.ndarray] = {
             name: getattr(stock, name)
             for name in self._STOCK_PRIVATE_ARRAYS
             if hasattr(stock, name)
         }
 
     def restore(self) -> None:
+        """Restore the stored values and ``is_set`` flags."""
         for array, values, was_set in self.arrays:
             array.values = values
             if was_set:

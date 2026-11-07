@@ -6,7 +6,7 @@ Specific MFA models can be built that inherit from this class.
 import logging
 import warnings
 from os import PathLike
-from typing import SupportsFloat
+from typing import Any, SupportsFloat
 
 import numpy as np
 from pydantic import BaseModel as PydanticBaseModel
@@ -84,7 +84,7 @@ class MFASystem(PydanticBaseModel):
     """
 
     @model_validator(mode="after")
-    def link_processes(self):
+    def link_processes(self) -> Self:
         """Link the processes to the flows and stocks at setup, see :py:meth:`relink`.
         Flow names are not changed."""
         self.relink(update_names=False)
@@ -118,7 +118,7 @@ class MFASystem(PydanticBaseModel):
                 :py:attr:`processes`, or if several stocks refer to the same process.
                 In this case, the existing links are left unchanged.
         """
-        linked_stocks = {}
+        linked_stocks: dict[str, str] = {}
         for flow in self.flows.values():
             for process in (flow.from_process, flow.to_process):
                 self._check_is_own_process(process, f"flow '{flow.name}'")
@@ -149,8 +149,8 @@ class MFASystem(PydanticBaseModel):
         :py:attr:`flows` and of the process shares accordingly, keeping their order.
         See :py:meth:`relink`."""
         fixed_names = {key for key, flow in self.flows.items() if not flow._named_after_processes}
-        renamed_flows = {}
-        new_keys = {}
+        renamed_flows: dict[str, Flow] = {}
+        new_keys: dict[str, str] = {}
         for key, flow in self.flows.items():
             if flow._named_after_processes:
                 generated_name = config.flow_naming(flow.from_process, flow.to_process)
@@ -167,6 +167,8 @@ class MFASystem(PydanticBaseModel):
             process._rename_share_keys(new_keys)
 
     def _check_is_own_process(self, process: Process, used_by: str) -> None:
+        """Raise a ValueError if ``process`` is not the object stored in :py:attr:`processes`
+        under its name. ``used_by`` labels the referring flow or stock for the message."""
         if self.processes.get(process.name) is not process:
             raise ValueError(
                 f"Process '{process.name}' of {used_by} is not a process of the MFA system."
@@ -190,6 +192,9 @@ class MFASystem(PydanticBaseModel):
             link: Whether to link the parameters. Set it to False to change
                 :py:attr:`parameters` before linking, e.g. to add parameters computed from the
                 read ones, and call :py:meth:`link_parameters` afterwards.
+
+        Returns:
+            The MFA system.
         """
         dims = data_reader.read_dimensions(definition.dimensions)
         parameters = data_reader.read_parameters(definition.parameters, dims=dims)
@@ -226,12 +231,17 @@ class MFASystem(PydanticBaseModel):
         :py:class:`flodym.CSVParameterReader`, and :py:meth:`flodym.FlodymArray.from_df` for expected
         format.
 
-        :param definition: The MFA definition object
-        :param dimension_files: A dictionary mapping dimension names to CSV files
-        :param parameter_files: A dictionary mapping parameter names to CSV files
-        :param allow_missing_parameter_values: Whether to allow missing values in the parameter data (missing rows or empty value cells)
-        :param allow_extra_parameter_values: Whether to allow extra values in the parameter data
-        :param link: Whether to link the parameters, see :py:meth:`from_data_reader`
+        Args:
+            definition: The MFA definition object.
+            dimension_files: A dictionary mapping dimension names to CSV files.
+            parameter_files: A dictionary mapping parameter names to CSV files.
+            allow_missing_parameter_values: Whether to allow missing values in the parameter data
+                (missing rows or empty value cells).
+            allow_extra_parameter_values: Whether to allow extra values in the parameter data.
+            link: Whether to link the parameters, see :py:meth:`from_data_reader`.
+
+        Returns:
+            The MFA system.
         """
 
         dimension_reader = CSVDimensionReader(
@@ -268,14 +278,21 @@ class MFASystem(PydanticBaseModel):
         :py:class:`flodym.ExcelParameterReader`, and
         :py:meth:`flodym.FlodymArray.from_df` for expected format.
 
-        :param definition: The MFA definition object
-        :param dimension_files: A dictionary mapping dimension names to Excel files
-        :param parameter_files: A dictionary mapping parameter names to Excel files
-        :param dimension_sheets: A dictionary mapping dimension names to sheet names in the Excel files
-        :param parameter_sheets: A dictionary mapping parameter names to sheet names in the Excel files
-        :param allow_missing_parameter_values: Whether to allow missing values in the parameter data (missing rows or empty value cells)
-        :param allow_extra_parameter_values: Whether to allow extra values in the parameter data
-        :param link: Whether to link the parameters, see :py:meth:`from_data_reader`
+        Args:
+            definition: The MFA definition object.
+            dimension_files: A dictionary mapping dimension names to Excel files.
+            parameter_files: A dictionary mapping parameter names to Excel files.
+            dimension_sheets: A dictionary mapping dimension names to sheet names in the Excel
+                files.
+            parameter_sheets: A dictionary mapping parameter names to sheet names in the Excel
+                files.
+            allow_missing_parameter_values: Whether to allow missing values in the parameter data
+                (missing rows or empty value cells).
+            allow_extra_parameter_values: Whether to allow extra values in the parameter data.
+            link: Whether to link the parameters, see :py:meth:`from_data_reader`.
+
+        Returns:
+            The MFA system.
         """
         dimension_reader = ExcelDimensionReader(
             dimension_files=dimension_files,
@@ -293,19 +310,29 @@ class MFASystem(PydanticBaseModel):
         )
         return cls.from_data_reader(definition, data_reader, link=link)
 
-    def compute(self):
+    def compute(self) -> None:
         """Perform all computations for the MFA system.
         This method must be implemented in a subclass of MFASystem.
+
+        Raises:
+            NotImplementedError: If it is not overridden in a subclass.
         """
         raise NotImplementedError(
             "The compute method must be implemented in a subclass of MFASystem if it is to be used."
         )
 
-    def get_new_array(self, dim_letters: tuple[str, ...] | None = None, **kwargs) -> FlodymArray:
+    def get_new_array(
+        self, dim_letters: tuple[str, ...] | None = None, **kwargs: Any
+    ) -> FlodymArray:
         """Get a new FlodymArray object.
 
-        :param dim_letters: tuple of dimension letters to include in the new FlodymArray. If None, all dimensions are included.
-        :param kwargs: keyword arguments to pass to the FlodymArray constructor.
+        Args:
+            dim_letters: Tuple of dimension letters to include in the new FlodymArray. If None,
+                all dimensions are included.
+            **kwargs: Keyword arguments to pass to the FlodymArray constructor.
+
+        Returns:
+            The new FlodymArray, defined over the selected dimensions of :py:attr:`dims`.
         """
         dims = self.dims.get_subset(dim_letters)
         return FlodymArray(dims=dims, **kwargs)
@@ -366,7 +393,7 @@ class MFASystem(PydanticBaseModel):
             error_behavior, raise_error, config.error_behaviors.mass_balance, "check_mass_balance"
         )
 
-        failures = []
+        failures: list[str | None] = []
         for process in self.processes.values():
             if process.id == 0:
                 failures.append(
@@ -465,14 +492,14 @@ class MFASystem(PydanticBaseModel):
             logger.info(f"Success - No negative flows or NaN values in {self.__class__.__name__}")
         return all_good
 
-    def mark_all_set(self):
+    def mark_all_set(self) -> None:
         """Mark all stocks and flows as set."""
         for flow in self.flows.values():
             flow.mark_set()
         for stock in self.stocks.values():
             stock.mark_all_set()
 
-    def mark_all_unset(self):
+    def mark_all_unset(self) -> None:
         """Mark all stocks and flows as unset."""
         for flow in self.flows.values():
             flow.mark_unset()

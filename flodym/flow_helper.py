@@ -1,3 +1,5 @@
+"""Home to helper functions for creating `Flow` objects."""
+
 import logging
 from collections.abc import Callable, Collection
 from typing import Literal, overload
@@ -104,7 +106,16 @@ def make_empty_flows(
 
 def make_unique_name(name: str, used_names: Collection[str]) -> str:
     """Append a numeric suffix ``__2``, ``__3``, ... to the name if it is already used.
-    In this case, a warning is logged."""
+
+    In this case, a warning is logged.
+
+    Args:
+        name: Proposed flow name.
+        used_names: Names that are already taken.
+
+    Returns:
+        ``name`` itself if it is not used, else ``name`` with the lowest free suffix.
+    """
     if name not in used_names:
         return name
     suffix_number = 2

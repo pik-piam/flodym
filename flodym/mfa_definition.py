@@ -1,8 +1,10 @@
 """Home to definition classes.
 
 These are used when defining the MFA system, and can be used to check the input data
-and put it into ojects with the desired properties.
+and put it into objects with the desired properties.
 """
+
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -16,6 +18,7 @@ from pydantic import (
 from pydantic import (
     BaseModel as PydanticBaseModel,
 )
+from typing_extensions import Self
 
 
 class DimensionDefinition(PydanticBaseModel):
@@ -31,14 +34,17 @@ class DimensionDefinition(PydanticBaseModel):
     model_config = ConfigDict(protected_namespaces=())
 
     name: str = Field(..., min_length=2)
+    """Name of the dimension, with at least two characters."""
     letter: str = Field(
         ..., min_length=1, max_length=1, validation_alias=AliasChoices("letter", "dim_letter")
     )
+    """Single-character key of the dimension. Can also be given as ``dim_letter``."""
     dtype: type
+    """Data type of the dimension items, e.g. ``int`` or ``str``."""
 
 
 class DefinitionWithDimLetters(PydanticBaseModel):
-    """Base class for any definition that contains dimesnsion letters."""
+    """Base class for any definition that contains dimension letters."""
 
     model_config = ConfigDict(protected_namespaces=())
 
@@ -46,7 +52,8 @@ class DefinitionWithDimLetters(PydanticBaseModel):
     """Letters of the dimensions that the object is defined on."""
 
     @field_validator("dim_letters", mode="before")
-    def check_dimensions(cls, v):
+    def check_dimensions(cls, v: Any) -> Any:
+        """Check that all dimension letters are single-character strings."""
         for letter in v:
             if (not isinstance(letter, str)) or (len(letter) != 1):
                 raise ValueError("Dimensions must be defined using single digit letters")
@@ -62,7 +69,7 @@ class FlowDefinition(DefinitionWithDimLetters):
         >>> flow_one = FlowDefinition(from_process_name='fabrication', to_process_name='use', dim_letters=('r', 't'))
         >>> flow_two = FlowDefinition(from_process_name='use', to_process_name='end_of_life', dim_letters=('r', 't'))
 
-    These are then used in the :py:class:MFADefinition, for creating a custom MFA System.
+    These are then used in the :py:class:`flodym.MFADefinition`, for creating a custom MFA System.
     """
 
     from_process_name: str = Field(
@@ -132,7 +139,10 @@ class StockDefinition(DefinitionWithDimLetters):
         return {name: p for name, p in parameters.items() if p is not None}
 
     @model_validator(mode="after")
-    def check_prescribed_arrays(self):
+    def check_prescribed_arrays(self) -> Self:
+        """Check that ``cohort_letter`` and ``prescribed_inflow_by_cohort`` are only given for
+        dynamic stock models, and that at most one of the arrays which determine the computation
+        mode of a dynamic stock model is prescribed."""
         is_dynamic = "cohort_dim" in self.subclass.model_fields
         if self.cohort_letter is not None and not is_dynamic:
             raise ValueError(
@@ -154,13 +164,16 @@ class StockDefinition(DefinitionWithDimLetters):
         return self
 
     @model_validator(mode="after")
-    def init_solver(self):
+    def init_solver(self) -> Self:
+        """Check that the deprecated ``solver`` is ``"manual"`` or ``"lapack"``."""
         if self.solver not in ["manual", "lapack"]:
             raise ValueError("Solver must be either 'manual' or 'lapack'.")
         return self
 
     @model_validator(mode="after")
-    def check_lifetime_model(self):
+    def check_lifetime_model(self) -> Self:
+        """Check that a lifetime model class is given if and only if the stock subclass uses a
+        lifetime model."""
         if (
             self.lifetime_model_class is not None
             and "lifetime_model" not in self.subclass.model_fields
@@ -238,7 +251,7 @@ class MFADefinition(PydanticBaseModel):
     :py:meth:`flodym.MFASystem.link_parameters`."""
 
     @model_validator(mode="after")
-    def check_dimension_letters(self):
+    def check_dimension_letters(self) -> Self:
         """Check that dimension letters used for flows, stocks and parameters are part of the defined dimensions."""
         defined_dim_letters = [dd.letter for dd in self.dimensions]
         for item in self.flows + self.stocks + self.parameters:
@@ -251,13 +264,13 @@ class MFADefinition(PydanticBaseModel):
         return self
 
     @model_validator(mode="after")
-    def validate_parameter_names(self):
+    def validate_parameter_names(self) -> Self:
         """Check that parameters used by flow, stock and process definitions are defined,
         unless :py:attr:`check_parameter_names` is False."""
         if not self.check_parameter_names:
             return self
         defined_parameters = {p.name for p in self.parameters}
-        used_parameters = []
+        used_parameters: list[tuple[str, str]] = []
         for flow in self.flows:
             if flow.prescribed is not None:
                 used_parameters.append((flow.prescribed, f"flow definition {flow}"))
@@ -285,7 +298,7 @@ class MFADefinition(PydanticBaseModel):
             A dictionary mapping from definition list names (such as "dimensions") to the
             DataFrames.
         """
-        all_dfs = {}
+        all_dfs: dict[str, pd.DataFrame] = {}
         for field_name, def_list in self.model_dump().items():
             # skip options such as check_parameter_names, and empty lists
             if not isinstance(def_list, list) or not def_list:
