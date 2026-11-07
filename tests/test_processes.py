@@ -165,9 +165,8 @@ def _named_flows_mfa() -> MFASystem:
 
 def test_setup_keeps_flow_names():
     import flodym
-    from flodym.flow_naming import process_ids
-
     from flodym import FlowDefinition, make_empty_flows
+    from flodym.flow_naming import process_ids
 
     dims = DimensionSet(dim_list=[Dimension(name="time", letter="t", items=[2000])])
     processes = make_processes(["sysenv", "a"])

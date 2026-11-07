@@ -3,21 +3,21 @@ import pytest
 import scipy.stats
 
 from flodym import (
+    CompetingRisksLifetime,
     Dimension,
     DimensionSet,
+    ExponentialLifetime,
+    FixedLifetime,
     FlodymArray,
-    InflowDrivenDSM,
-    StockArray,
-    NormalLifetime,
     FoldedNormalLifetime,
+    InflowDrivenDSM,
+    Leaching,
     LogNormalLifetime,
+    NormalLifetime,
+    StockArray,
+    TabulatedLifetime,
     WeibullLifetime,
     WeibullMeanStdLifetime,
-    ExponentialLifetime,
-    Leaching,
-    CompetingRisksLifetime,
-    TabulatedLifetime,
-    FixedLifetime,
 )
 
 dims = DimensionSet(
@@ -182,7 +182,7 @@ def test_hazard_factor_equals_lifetime_factor_for_weibull(test_dims):
     factor_values = 1 + 0.1 * np.arange(test_dims["t"].len)
     lt_factor = FlodymArray(dims=test_dims["t",], values=factor_values)
     hazard_factor = FlodymArray(dims=test_dims["t",], values=factor_values**-weibull_shape)
-    prms = dict(dims=test_dims, weibull_scale=10.0, weibull_shape=weibull_shape)
+    prms = {"dims": test_dims, "weibull_scale": 10.0, "weibull_shape": weibull_shape}
     extended = WeibullLifetime(lt_factor_by_year=lt_factor, **prms)
     hazard = WeibullLifetime(hazard_factor_by_year=hazard_factor, **prms)
     np.testing.assert_allclose(
@@ -243,7 +243,7 @@ def test_removal_share(inflow_at, exposed_fraction):
     share = FlodymArray(dims=dims["t",])
     share[{"t": 2005}] = 0.3
     share[{"t": 2012}] = 1.0
-    prms = dict(dims=dims, mean=mean, std=0.3, relative_std=True, inflow_at=inflow_at)
+    prms = {"dims": dims, "mean": mean, "std": 0.3, "relative_std": True, "inflow_at": inflow_at}
     plain = LogNormalLifetime(**prms)
     removed = LogNormalLifetime(removal_share_by_year=share, **prms)
     for year, value in [(2005, 0.3), (2012, 1.0)]:

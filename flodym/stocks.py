@@ -2,23 +2,29 @@
 including flow-driven stocks and dynamic (lifetime-based) stocks.
 """
 
-from abc import abstractmethod
 import functools
-import numpy as np
-from pydantic import BaseModel as PydanticBaseModel, ConfigDict, model_validator
-from typing import TYPE_CHECKING, Callable, ClassVar, Optional, Union, TypeVar, Type
 import logging
 import warnings
+from abc import abstractmethod
+from collections.abc import Callable
+from typing import TYPE_CHECKING, ClassVar, TypeVar
 
-from .processes import Process, UnderdeterminedError
-from .flodym_arrays import StockArray, FlodymArray
-from .dimensions import Dimension, DimensionSet
-from .lifetime_models import LifetimeModel, UnevenTimeDim
+import numpy as np
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import ConfigDict, model_validator
+
 from ._checks import balance_failure, config_hint, report_balance_failures
+from ._process_compute import UnderdeterminedError
 from .config import ErrorBehavior, config, handle_error
+from .dimensions import Dimension, DimensionSet
+from .flodym_arrays import FlodymArray, StockArray
+from .lifetime_models import LifetimeModel, UnevenTimeDim
+from .processes import Process
 
 if TYPE_CHECKING:
     from ._process_compute import ProcessComputation
+
+logger = logging.getLogger(__name__)
 
 StockSubtype = TypeVar("StockSubtype", bound="Stock")
 
@@ -67,15 +73,15 @@ class Stock(PydanticBaseModel):
 
     dims: DimensionSet
     """Dimensions of the stock, inflow, and outflow arrays. Time must be the first dimension."""
-    stock: Optional[StockArray] = None
+    stock: StockArray | None = None
     """Accumulation of the stock"""
-    inflow: Optional[StockArray] = None
+    inflow: StockArray | None = None
     """Inflow into the stock"""
-    outflow: Optional[StockArray] = None
+    outflow: StockArray | None = None
     """Outflow from the stock"""
-    name: Optional[str] = "unnamed"
+    name: str | None = "unnamed"
     """Name of the stock"""
-    process: Optional[Process] = None
+    process: Process | None = None
     """Process the stock is associated with, if any. Needed for example for the mass balance."""
     time_letter: str = "t"
     """Letter of the time dimension in the dimensions set, to make sure it's the first one."""
@@ -135,7 +141,6 @@ class Stock(PydanticBaseModel):
         In all subclasses, ``_check_needed_arrays()`` is automatically called before, and the
         stock arrays are marked as set after the computation.
         """
-        pass
 
     @abstractmethod
     def _check_needed_arrays(self):
@@ -172,7 +177,7 @@ class Stock(PydanticBaseModel):
         """Warn if a stock array needed for the computation is zero, and handle the case that it
         is not set according to ``config.error_behaviors.unset_array_used``."""
         if np.allclose(array.values, 0.0):
-            logging.warning(f"{label} is zero. {consequence}")
+            logger.warning(f"{label} is zero. {consequence}")
         if not array.is_set:
             handle_error(
                 config.error_behaviors.unset_array_used,
@@ -204,7 +209,7 @@ class Stock(PydanticBaseModel):
         """ID of the process the stock is associated with."""
         return self.process.id
 
-    def to_stock_type(self, desired_stock_type: Type[StockSubtype], **kwargs) -> StockSubtype:
+    def to_stock_type(self, desired_stock_type: type[StockSubtype], **kwargs) -> StockSubtype:
         """Return an object of a new stock type with values and dimensions the same as the original.
         `**kwargs` can be used to pass additional model attributes as required by the desired stock
         type, if these are not contained in the original stock type.
@@ -272,8 +277,8 @@ class Stock(PydanticBaseModel):
 
     def check_mass_balance(
         self,
-        tolerance: Optional[float] = None,
-        error_behavior: Optional[ErrorBehavior | str] = None,
+        tolerance: float | None = None,
+        error_behavior: ErrorBehavior | str | None = None,
     ) -> bool:
         """Check whether inflow, outflow and stock are consistent within a tolerance
         (see :py:meth:`get_mass_balance`).
@@ -296,7 +301,7 @@ class Stock(PydanticBaseModel):
         )
 
     def _check_mass_balance(
-        self, tolerance: Optional[float], error_behavior: ErrorBehavior | str, hint: str
+        self, tolerance: float | None, error_behavior: ErrorBehavior | str, hint: str
     ) -> bool:
         return report_balance_failures(
             [self._mass_balance_failure(tolerance)],
@@ -305,7 +310,7 @@ class Stock(PydanticBaseModel):
             success_message=f"Mass balance of stock '{self.name}' is consistent.",
         )
 
-    def _mass_balance_failure(self, tolerance: Optional[float] = None) -> Optional[str]:
+    def _mass_balance_failure(self, tolerance: float | None = None) -> str | None:
         """Description of the failed mass balance check for an error message, or None if it
         passed. If no tolerance is given, :py:attr:`tolerance` is used."""
         if tolerance is None:
@@ -362,7 +367,7 @@ class SimpleFlowDrivenStock(Stock):
             np.max(np.abs(self.inflow.values)) < 1e-10
             and np.max(np.abs(self.outflow.values)) < 1e-10
         ):
-            logging.warning("Inflow and Outflow are zero. This will lead to a zero stock.")
+            logger.warning("Inflow and Outflow are zero. This will lead to a zero stock.")
         if not self.inflow.is_set and not self.outflow.is_set:
             handle_error(
                 config.error_behaviors.unset_array_used,
@@ -422,13 +427,13 @@ class DynamicStockModel(Stock):
     instead fix the mode of :py:meth:`compute`.
     """
 
-    lifetime_model: Union[LifetimeModel, type]
+    lifetime_model: LifetimeModel | type
     """Lifetime model, which contains the lifetime distribution function.
     Can be input either as a LifetimeModel subclass, or as an instance of a
     LifetimeModel subclass. For available subclasses, see `flodym.lifetime_models`.
     """
-    cohort_dim: Optional[Dimension] = None
-    inflow_by_cohort: Optional[StockArray] = None
+    cohort_dim: Dimension | None = None
+    inflow_by_cohort: StockArray | None = None
     """Annual inflow by year and age-cohort, which can also enter older cohorts.
     Requires ``cohort_dim``. Only used by :py:meth:`compute_inflow_by_cohort_driven`.
     """
@@ -436,7 +441,7 @@ class DynamicStockModel(Stock):
     _outflow_by_cohort: np.ndarray = None
     _stock_by_cohort: np.ndarray = None
     _dims_cohort: DimensionSet = None
-    _initial_stock_by_cohort: Optional[np.ndarray] = None
+    _initial_stock_by_cohort: np.ndarray | None = None
     _initial_stock_year: int = None
     _initial_stock_included_in_inflow: bool = False
     _n_equations: ClassVar[int] = 2
@@ -476,7 +481,7 @@ class DynamicStockModel(Stock):
     def init_lifetime_model(self):
         if isinstance(self.lifetime_model, type):
             if not issubclass(self.lifetime_model, LifetimeModel):
-                raise ValueError("lifetime_model must be a subclass of LifetimeModel.")
+                raise TypeError("lifetime_model must be a subclass of LifetimeModel.")
             self.lifetime_model = self.lifetime_model(dims=self.dims, time_letter=self.time_letter)
         elif self.lifetime_model.dims.letters != self.dims.letters:
             raise ValueError("Lifetime model dimensions do not match stock dimensions.")
@@ -514,7 +519,7 @@ class DynamicStockModel(Stock):
 
     @property
     def _n_t(self) -> int:
-        return list(self.shape)[0]
+        return next(iter(self.shape))
 
     @property
     def _shape_cohort(self) -> tuple:
@@ -538,7 +543,7 @@ class DynamicStockModel(Stock):
 
     def _get_by_cohort_array(self, values: np.ndarray, name: str) -> StockArray:
         if self.cohort_dim is None:  # leave in for backwards compatibility
-            logging.warning(
+            logger.warning(
                 f"Cohort dimension is not defined; {name} cannot be retrieved as FlodymArray. Returning raw ndarray instead."
             )
             return values
@@ -719,7 +724,7 @@ class DynamicStockModel(Stock):
             )
         non_zero_arrays = [name for name, array in candidates.items() if np.any(array.values != 0)]
         if len(non_zero_arrays) == 1:
-            logging.warning(
+            logger.warning(
                 f"None of stock, inflow and inflow_by_cohort of stock '{self.name}' is set "
                 f"(is_set=True). Computing from {non_zero_arrays[0]}, the only one with non-zero "
                 f"values. Call mark_set() on it, or use compute_{non_zero_arrays[0]}_driven()."
@@ -810,7 +815,7 @@ class DynamicStockModel(Stock):
             # The prescribed inflow contains the inflow of the initial stock of all cohorts
             initial_stock_inflow = present_by_cohort.sum(axis=0)
             if np.any(newest_cohort_inflow < initial_stock_inflow):
-                logging.warning(
+                logger.warning(
                     f"Prescribed inflow in the initial stock year {self._initial_stock_year} is "
                     "smaller than the inflow of the initial stock it is declared to include. "
                     "The inflow of the initial stock will be used."
@@ -855,7 +860,7 @@ class DynamicStockModel(Stock):
         if not self._initial_stock_included_in_inflow and np.any(
             self.inflow.values[self._initial_year_index, ...] > 0
         ):
-            logging.warning(
+            logger.warning(
                 f"Prescribed inflow in the initial stock year {self._initial_stock_year} is non-zero. "
                 f"This creates ambiguity: Initial stock and prescribed inflow both contribute to the stock of the cohort of that year. "
                 f"The maximum of both will be used. "
@@ -869,11 +874,11 @@ class DynamicStockModel(Stock):
             )
         prescribed_stock = self.stock.values[self._initial_year_index, ...]
         if np.all(prescribed_stock == 0):
-            logging.debug(
+            logger.debug(
                 f"Prescribed stock in the initial stock year {self._initial_stock_year} is zero and will be fully replaced by the initial stock."
             )
         elif not np.all(prescribed_stock == self._initial_stock_by_cohort.sum(axis=0)):
-            logging.warning(
+            logger.warning(
                 f"Prescribed stock in the initial stock year {self._initial_stock_year} is non-zero and different from the total initial stock. "
                 f"This creates ambiguity: Initial stock and prescribed stock both contribute to the stock of that year. "
                 f"The maximum of both will be used."

@@ -74,7 +74,10 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 # Ignore a few import errors in howtos
-"howtos/*" = ["E402", "F401"]
+# B018: bare expressions are used for notebook display and in tests that expect an exception
+"howtos/*" = ["E402", "F401", "B018"]
+"examples/*" = ["B018"]
+"tests/*" = ["B018"]
 
 [tool.ty.rules]
 invalid-argument-type = "ignore"

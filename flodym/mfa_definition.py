@@ -4,8 +4,6 @@ These are used when defining the MFA system, and can be used to check the input 
 and put it into ojects with the desired properties.
 """
 
-from typing import Dict, List, Optional
-
 import numpy as np
 import pandas as pd
 from pydantic import (
@@ -73,9 +71,9 @@ class FlowDefinition(DefinitionWithDimLetters):
     """Process from which the flow originates."""
     to_process_name: str = Field(validation_alias=AliasChoices("to_process_name", "to_process"))
     """Process to which the flow goes."""
-    name_override: Optional[str] = None
+    name_override: str | None = None
     """Optional name for the flow. Will be generated from the connecting process names if not provided."""
-    prescribed: Optional[str] = None
+    prescribed: str | None = None
     """Optional name of a parameter whose values the flow is set to. The parameter is linked to
     the flow by :py:meth:`flodym.MFASystem.link_parameters`, and its values are copied into the
     flow by :py:meth:`flodym.MFASystem.set_arrays_from_prescribed`."""
@@ -93,7 +91,7 @@ class StockDefinition(DefinitionWithDimLetters):
 
     name: str = "undefined stock"
     """Name of the stock."""
-    process_name: Optional[str] = Field(
+    process_name: str | None = Field(
         default=None, validation_alias=AliasChoices("process", "process_name")
     )
     """Name of the process to which the stock is connected."""
@@ -101,28 +99,28 @@ class StockDefinition(DefinitionWithDimLetters):
     """Letter of the time dimension, to ensure it's the first appearing in dim_letters."""
     subclass: type
     """type of stock. Can be any found in :py:data:`flodym.stocks`."""
-    lifetime_model_class: Optional[type] = None
+    lifetime_model_class: type | None = None
     """Lifetime model used for the stock. Only needed if type is not simple_flow_driven.
     Available lifetime models can be found in :py:data:`flodym.lifetime_models`.
     """
-    solver: Optional[str] = "manual"
+    solver: str | None = "manual"
     """Deprecated and ignored. The stock-driven DSM always uses the former "manual" algorithm."""
-    cohort_letter: Optional[str] = None
+    cohort_letter: str | None = None
     """Letter of the cohort dimension of a dynamic stock model (see
     :py:attr:`flodym.DynamicStockModel.cohort_dim`). It must be a defined dimension with the same
     items as the time dimension, but not one of ``dim_letters``."""
-    prescribed_stock: Optional[str] = None
+    prescribed_stock: str | None = None
     """Optional name of a parameter whose values the stock is set to."""
-    prescribed_inflow: Optional[str] = None
+    prescribed_inflow: str | None = None
     """Optional name of a parameter whose values the stock inflow is set to."""
-    prescribed_outflow: Optional[str] = None
+    prescribed_outflow: str | None = None
     """Optional name of a parameter whose values the stock outflow is set to."""
-    prescribed_inflow_by_cohort: Optional[str] = None
+    prescribed_inflow_by_cohort: str | None = None
     """Optional name of a parameter whose values the inflow by cohort of a dynamic stock model is
     set to. Requires ``cohort_letter``."""
 
     @property
-    def prescribed_arrays(self) -> Dict[str, str]:
+    def prescribed_arrays(self) -> dict[str, str]:
         """Names of the parameters which stock arrays are prescribed by, keyed by array name
         (``"stock"``, ``"inflow"``, ``"outflow"``, ``"inflow_by_cohort"``)."""
         parameters = {
@@ -199,20 +197,20 @@ class ProcessDefinition(PydanticBaseModel):
 
     name: str
     """Name of the process."""
-    id: Optional[int] = None
+    id: int | None = None
     """ID of the process. If None, it is assigned automatically, see
     :py:func:`flodym.make_processes`."""
-    inflow_shares: Dict[str, str] = {}
+    inflow_shares: dict[str, str] = {}
     """Names of the parameters giving the share of an inflow in the total throughput of the
     process, keyed by flow name or by the name of the process the inflow comes from."""
-    outflow_shares: Dict[str, str] = {}
+    outflow_shares: dict[str, str] = {}
     """Names of the parameters giving the share of an outflow in the total throughput of the
     process, keyed by flow name or by the name of the process the outflow goes to."""
-    forward_dimension_splitter: Optional[str] = None
+    forward_dimension_splitter: str | None = None
     """Name of the parameter by which the total throughput of the process is multiplied before
     computing outflows, to add dimensions which the total does not have, but the outflows do
     (see :py:meth:`flodym.Process.compute`). It must sum to one over the added dimensions."""
-    backward_dimension_splitter: Optional[str] = None
+    backward_dimension_splitter: str | None = None
     """Name of the parameter by which the total throughput of the process is multiplied before
     computing inflows, to add dimensions which the total does not have, but the inflows do
     (see :py:meth:`flodym.Process.compute`). It must sum to one over the added dimensions."""
@@ -223,15 +221,15 @@ class MFADefinition(PydanticBaseModel):
 
     model_config = ConfigDict(protected_namespaces=())
 
-    dimensions: List[DimensionDefinition]
+    dimensions: list[DimensionDefinition]
     """List of definitions of dimensions used in the model."""
-    processes: List[str | ProcessDefinition]
+    processes: list[str | ProcessDefinition]
     """List of the processes used in the model, given as names or process definitions."""
-    flows: List[FlowDefinition]
+    flows: list[FlowDefinition]
     """List of definitions of flows used in the model."""
-    stocks: List[StockDefinition] = []
+    stocks: list[StockDefinition] = []
     """List of definitions of stocks used in the model."""
-    parameters: List[ParameterDefinition] = []
+    parameters: list[ParameterDefinition] = []
     """List of definitions of parameters used in the model."""
     check_parameter_names: bool = True
     """Whether to check that all parameters used in flow, stock and process definitions are
@@ -279,7 +277,7 @@ class MFADefinition(PydanticBaseModel):
                 raise ValueError(f"Parameter '{name}' used in {used_by} is not defined.")
         return self
 
-    def to_dfs(self) -> Dict[str, pd.DataFrame]:
+    def to_dfs(self) -> dict[str, pd.DataFrame]:
         """Export definition information to pandas DataFrames.
         Column names are the field names, rows have the lists.
 

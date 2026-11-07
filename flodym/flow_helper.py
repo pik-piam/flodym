@@ -1,12 +1,15 @@
 import logging
-from typing import Callable, Collection, Literal, Optional, overload
+from collections.abc import Callable, Collection
+from typing import Literal, overload
 
 from ._attribute_dict import AttributeDict
 from .config import config
-from .processes import Process
-from .flodym_arrays import Flow
 from .dimensions import DimensionSet
+from .flodym_arrays import Flow
 from .mfa_definition import FlowDefinition
+from .processes import Process
+
+logger = logging.getLogger(__name__)
 
 
 @overload
@@ -14,7 +17,7 @@ def make_empty_flows(
     processes: dict[str, Process],
     flow_definitions: list[FlowDefinition],
     dims: DimensionSet,
-    naming: Optional[Callable[[Process, Process], str]] = ...,
+    naming: Callable[[Process, Process], str] | None = ...,
     as_attribute_dict: Literal[False] = ...,
 ) -> dict[str, Flow]: ...
 @overload
@@ -22,7 +25,7 @@ def make_empty_flows(
     processes: dict[str, Process],
     flow_definitions: list[FlowDefinition],
     dims: DimensionSet,
-    naming: Optional[Callable[[Process, Process], str]] = ...,
+    naming: Callable[[Process, Process], str] | None = ...,
     *,
     as_attribute_dict: Literal[True],
 ) -> AttributeDict[Flow]: ...
@@ -30,7 +33,7 @@ def make_empty_flows(
     processes: dict[str, Process],
     flow_definitions: list[FlowDefinition],
     dims: DimensionSet,
-    naming: Optional[Callable[[Process, Process], str]] = None,
+    naming: Callable[[Process, Process], str] | None = None,
     as_attribute_dict: bool = False,
 ) -> dict[str, Flow] | AttributeDict[Flow]:
     """Initialize all defined flows with zero values.
@@ -67,7 +70,7 @@ def make_empty_flows(
     if naming is None:
         naming = config.flow_naming
     else:
-        logging.info(
+        logger.info(
             "The naming argument of make_empty_flows() is deprecated since v2.0.0. "
             "It will be removed in v3.0.0. Set flodym.config.flow_naming instead."
         )
@@ -108,5 +111,5 @@ def make_unique_name(name: str, used_names: Collection[str]) -> str:
     while f"{name}__{suffix_number}" in used_names:
         suffix_number += 1
     unique_name = f"{name}__{suffix_number}"
-    logging.warning(f"Flow name '{name}' already exists. Using '{unique_name}' instead.")
+    logger.warning(f"Flow name '{name}' already exists. Using '{unique_name}' instead.")
     return unique_name

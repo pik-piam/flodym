@@ -1,7 +1,8 @@
 """Private helpers shared by the mass balance checks of processes, stocks and MFA systems."""
 
 import logging
-from typing import TYPE_CHECKING, Optional, Sequence, Union
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Union
 
 import numpy as np
 
@@ -10,8 +11,10 @@ from .config import ErrorBehavior, handle_error
 if TYPE_CHECKING:
     from .flodym_arrays import FlodymArray
 
+logger = logging.getLogger(__name__)
 
-def config_hint(error_behavior: str, tolerance: bool = False, check: Optional[str] = None) -> str:
+
+def config_hint(error_behavior: str, tolerance: bool = False, check: str | None = None) -> str:
     """Brief note for error messages, naming the config options that control a check."""
     options = [f"flodym.config.error_behaviors.{error_behavior}"]
     if tolerance:
@@ -29,7 +32,7 @@ def max_abs(array: Union["FlodymArray", float]) -> float:
 
 def balance_failure(
     label: str, balance: Union["FlodymArray", float], tolerance: float
-) -> Optional[str]:
+) -> str | None:
     """Description of a failed mass balance check for use in an error message,
     or None if the check passed. NaN errors fail the check."""
     max_error = max_abs(balance)
@@ -39,7 +42,7 @@ def balance_failure(
 
 
 def report_balance_failures(
-    failures: Sequence[Optional[str]],
+    failures: Sequence[str | None],
     error_behavior: ErrorBehavior | str,
     hint: str,
     success_message: str,
@@ -51,5 +54,5 @@ def report_balance_failures(
         message = "Mass balance check failed for " + ", ".join(failed) + "." + hint
         handle_error(behavior=error_behavior, message=message)
         return False
-    logging.info(success_message)
+    logger.info(success_message)
     return True

@@ -1,5 +1,6 @@
 """Tests for the automatic computation of processes, see Process.compute()."""
 
+import itertools
 import logging
 
 import numpy as np
@@ -57,14 +58,14 @@ def make_mfa(
     flows: list[FlowDefinition],
     parameter_values: dict[str, np.ndarray],
     parameter_dims: dict[str, tuple[str, ...]],
-    stocks: list[StockDefinition] = [],
+    stocks: list[StockDefinition] | None = None,
     dimensions: list[DimensionDefinition] = DIM_DEFINITIONS,
 ) -> MFASystem:
     definition = MFADefinition(
         dimensions=dimensions,
         processes=processes,
         flows=flows,
-        stocks=stocks,
+        stocks=stocks or [],
         parameters=[
             ParameterDefinition(name=name, dim_letters=dims)
             for name, dims in parameter_dims.items()
@@ -205,9 +206,11 @@ def test_share_parameter_changes_are_used():
 def test_invalid_shares():
     mfa = split_mfa()
     mfa.parameters["share b"][...] = 1.5
-    with config.override(error_behaviors={"process_shares": "error"}):
-        with pytest.raises(ValueError, match="not between zero and one"):
-            mfa.processes["a"].compute()
+    with (
+        config.override(error_behaviors={"process_shares": "error"}),
+        pytest.raises(ValueError, match="not between zero and one"),
+    ):
+        mfa.processes["a"].compute()
 
 
 def test_shares_of_all_flows_must_sum_to_one():
@@ -223,18 +226,22 @@ def test_shares_of_all_flows_must_sum_to_one():
         parameter_dims={"s": ()},
     )
     mfa.flows["sysenv => a"][...] = 1.0
-    with config.override(error_behaviors={"process_shares": "error"}):
-        with pytest.raises(ValueError, match="do not sum to one"):
-            mfa.processes["a"].compute()
+    with (
+        config.override(error_behaviors={"process_shares": "error"}),
+        pytest.raises(ValueError, match="do not sum to one"),
+    ):
+        mfa.processes["a"].compute()
 
 
 def test_overdetermined_inconsistent_raises():
     mfa = split_mfa()
     mfa.flows["a => b"][...] = 100.0
     assert mfa.processes["a"].is_overdetermined
-    with config.override(error_behaviors={"process_shares": "error"}):
-        with pytest.raises(ValueError, match="overdetermined"):
-            mfa.processes["a"].compute()
+    with (
+        config.override(error_behaviors={"process_shares": "error"}),
+        pytest.raises(ValueError, match="overdetermined"),
+    ):
+        mfa.processes["a"].compute()
 
 
 def splitter_mfa(split_values, **process_kwargs) -> MFASystem:
@@ -275,9 +282,11 @@ def test_unused_dimension_splitter():
         parameter_values={"input": 1.0, "split": np.array([0.2, 0.8])},
         parameter_dims={"input": ("t", "r"), "split": ("r",)},
     )
-    with config.override(error_behaviors={"unused_dimension_splitter": "error"}):
-        with pytest.raises(ValueError, match="forward dimension splitter is set, but was not used"):
-            mfa.processes["a"].compute()
+    with (
+        config.override(error_behaviors={"unused_dimension_splitter": "error"}),
+        pytest.raises(ValueError, match="forward dimension splitter is set, but was not used"),
+    ):
+        mfa.processes["a"].compute()
 
 
 def test_forward_and_backward_dimension_splitters():
@@ -349,8 +358,8 @@ def test_prescribed_flows_refilled_after_mark_all_unset():
 def stock_mfa(
     subclass: type,
     lifetime: bool = True,
-    parameter_values: dict = {},
-    parameter_dims: dict = {},
+    parameter_values: dict | None = None,
+    parameter_dims: dict | None = None,
     **stock_kwargs,
 ) -> MFASystem:
     """sysenv -> use (with stock) -> (eol, sysenv), with a share of use -> eol of 0.6."""
@@ -364,8 +373,8 @@ def stock_mfa(
             flow("use", "sysenv"),
             flow("eol", "sysenv"),
         ],
-        parameter_values={"share": 0.6, **parameter_values},
-        parameter_dims={"share": (), **parameter_dims},
+        parameter_values={"share": 0.6, **(parameter_values or {})},
+        parameter_dims={"share": (), **(parameter_dims or {})},
         dimensions=DIM_DEFINITIONS + [DimensionDefinition(name="Cohort", letter="c", dtype=int)],
         stocks=[
             StockDefinition(
@@ -432,7 +441,7 @@ def chain_mfa(n_processes: int) -> MFASystem:
     """sysenv -> p0 -> p1 -> ... -> p(n-1) -> sysenv, with processes defined in reverse order."""
     names = [f"p{i}" for i in range(n_processes)]
     links = ["sysenv"] + names + ["sysenv"]
-    flows = [flow(a, b) for a, b in zip(links[:-1], links[1:])]
+    flows = [flow(a, b) for a, b in itertools.pairwise(links)]
     return make_mfa(["sysenv"] + names[::-1], flows, {}, {})
 
 
@@ -512,7 +521,7 @@ def test_failed_stock_computation_changes_nothing():
     mfa = stock_mfa(InflowDrivenDSM)
     mfa.stocks["use"].lifetime_model.mean = None
     mfa.flows["sysenv => use"][...] = 1.0
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError, match="must be set before use"):
         mfa.processes["use"].compute()
     stock = mfa.stocks["use"]
     assert not any(a.is_set for a in (stock.inflow, stock.outflow, stock.stock))
@@ -759,7 +768,7 @@ def test_unlinked_parameters_raise():
     mfa = MFASystem.from_data_reader(definition, DictReader(SPLIT_VALUES), link=False)
     assert mfa.processes["a"].outflow_shares == {"b": "share b"}
     assert "outflow_shares={'b': 'share b'}" in repr(mfa.processes["a"])
-    with pytest.raises(ValueError, match="'input' prescribed for 'sysenv => a' is not linked"):
+    with pytest.raises(TypeError, match="'input' prescribed for 'sysenv => a' is not linked"):
         mfa.set_arrays_from_prescribed()
     mfa.flows["sysenv => a"][...] = 1.0
     with pytest.raises(ValueError, match="share b of shares or dimension splitters are not"):

@@ -1,13 +1,16 @@
 """Global configuration of flodym, accessible via ``flodym.config``."""
 
+import logging
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from enum import Enum
-from typing import Annotated, Any, Callable, Generator, Optional
-import logging
+from typing import Annotated, Any
 
 from pydantic import BaseModel, Field
 
 from .flow_naming import process_names_with_arrow
+
+logger = logging.getLogger(__name__)
 
 
 class ErrorBehavior(str, Enum):
@@ -18,7 +21,7 @@ class ErrorBehavior(str, Enum):
 
 
 def handle_error(
-    behavior: ErrorBehavior, message: Optional[str] = None, error: Optional[Exception] = None
+    behavior: ErrorBehavior, message: str | None = None, error: Exception | None = None
 ):
     """Raise, log, or ignore an error, depending on the given behavior.
     Exactly one of message or error must be given.
@@ -33,9 +36,9 @@ def handle_error(
     if behavior == ErrorBehavior.ERROR:
         raise error or ValueError(message)
     elif behavior == ErrorBehavior.WARN:
-        logging.warning(message or str(error))
+        logger.warning(message or str(error))
     elif behavior == ErrorBehavior.INFO:
-        logging.info(message or str(error))
+        logger.info(message or str(error))
     elif behavior == ErrorBehavior.IGNORE:
         pass
 
@@ -122,7 +125,7 @@ class Config(BaseModel, validate_assignment=True):
     Not used if :py:attr:`absolute_tolerance` is set.
     """
 
-    absolute_tolerance: Optional[Annotated[float, Field(ge=0)]] = None
+    absolute_tolerance: Annotated[float, Field(ge=0)] | None = None
     """Absolute tolerance for mass balance and other checks.
     If set, it is used instead of :py:attr:`relative_tolerance`.
     """
