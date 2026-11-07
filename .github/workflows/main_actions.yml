@@ -40,25 +40,7 @@ jobs:
       run: uv sync --locked
 
     - name: Run tests
-      if: ${{ !(matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12') }}
       run: uv run pytest
-
-    # coverage is measured on a single matrix entry only
-    - name: Run tests with coverage
-      if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12' }}
-      run: |
-        uv run coverage run -m pytest
-        uv run coverage combine
-        uv run coverage report
-        uv run coverage xml
-
-    - name: Upload coverage to Codecov
-      if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12' }}
-      uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
-      with:
-        files: coverage.xml
-        token: ${{ secrets.CODECOV_TOKEN }}
-        fail_ci_if_error: false
 
     - name: Run type checker
       run: uv check --isolated --locked

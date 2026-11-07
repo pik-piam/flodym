@@ -48,11 +48,7 @@ docs = [
 ]
 
 [dependency-groups]
-dev = [
-    "coverage[toml]>=7.10",
-    "flodym[examples,tests,docs]",
-    "ruff",
-]
+dev = ["flodym[examples,tests,docs]", "ruff"]
 
 [build-system]
 requires = ["uv_build>=0.11.28,<0.12"]
@@ -61,14 +57,6 @@ build-backend = "uv_build"
 [tool.uv.build-backend]
 module-name = "flodym"
 module-root = ""
-
-[tool.coverage.run]
-source = ["flodym"]
-# tests/test_notebooks.py executes the notebooks in subprocesses
-patch = ["subprocess"]
-
-[tool.coverage.report]
-skip_empty = true
 
 [tool.ruff]
 line-length = 100

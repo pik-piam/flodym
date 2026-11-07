@@ -11,6 +11,3 @@ poetry.lock
 flodym.egg-info
 build
 .pytest_cache
-.coverage
-.coverage.*
-coverage.xml
