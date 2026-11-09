@@ -129,6 +129,13 @@ class LifetimeModel(FlodymBaseModel):
 
     _prm_names: ClassVar[list[str]] = []
     _prm_names_to_scale: ClassVar[list[str]] = []
+    _modifier_names: ClassVar[list[str]] = [
+        "lt_factor_by_year",
+        "lt_factor_by_cohort",
+        "hazard_factor_by_year",
+        "removal_share_by_year",
+    ]
+    """Names of the arrays of lifetime factors and period effects."""
 
     @model_validator(mode="after")
     def _init_t(self) -> Self:
@@ -143,17 +150,10 @@ class LifetimeModel(FlodymBaseModel):
 
     @model_validator(mode="after")
     def _cast_all(self) -> Self:
-        array_fields = [
-            "lt_factor_by_year",
-            "lt_factor_by_cohort",
-            "hazard_factor_by_year",
-            "removal_share_by_year",
-        ]
-        for prm_name in self._prm_names + array_fields:
-            prm_value = getattr(self, prm_name)
-            if prm_value is not None:
-                casted = self._any_to_np(prm_value, name=prm_name)
-                object.__setattr__(self, prm_name, casted)
+        for name in self._array_names:
+            value = getattr(self, name)
+            if value is not None:
+                object.__setattr__(self, name, self._any_to_np(value, name=name))
         self.reset_cached_arrays()
         return self
 
@@ -212,23 +212,14 @@ class LifetimeModel(FlodymBaseModel):
         dimensions.
         """
         if self._reduce_index_cache is None:
-            arrays = [a for a in self._arrays_defining_survival() if a is not None]
+            arrays = [getattr(self, name) for name in self._array_names]
+            arrays = [a for a in arrays if a is not None]
             index = [slice(None)]
             for axis in range(1, len(self.shape)):
                 varies = any(not np.all(a == a.take([0], axis=axis)) for a in arrays)
                 index.append(slice(None) if varies else slice(0, 1))
             self._reduce_index_cache = tuple(index)
         return self._reduce_index_cache
-
-    def _arrays_defining_survival(self) -> list[np.ndarray | None]:
-        """Arrays of the lifetime model shape on which the survival depends."""
-        return [
-            *self.prms.values(),
-            self.lt_factor_by_year,
-            self.lt_factor_by_cohort,
-            self.hazard_factor_by_year,
-            self.removal_share_by_year,
-        ]
 
     def _reduced(self, a: np.ndarray) -> np.ndarray:
         """View of an array of the lifetime model shape with the reduced shape."""
@@ -243,6 +234,11 @@ class LifetimeModel(FlodymBaseModel):
     def _broadcast(self, a: np.ndarray) -> np.ndarray:
         """Read-only view of a reduced array by year and age-cohort, broadcast to the full shape."""
         return np.broadcast_to(a, self._shape_cohort)
+
+    @property
+    def _array_names(self) -> list[str]:
+        """Names of all arrays of the lifetime model shape on which the survival depends."""
+        return self._prm_names + self._modifier_names
 
     @property
     def prms(self) -> Mapping[str, np.ndarray | None]:
