@@ -5,7 +5,7 @@ Specific MFA models can be built that inherit from this class.
 
 import logging
 from os import PathLike
-from typing import Dict, Optional, SupportsFloat
+from typing import SupportsFloat
 
 import numpy as np
 from pydantic import BaseModel as PydanticBaseModel
@@ -50,19 +50,19 @@ class MFASystem(PydanticBaseModel):
 
     dims: DimensionSet
     """All dimensions that appear in the MFA system."""
-    parameters: Dict[str, Parameter]
+    parameters: dict[str, Parameter]
     """The parameters of the MFA system,
     as a dictionary mapping the names of the MFA system parameters to the parameters themselves.
     """
-    processes: Dict[str, Process]
+    processes: dict[str, Process]
     """The processes of the MFA system, i.e. the nodes of the MFA system graph,
     as a dictionary mapping the names of the MFA system processes to the processes themselves.
     """
-    flows: Dict[str, Flow]
+    flows: dict[str, Flow]
     """The flows of the MFA system, i.e. the edges of the MFA system graph,
     as a dictionary mapping the names of the MFA system flows to the flows themselves.
     """
-    stocks: Dict[str, Stock] = {}
+    stocks: dict[str, Stock] = {}
     """The stocks of the MFA system,
     as a dictionary mapping the names of the MFA system stocks to the stocks themselves.
     """
@@ -129,8 +129,8 @@ class MFASystem(PydanticBaseModel):
         definition: MFADefinition,
         dimension_files: dict[str, str | PathLike[str]],
         parameter_files: dict[str, str | PathLike[str]],
-        dimension_sheets: Optional[dict[str, str]] = None,
-        parameter_sheets: Optional[dict[str, str]] = None,
+        dimension_sheets: dict[str, str] | None = None,
+        parameter_sheets: dict[str, str] | None = None,
         allow_missing_parameter_values: bool = False,
         allow_extra_parameter_values: bool = False,
     ) -> Self:
@@ -174,7 +174,7 @@ class MFASystem(PydanticBaseModel):
             "The compute method must be implemented in a subclass of MFASystem if it is to be used."
         )
 
-    def get_new_array(self, dim_letters: Optional[tuple[str, ...]] = None, **kwargs) -> FlodymArray:
+    def get_new_array(self, dim_letters: tuple[str, ...] | None = None, **kwargs) -> FlodymArray:
         """Get a new FlodymArray object.
 
         :param dim_letters: tuple of dimension letters to include in the new FlodymArray. If None, all dimensions are included.
@@ -183,7 +183,7 @@ class MFASystem(PydanticBaseModel):
         dims = self.dims.get_subset(dim_letters)
         return FlodymArray(dims=dims, **kwargs)
 
-    def _get_mass_balance(self) -> Dict[str, FlodymArray]:
+    def _get_mass_balance(self) -> dict[str, FlodymArray]:
         """Calculate the mass balance for each process, by summing the contributions.
         - all flows entering (positive)
         - all flows leaving (negative)

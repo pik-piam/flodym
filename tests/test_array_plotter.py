@@ -1,8 +1,8 @@
-import pytest
 import numpy as np
+import pytest
 
 from flodym import Dimension, DimensionSet, FlodymArray
-from flodym.export.array_plotter import PyplotArrayPlotter, PlotlyArrayPlotter
+from flodym.export.array_plotter import PlotlyArrayPlotter, PyplotArrayPlotter
 
 
 @pytest.fixture

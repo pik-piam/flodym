@@ -15,7 +15,7 @@ Two backends are provided:
 
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import plotly.graph_objects as go
 from pydantic import BaseModel as PydanticBaseModel
@@ -215,15 +215,15 @@ class PlotlyProcessGraphPlotter(ProcessGraphPlotter):
         >>> fig.show()  # doctest: +SKIP
     """
 
-    title: Optional[str] = None
+    title: str | None = None
     """Title of the figure, if desired."""
     node_size: float = 26.0
     """Marker size of the process and stock nodes."""
 
     def plot(
         self,
-        process_positions: Optional[dict[int, tuple[float | int, float | int]]] = None,
-        stock_positions: Optional[dict[str, tuple[float | int, float | int]]] = None,
+        process_positions: dict[int, tuple[float | int, float | int]] | None = None,
+        stock_positions: dict[str, tuple[float | int, float | int]] | None = None,
     ) -> go.Figure:
         """Create the graph figure.
 

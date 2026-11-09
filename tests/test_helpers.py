@@ -1,9 +1,9 @@
 import numpy as np
+import pytest
 from numpy.testing import assert_array_equal
 from polyfactory.factories.pydantic_factory import ModelFactory
-import pytest
 
-from flodym import FlodymArray, Dimension, DimensionSet
+from flodym import Dimension, DimensionSet, FlodymArray
 from flodym.flodym_array_helper import flodym_array_stack
 
 dimension_set = DimensionSet(
