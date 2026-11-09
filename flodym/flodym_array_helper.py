@@ -37,7 +37,12 @@ def flodym_array_stack(
         raise ValueError(f"Dimension {dimension.letter} already present in FlodymArrays to stack")
     flodym_array0 = flodym_arrays[0]
     extended_dimensions = flodym_array0.dims.append(dimension)
-    extended = flodym_array0.cast_to(extended_dimensions, inplace=inplace)
+    # values are overwritten below, so casting is not reported
+    extended = flodym_array0.cast_to(extended_dimensions, check_extensivity=False)
     for item, flodym_array in zip(dimension.items, flodym_arrays):
         extended[{dimension.letter: item}] = flodym_array
+    if inplace:
+        flodym_array0.dims = extended.dims
+        flodym_array0.values = extended.values
+        return flodym_array0
     return extended

@@ -184,6 +184,37 @@ which treats unset flows as unknown. Use ``array.mark_set()``, or assign with ``
 to mark values written directly to ``.values``.
 
 
+Arrays: extensive and intensive
+-------------------------------
+
+Arrays have a new flag ``extensive`` (see the docstring of ``FlodymArray``). Summing over
+dimensions is only correct for extensive quantities such as masses, copying along new dimensions
+only for intensive quantities such as shares. The flag is ``None`` (unknown) by default, ``True``
+for ``Flow`` and ``StockArray``, and can be given in ``ParameterDefinition``. It is propagated
+through arithmetic operations. Arrays with ``extensive=None`` behave as in v1.
+
+Changed behavior:
+
+- ``MFASystem.link_parameters()`` sets the flag of parameters which have none: shares and
+  dimension splitters are intensive, parameters prescribing flows or stock arrays extensive.
+- In ``+``, ``-``, ``minimum()`` and ``maximum()`` of two intensive arrays (or an intensive and
+  an unknown one), dimensions which only one operand has are copied to the other operand. In v1,
+  they were summed over.
+- ``foo[...] = bar`` with an intensive ``bar`` copies ``bar`` along the dimensions of ``foo``
+  which ``bar`` does not have. In v1, this raised an error. If the extensivity of ``foo`` is
+  unknown, it takes the one of ``bar``.
+- The following are reported according to the new option
+  ``flodym.config.error_behaviors.extensivity`` (default ``"warn"``): ``cast_to()`` of flows,
+  stock arrays and other extensive arrays; ``sum_to()`` and ``sum_over()`` of intensive arrays;
+  adding, subtracting or assigning arrays of different extensivity; and parameters whose given
+  flag contradicts their use in definitions.
+
+*Action:* Check warnings about extensivity. Most point to a summation or copy that was wrong in
+v1 already. If a parameter is used in arithmetic with other dimensions, check whether the new
+broadcasting of intensive arrays changes results. Set ``extensive`` explicitly where flodym cannot
+infer it.
+
+
 Automatic process computation
 -----------------------------
 

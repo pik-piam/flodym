@@ -212,7 +212,7 @@ class ArrayPlotter(CustomNameDisplayer, ABC):
             self.x_array = FlodymArray(
                 dims=x_dimset, values=np.array(x_dim_obj.items), name=self.intra_line_dim
             )
-        self.x_array = self.x_array.cast_to(self.array.dims)
+        self.x_array = self.x_array.cast_to(self.array.dims, check_extensivity=False)
 
     def _plot_subplot(self, i_subplot: int, array: FlodymArray, x_array: FlodymArray) -> None:
         linedict_array = self._dict_of_slices(array, self.linecolor_dim)
