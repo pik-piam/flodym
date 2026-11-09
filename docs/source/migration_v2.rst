@@ -143,6 +143,11 @@ Removed or changed interface:
   The old names still work, but emit a ``DeprecationWarning`` (see :ref:`v2-deprecations`).
   ``outflow_pmf`` is the share of a cohort's inflow leaving in each time step, i.e. a probability
   mass per time step, not a density.
+- ``cumulative_survival``, ``conditional_survival`` and ``outflow_pmf`` of lifetime models are
+  read-only views. They are computed only along the dimensions along which the lifetime
+  parameters vary, and broadcast to the other dimensions. Use the methods
+  ``get_cumulative_survival()``, ``get_conditional_survival()`` and ``get_outflow_pmf()``,
+  which return copies, to obtain writable arrays.
 - ``LifetimeModel.compute_survival_factor()`` is now private. Use the property
   ``lifetime_model.cumulative_survival``, which is computed when needed, or
   ``lifetime_model.get_cumulative_survival()``, which returns a ``FlodymArray``.
