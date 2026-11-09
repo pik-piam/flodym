@@ -211,8 +211,15 @@ print(material_intensity.values)
 # ancestor item and separator, in the same order, which is checked by `split()`.
 
 # %%
-infrastructure = fd.Dimension(name="Infrastructure", letter="i", items=["Infr", "Build"])
-level_1 = infrastructure.split(name="Level 1", letter="l", splitting={"Build": building_types})
+
+construction_types = fd.Dimension(name="Construction type", letter="i", items=["Infr", "Build"])
+building_types = fd.Dimension(name="Building type", letter="b", items=["Com", "Res"])
+residential_types = fd.Dimension(name="Residential type", letter="y", items=["Sin", "Mul"])
+
+building_sub_types = building_types.split(
+    name="Building sub-type", letter="s", splitting={"Res": residential_types}
+)
+level_1 = construction_types.split(name="Level 1", letter="l", splitting={"Build": building_types})
 level_2 = level_1.split(
     name="Level 2",
     letter="m",
