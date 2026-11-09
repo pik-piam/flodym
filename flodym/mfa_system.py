@@ -551,6 +551,12 @@ class MFASystem(FlodymBaseModel):
         For parameters which are not part of the definition, such as ``"c"``, set
         :py:attr:`flodym.MFADefinition.check_parameter_names` to False.
 
+        The extensivity (see :py:attr:`flodym.FlodymArray.extensive`) of parameters which are
+        linked is set from their use, if it is None: Shares and dimension splitters are
+        intensive, parameters prescribing flows or stock arrays have the extensivity of these
+        (extensive by default). Conflicting uses, and a given extensivity which contradicts the
+        use, are handled according to ``flodym.config.error_behaviors.extensivity``.
+
         Raises:
             ValueError: If parameters are not found in :py:attr:`parameters` (all are listed),
                 if a prescribing parameter lacks dimensions of the array it prescribes, or if a
@@ -561,6 +567,7 @@ class MFASystem(FlodymBaseModel):
         if missing:
             listed = "; ".join(f"'{name}' (used by {used_by})" for name, used_by in missing)
             raise ValueError(f"Parameters not found in MFASystem.parameters: {listed}.")
+        self._set_parameter_extensivity()
         for _, array in self._prescribable_arrays():
             if isinstance(array._prescribed, str):
                 array._set_prescribed(self.parameters[array._prescribed])
@@ -614,6 +621,43 @@ class MFASystem(FlodymBaseModel):
                 if array is not None:
                     arrays.append((f"{array_name} of stock '{stock_name}'", array))
         return arrays
+
+    def _set_parameter_extensivity(self) -> None:
+        """Set the extensivity of unlinked parameters from their use, see link_parameters."""
+        required: dict[str, list[tuple[bool, str]]] = {}
+        for label, array in self._prescribable_arrays():
+            if isinstance(array._prescribed, str) and array.extensive is not None:
+                required.setdefault(array._prescribed, []).append(
+                    (array.extensive, f"prescribing the {label}")
+                )
+        for process in self.processes.values():
+            for name in process._unlinked_parameter_names():
+                required.setdefault(name, []).append(
+                    (False, f"as share or dimension splitter of process '{process.name}'")
+                )
+        for name, uses in required.items():
+            parameter = self.parameters[name]
+            flags = {flag for flag, _ in uses}
+            listed = "; ".join(
+                f"{'extensive' if flag else 'intensive'} {used_by}" for flag, used_by in uses
+            )
+            if len(flags) > 1:
+                handle_error(
+                    config.error_behaviors.extensivity,
+                    message=f"Parameter '{name}' is used with different extensivity: {listed}.",
+                )
+                continue
+            (flag,) = flags
+            if parameter._degree is None:
+                parameter.extensive = flag
+            elif parameter._degree != int(flag):
+                handle_error(
+                    config.error_behaviors.extensivity,
+                    message=(
+                        f"Parameter '{name}' has extensive={parameter.extensive}, but is used "
+                        f"{listed}."
+                    ),
+                )
 
     def _unlinked_parameter_users(self) -> list[tuple[str, str]]:
         """Parameter names which are not linked yet.

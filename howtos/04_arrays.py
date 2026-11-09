@@ -288,14 +288,40 @@ show_array(flow_b)
 # - When setting the values of an existing array, the array on the right-hand side of the assignment is summed down to the dimensions of the left-hand side. Missing dimensions on the right-hand side will lead to an error
 # - Scalars are converted to an array of equal dimensions before the operation is performed.
 #
-# ### Caveat
+# These rules hold for arrays of unknown and of extensive quantities. For intensive arrays, they are adapted, see below.
 #
-# We found these rules to yield the right behavior in almost all cases.
+# ## Extensive and intensive arrays
 #
-# There are exceptions: When adding two dimensionless parameters with different dimensions, it may be intended that the dimensions of both inputs are still used.
+# Summing over a dimension is only correct for extensive quantities, which scale with the size of the system, such as masses.
+# Copying values along a new dimension is only correct for intensive quantities, such as shares, yields or concentrations.
+# The `extensive` flag of an array states which of the two it holds:
+# `None` (unknown) by default, `True` for `Flow` and `StockArray` objects.
+# Parameters used as shares, dimension splitters or prescribed flows get it in `MFASystem.link_parameters()`,
+# and it can be given in the `ParameterDefinition`.
 #
-# A flodym extension is planned to account for this. In the meantime, we advise to use the `FlodymArray.cast_to()` method on the arrays before performing the operation.
+# - Arrays with `extensive=None` follow the rules above.
+# - Adding or subtracting two intensive arrays yields the set union: Dimensions which only one array has are copied to the other.
+# - When setting the values of an existing array from an intensive array, the right-hand side is copied along missing dimensions.
+# - `sum_to()` and `sum_over()` of intensive arrays, `cast_to()` of extensive arrays, and adding arrays of different extensivity are reported
+#   according to `flodym.config.error_behaviors.extensivity` (default: `"warn"`).
+#   Where such a sum or cast is intended, pass `check_extensivity=False` to `sum_to()`, `sum_over()` or `cast_to()`.
 #
+# The flag is propagated through operations: The quotient of two extensive arrays is intensive,
+# the product of an extensive and an intensive array is extensive.
+
+# %%
+share_a = fd.FlodymArray(
+    dims=dims.get_subset(("r",)), values=np.array([0.1, 0.2, 0.3]), extensive=False
+)
+share_b = fd.FlodymArray(dims=dims.get_subset(("p",)), values=np.array([0.4, 0.5]), extensive=False)
+share_sum = share_a + share_b
+print("dimensions of the sum of intensive arrays:", share_sum.dims.letters)
+
+mass = fd.FlodymArray(dims=dims["r", "p"], values=np.ones((3, 2)), extensive=True)
+print("extensive flag of extensive * intensive:", (mass * share_a).extensive)
+print("extensive flag of extensive / extensive:", (mass / mass.sum_to(("r",))).extensive)
+
+# %% [markdown]
 # ## Set and unset arrays
 #
 # Each array records whether its values are known, in the `is_set` property.

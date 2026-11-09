@@ -7,7 +7,7 @@ as well as applications of the `FlodymArray` for specific model components.
 from collections import defaultdict
 from collections.abc import Callable, Hashable, Iterable
 from copy import copy, deepcopy
-from numbers import Number
+from numbers import Number, Real
 from typing import Any, Literal, Optional, SupportsFloat, TypeVar, Union, overload
 
 import numpy as np
@@ -88,6 +88,35 @@ class FlodymArray(FlodymBaseModel):
 
     The dimensions of a FlodymArray stored as a :py:class:`flodym.DimensionSet` object in the
     'dims' attribute.
+
+    **Extensive and intensive arrays**
+
+    Reducing an array along a dimension by summation is only correct for extensive quantities,
+    which scale with the size of the system (e.g. masses). Expanding an array along a new
+    dimension by copying its values is only correct for intensive quantities, which do not (e.g.
+    shares, yields, concentrations). The :py:attr:`extensive` flag states which of the two an
+    array holds. It is None (unknown) by default, True for :py:class:`Flow` and
+    :py:class:`StockArray`, and set for parameters by :py:meth:`flodym.MFASystem.link_parameters`.
+
+    - Arrays with ``extensive=None`` follow the conventions described above: Dimensions are
+      summed when reducing and copied when expanding.
+    - In ``+``, ``-``, :py:meth:`minimum` and :py:meth:`maximum` of intensive arrays, dimensions
+      which only one operand has are copied to the other operand instead of being summed over.
+    - In ``foo[...] = bar`` with an intensive ``bar``, ``bar`` is copied along the dimensions of
+      ``foo`` which it does not have. Dimensions of ``bar`` which ``foo`` does not have are
+      reported, since no correct reduction exists without weights.
+    - :py:meth:`sum_to` and :py:meth:`sum_over` of a not extensive array, and
+      :py:meth:`cast_to` of a not intensive array are performed, but reported. Where this is
+      intended, pass ``check_extensivity=False`` to the method.
+
+    Reports are handled according to ``flodym.config.error_behaviors.extensivity``.
+
+    The flag is propagated through operations by an extensivity degree, which is the exponent
+    with which the quantity scales with the size of the system: 1 for extensive, 0 for intensive
+    arrays. Degrees add up in ``*`` and are subtracted in ``/``. Operands of ``+`` and ``-`` must
+    have the same degree. For example, the quotient of two flows is intensive, and the product
+    of two flows divided by a third flow is extensive. The flag of an array with a degree other
+    than 0 or 1 is None.
     """
 
     dims: DimensionSet
@@ -98,8 +127,15 @@ class FlodymArray(FlodymBaseModel):
     If not given or None, an array of zeros is created."""
     name: str | None = "unnamed"
     """Name of the FlodymArray."""
+    extensive: bool | None = None
+    """Whether the array holds an extensive quantity (True), such as a mass, or an intensive one
+    (False), such as a share, yield or concentration. None if unknown.
+    See "Extensive and intensive arrays" in the class docstring."""
     _is_set: bool = False
     """Flag indicating whether the array has been set or not."""
+    _higher_degree: int | None = None
+    """Extensivity degree of the array if it is neither 0 nor 1, see :py:attr:`_degree`.
+    Reset when :py:attr:`extensive` is assigned."""
 
     @field_validator("dims", mode="before")
     @classmethod
@@ -162,6 +198,12 @@ class FlodymArray(FlodymBaseModel):
         dims = f" with dims ({','.join(self.dims.letters)}) and shape {self.shape};"
         values = f"\nValues:\n{self.values!s}"
         return base + dims + values
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "extensive":
+            # an explicitly assigned flag replaces any degree tracked from operations
+            self._higher_degree = None
+        super().__setattr__(name, value)
 
     @classmethod
     def from_dims_superset(
@@ -403,12 +445,28 @@ class FlodymArray(FlodymBaseModel):
 
     @overload
     def cast_to(
-        self, target_dims: DimensionSet, inplace: Literal[False] = ...
+        self,
+        target_dims: DimensionSet,
+        inplace: Literal[False] = ...,
+        *,
+        check_extensivity: bool = ...,
     ) -> "FlodymArray": ...
     @overload
-    def cast_to(self: T, target_dims: DimensionSet, inplace: Literal[True]) -> T: ...
-    def cast_to(self, target_dims: DimensionSet, inplace: bool = False) -> "FlodymArray":
+    def cast_to(
+        self: T,
+        target_dims: DimensionSet,
+        inplace: Literal[True],
+        *,
+        check_extensivity: bool = ...,
+    ) -> T: ...
+    def cast_to(
+        self, target_dims: DimensionSet, inplace: bool = False, *, check_extensivity: bool = True
+    ) -> "FlodymArray":
         """Cast the FlodymArray to a new set of dimensions.
+
+        Copying values along new dimensions is only correct for intensive quantities. Casting an
+        array which is not intensive (see :py:attr:`extensive`) is reported, unless
+        ``check_extensivity`` is False.
 
         Args:
             target_dims: New dimensions to cast the FlodymArray to. Must be given as a
@@ -416,6 +474,9 @@ class FlodymArray(FlodymBaseModel):
                 FlodymArray object.
             inplace: If True, modify the current FlodymArray in place. If False, return a new
                 FlodymArray object.
+            check_extensivity: Whether to report casting an array which is not intensive. Set
+                it to False where copying the values is intended, e.g. for values that are
+                overwritten afterwards.
 
         Returns:
             The FlodymArray cast to the new dimensions.
@@ -423,6 +484,8 @@ class FlodymArray(FlodymBaseModel):
         self._check_is_set("cast_to()")
         # dimension consistency checks are performed in cast_values_to
         values = self.cast_values_to(target_dims)
+        if check_extensivity:
+            self._check_expansion(target_dims - self.dims, "cast_to()")
         if inplace:
             self.dims = target_dims
             self.values = values
@@ -430,7 +493,7 @@ class FlodymArray(FlodymBaseModel):
         else:
             result = FlodymArray(dims=target_dims, values=values, name=self.name)
             result._is_set = self._is_set
-            return result
+            return result._with_degree(self._degree)
 
     def sum_values_to(self, result_dims: tuple[str | Dimension, ...] = ()) -> np.ndarray:
         """Return the values of the FlodymArray partially summed to the given dimensions.
@@ -447,32 +510,51 @@ class FlodymArray(FlodymBaseModel):
         result_letters = self._tuple_to_letters(result_dims)
         return np.einsum(f"{self.dims.string}->{''.join(result_letters)}", self.values)
 
-    def sum_to(self, result_dims: tuple[str | Dimension, ...] = ()) -> "FlodymArray":
+    def sum_to(
+        self, result_dims: tuple[str | Dimension, ...] = (), *, check_extensivity: bool = True
+    ) -> "FlodymArray":
         """Return the FlodymArray summed to the given dimensions.
 
         Only the dimensions given in the result_dims tuple are left.
 
+        Summation is only correct for extensive quantities. Summing over dimensions of an array
+        which is not extensive (see :py:attr:`extensive`) is reported, unless
+        ``check_extensivity`` is False.
+
         Args:
             result_dims: Tuple of the dimensions to sum to. If not given, the sum over all
                 dimensions is returned.
+            check_extensivity: Whether to report summing an array which is not extensive. Set it
+                to False where the sum is intended, e.g. to check that shares sum to one.
 
         Returns:
             FlodymArray object with the summed values and the reduced dimensions.
         """
         self._check_is_set("sum_to()")
         result_letters = self._tuple_to_letters(result_dims)
+        result_dims_set = self.dims.get_subset(result_letters)
+        if check_extensivity:
+            self._check_reduction(self.dims - result_dims_set, "sum_to()")
         return FlodymArray(
-            dims=self.dims.get_subset(result_letters),
+            dims=result_dims_set,
             values=self.sum_values_to(result_letters),
             name=self.name,
-        )
+        )._with_degree(self._degree)
 
-    def sum_over(self, sum_over_dims: tuple[str | Dimension, ...] = ()) -> "FlodymArray":
+    def sum_over(
+        self, sum_over_dims: tuple[str | Dimension, ...] = (), *, check_extensivity: bool = True
+    ) -> "FlodymArray":
         """Return the FlodymArray summed over a given tuple of dimensions.
+
+        Summation is only correct for extensive quantities. Summing over dimensions of an array
+        which is not extensive (see :py:attr:`extensive`) is reported, unless
+        ``check_extensivity`` is False.
 
         Args:
             sum_over_dims: Tuple of the dimensions to sum over. If not given, no summation is
                 performed and the FlodymArray object is returned.
+            check_extensivity: Whether to report summing an array which is not extensive. Set it
+                to False where the sum is intended, e.g. to check that shares sum to one.
 
         Returns:
             FlodymArray object with the summed values and the reduced dimensions.
@@ -480,11 +562,14 @@ class FlodymArray(FlodymBaseModel):
         self._check_is_set("sum_over()")
         sum_over_dims = self._tuple_to_letters(sum_over_dims)
         result_dims = tuple([d for d in self.dims.letters if d not in sum_over_dims])
+        result_dims_set = self.dims.get_subset(result_dims)
+        if check_extensivity:
+            self._check_reduction(self.dims - result_dims_set, "sum_over()")
         return FlodymArray(
-            dims=self.dims.get_subset(result_dims),
+            dims=result_dims_set,
             values=self.sum_values_over(sum_over_dims),
             name=self.name,
-        )
+        )._with_degree(self._degree)
 
     def _tuple_to_letters(self, dim_tuple: tuple[str | Dimension, ...]) -> tuple[str, ...]:
         """Convert an input dimension tuple to a tuple of dimension letters.
@@ -538,31 +623,108 @@ class FlodymArray(FlodymBaseModel):
         other._check_is_set("a math operation")
         return other
 
-    def __add__(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
-        other = self._prepare_other(other)
-        dims_out = self.dims.intersect_with(other.dims)
-        return FlodymArray(
-            dims=dims_out,
-            values=self.sum_values_to(dims_out.letters) + other.sum_values_to(dims_out.letters),
+    def _operand_degree(
+        self, other: Union["FlodymArray", SupportsFloat], additive: bool
+    ) -> int | None:
+        """Extensivity degree of the other operand of a math operation.
+
+        A scalar has the degree of this array in additive operations (``+``, ``-``,
+        :py:meth:`minimum`, :py:meth:`maximum`), and degree 0 otherwise.
+        """
+        if isinstance(other, FlodymArray):
+            return other._degree
+        return self._degree if additive else 0
+
+    def _additive_degree(
+        self, other: "FlodymArray", other_degree: int | None, operation: str
+    ) -> int | None:
+        """Extensivity degree of the result of an additive operation.
+
+        Both operands must have the same degree. An operand of unknown degree is assumed to have
+        the degree of the other one. Different known degrees are reported, and the degree of the
+        result is unknown.
+        """
+        own_degree = self._degree
+        if own_degree is None:
+            return other_degree
+        if other_degree is None or other_degree == own_degree:
+            return own_degree
+        handle_error(
+            config.error_behaviors.extensivity,
+            message=(
+                f"{_array_label(self, own_degree)} and {_array_label(other, other_degree)} are "
+                f"combined in {operation}, which requires both to have the same extensivity."
+            ),
         )
+        return None
+
+    def _additive_operation(
+        self,
+        other: Union["FlodymArray", SupportsFloat],
+        func: Callable[[np.ndarray, np.ndarray], np.ndarray],
+        operation: str,
+    ) -> "FlodymArray":
+        """Perform ``+``, ``-``, :py:meth:`minimum` or :py:meth:`maximum`.
+
+        If the result is intensive, it has the dimensions of both operands, and each operand is
+        copied along the dimensions it does not have. Otherwise, the result has the dimensions
+        shared by both operands, and each operand is summed over the other dimensions.
+        """
+        other_degree = self._operand_degree(other, additive=True)
+        other = self._prepare_other(other)
+        degree = self._additive_degree(other, other_degree, operation)
+        if degree == 0:
+            dims_out = self.dims.union_with(other.dims)
+            values_out = func(self.cast_values_to(dims_out), other.cast_values_to(dims_out))
+        else:
+            dims_out = self.dims.intersect_with(other.dims)
+            if degree is not None:
+                self._check_reduction(self.dims - dims_out, operation, degree)
+                other._check_reduction(other.dims - dims_out, operation, degree)
+            values_out = func(
+                self.sum_values_to(dims_out.letters), other.sum_values_to(dims_out.letters)
+            )
+        return FlodymArray(dims=dims_out, values=values_out)._with_degree(degree)
+
+    def _power_degree(self, power: Union["FlodymArray", SupportsFloat]) -> int | None:
+        """Extensivity degree of this array raised to the given power.
+
+        A scalar power multiplies the degree; the result is unknown if this gives no integer.
+        An array power must be intensive; the result is intensive if this array is, and unknown
+        otherwise.
+        """
+        if isinstance(power, FlodymArray):
+            if power._degree not in (0, None):
+                handle_error(
+                    config.error_behaviors.extensivity,
+                    message=(
+                        f"{_array_label(power, power._degree)} is used as exponent of "
+                        f"{_array_label(self, self._degree)}. Exponents must be intensive."
+                    ),
+                )
+            return 0 if self._degree == 0 else None
+        if self._degree is None or not isinstance(power, Real):
+            return None
+        product = self._degree * float(power)
+        return int(product) if product.is_integer() else None
+
+    def __add__(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
+        return self._additive_operation(other, np.add, "an addition")
 
     def __sub__(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
-        other = self._prepare_other(other)
-        dims_out = self.dims.intersect_with(other.dims)
-        return FlodymArray(
-            dims=dims_out,
-            values=self.sum_values_to(dims_out.letters) - other.sum_values_to(dims_out.letters),
-        )
+        return self._additive_operation(other, np.subtract, "a subtraction")
 
     def __mul__(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
+        degree = _combine_degrees(self._degree, self._operand_degree(other, additive=False), 1)
         other = self._prepare_other(other)
         dims_out = self.dims.union_with(other.dims)
         values_out = np.einsum(
             f"{self.dims.string},{other.dims.string}->{dims_out.string}", self.values, other.values
         )
-        return FlodymArray(dims=dims_out, values=values_out)
+        return FlodymArray(dims=dims_out, values=values_out)._with_degree(degree)
 
     def __truediv__(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
+        degree = _combine_degrees(self._degree, self._operand_degree(other, additive=False), -1)
         other = self._prepare_other(other)
         dims_out = self.dims.union_with(other.dims)
         values_out = np.einsum(
@@ -570,23 +732,23 @@ class FlodymArray(FlodymBaseModel):
             self.values,
             1.0 / other.values,
         )
-        return FlodymArray(dims=dims_out, values=values_out)
+        return FlodymArray(dims=dims_out, values=values_out)._with_degree(degree)
 
     def __pow__(self, power: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
+        degree = self._power_degree(power)
         power = self._prepare_other(power)
         if any(l not in self.dims.letters for l in power.dims.letters):
             raise ValueError("Power must only contain dimensions also present in the base array.")
-        power = power.cast_to(self.dims)
-        values_out = self.values**power.values
-        return FlodymArray(dims=self.dims, values=values_out)
+        values_out = self.values ** power.cast_values_to(self.dims)
+        return FlodymArray(dims=self.dims, values=values_out)._with_degree(degree)
 
     def __neg__(self) -> "FlodymArray":
         self._check_is_set("a math operation")
-        return FlodymArray(dims=self.dims, values=-self.values)
+        return FlodymArray(dims=self.dims, values=-self.values)._with_degree(self._degree)
 
     def __abs__(self) -> "FlodymArray":
         self._check_is_set("a math operation")
-        return FlodymArray(dims=self.dims, values=abs(self.values))
+        return FlodymArray(dims=self.dims, values=abs(self.values))._with_degree(self._degree)
 
     def __radd__(self, other: SupportsFloat) -> "FlodymArray":
         return self + other
@@ -600,59 +762,76 @@ class FlodymArray(FlodymBaseModel):
     def __rtruediv__(self, other: SupportsFloat) -> "FlodymArray":
         self._check_is_set("a math operation")
         inv_self = FlodymArray(dims=self.dims, values=1 / self.values)
+        inv_self._set_degree(_combine_degrees(0, self._degree, -1))
         return inv_self * other
 
     def minimum(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
         """Element-wise minimum of this array and another array or scalar.
 
         As for addition, the result has the dimensions shared by both arrays; other dimensions
-        are summed over before the comparison.
+        are summed over before the comparison. If both arrays are intensive, the result has the
+        dimensions of both arrays instead (see the class docstring).
         """
-        other = self._prepare_other(other)
-        dims_out = self.dims.intersect_with(other.dims)
-        values_out = np.minimum(
-            self.sum_values_to(dims_out.letters), other.sum_values_to(dims_out.letters)
-        )
-        return FlodymArray(dims=dims_out, values=values_out)
+        return self._additive_operation(other, np.minimum, "minimum()")
 
     def maximum(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
         """Element-wise maximum of this array and another array or scalar.
 
         As for addition, the result has the dimensions shared by both arrays; other dimensions
-        are summed over before the comparison.
+        are summed over before the comparison. If both arrays are intensive, the result has the
+        dimensions of both arrays instead (see the class docstring).
         """
-        other = self._prepare_other(other)
-        dims_out = self.dims.intersect_with(other.dims)
-        values_out = np.maximum(
-            self.sum_values_to(dims_out.letters), other.sum_values_to(dims_out.letters)
-        )
-        return FlodymArray(dims=dims_out, values=values_out)
+        return self._additive_operation(other, np.maximum, "maximum()")
 
     def apply(
         self,
         func: Callable[..., np.ndarray],
         kwargs: dict[str, Any] | None = None,
         inplace: bool = False,
+        *,
+        preserve_extensivity: bool | None = None,
     ) -> Optional["FlodymArray"]:
         """Apply a function to the values of the FlodymArray.
+
+        As the function is arbitrary, the extensivity of the result is unknown
+        (``extensive=None``), unless ``preserve_extensivity`` is True. By default, it is kept
+        only if ``inplace`` is True.
 
         Args:
             func: Function to apply to the values. Must be a function that can be applied to a
                 numpy array, and return a numpy array of the same shape.
             kwargs: Keyword argument dictionary to pass to the function.
             inplace: Whether to apply the function in place. Defaults to False.
+            preserve_extensivity: Whether the result keeps the extensivity of this array (see
+                :py:attr:`extensive`). Use it for functions which do not change whether a
+                quantity is extensive, e.g. rounding or clipping. If None, the value of
+                ``inplace`` is used.
 
         Returns:
             FlodymArray object with the values transformed by the function,
                 or None if ``inplace`` is True.
         """
+        if preserve_extensivity is None:
+            preserve_extensivity = inplace
+        degree = self._degree if preserve_extensivity else None
+        return self._apply(func, kwargs, inplace, degree=degree)
+
+    def _apply(
+        self,
+        func: Callable[..., np.ndarray],
+        kwargs: dict[str, Any] | None,
+        inplace: bool,
+        degree: int | None,
+    ) -> Optional["FlodymArray"]:
+        """Apply a function to the values, see :py:meth:`apply`, giving the result the degree."""
         self._check_is_set("apply()")
         if kwargs is None:
             kwargs = {}
         if inplace:
             self.values = func(self.values, **kwargs)
+            self._set_degree(degree)
             return None
-        return FlodymArray(dims=self.dims, values=func(self.values, **kwargs))
+        return FlodymArray(dims=self.dims, values=func(self.values, **kwargs))._with_degree(degree)
 
     def copy(self) -> Self:
         """Return a copy of the FlodymArray.
@@ -671,6 +850,11 @@ class FlodymArray(FlodymBaseModel):
         Re-tags this array as a different FlodymArray (sub)class — e.g. converting a plain
         :py:class:`FlodymArray` into a :py:class:`Parameter`, :py:class:`StockArray`, or
         :py:class:`Flow`, or a subclass instance back to the base :py:class:`FlodymArray`.
+
+        The extensivity (see :py:attr:`extensive`) of this array is kept, unless ``extensive``
+        is given in ``kwargs`` or it is unknown; then, the default of ``array_class`` applies.
+        Converting to a class whose default extensivity differs, e.g. an intensive array to a
+        :py:class:`Flow`, is reported.
 
         Args:
             array_class: The FlodymArray subclass to convert to.
@@ -694,6 +878,17 @@ class FlodymArray(FlodymBaseModel):
             **kwargs,
         )
         result._is_set = self._is_set
+        if "extensive" not in kwargs and self._degree is not None:
+            if result._degree is not None and result._degree != self._degree:
+                handle_error(
+                    config.error_behaviors.extensivity,
+                    message=(
+                        f"{_array_label(self, self._degree)} is converted to "
+                        f"{array_class.__name__}, which is "
+                        f"{_degree_description(result._degree)} by default."
+                    ),
+                )
+            result._set_degree(self._degree)
         return result
 
     @overload
@@ -709,7 +904,7 @@ class FlodymArray(FlodymBaseModel):
         Returns:
             A new FlodymArray with the absolute values, or None if ``inplace`` is True.
         """
-        return self.apply(np.abs, inplace=inplace)
+        return self._apply(np.abs, None, inplace, degree=self._degree)
 
     @overload
     def sign(self, inplace: Literal[False] = ...) -> "FlodymArray": ...
@@ -718,13 +913,15 @@ class FlodymArray(FlodymBaseModel):
     def sign(self, inplace: bool = False) -> Optional["FlodymArray"]:
         """Element-wise sign (-1, 0 or 1).
 
+        The signs are intensive (see :py:attr:`extensive`), also if ``inplace`` is True.
+
         Args:
             inplace: Whether to modify the values of this array instead of returning a new one.
 
         Returns:
             A new FlodymArray with the signs of the values, or None if ``inplace`` is True.
         """
-        return self.apply(np.sign, inplace=inplace)
+        return self._apply(np.sign, None, inplace, degree=0)
 
     @overload
     def cumsum(self, dim_letter: str, inplace: Literal[False] = ...) -> "FlodymArray": ...
@@ -742,7 +939,7 @@ class FlodymArray(FlodymBaseModel):
                 or None if ``inplace`` is True.
         """
         i_axis = self.dims.letters.index(dim_letter)
-        return self.apply(np.cumsum, kwargs={"axis": i_axis}, inplace=inplace)
+        return self._apply(np.cumsum, {"axis": i_axis}, inplace, degree=self._degree)
 
     def __getitem__(self, keys: dict[str, Any] | Hashable) -> "FlodymArray":
         """Return a slice of the array, as in ``foo = bar[{'e': 'C'}]``.
@@ -765,11 +962,18 @@ class FlodymArray(FlodymBaseModel):
 
         The RHS (baz) is either a FlodymArray, a numpy array of correct shape, or a scalar.
         If it is a numpy array, a copy is used to avoid modifying the original array.
+
+        A FlodymArray RHS is summed over dimensions which the slice does not have. If it is
+        intensive, it is instead copied along dimensions of the slice which it does not have,
+        and dimensions which the slice does not have are reported (see :py:attr:`extensive`).
+        If the extensivity of this array is unknown, it takes the one of the RHS; different
+        known extensivities are reported.
         """
         slice_obj = self._sub_array_handler(keys)
         if isinstance(item, FlodymArray):
             item._check_is_set("an assignment to another array")
-            self.values[slice_obj.ids] = item.sum_values_to(slice_obj.dim_letters)
+            self._check_assigned_degree(item)
+            self.values[slice_obj.ids] = item._values_for_assignment(slice_obj.dim_letters)
         elif isinstance(keys, type(Ellipsis)):
             self.set_values(copy(item))
         else:
@@ -903,7 +1107,7 @@ class FlodymArray(FlodymBaseModel):
         )
 
         if all(d in dim_letters for d in self.dims.letters):
-            return self / self.sum_values()
+            return self / self.sum_to(())
 
         return self / self.sum_over(sum_over_dims=dim_letters)
 
@@ -967,6 +1171,28 @@ class FlodymArray(FlodymBaseModel):
         dtype = self.values.dtype if np.issubdtype(self.values.dtype, np.inexact) else np.float64
         return float(np.finfo(dtype).eps) * max_value
 
+    @property
+    def _degree(self) -> int | None:
+        """Extensivity degree: the exponent with which the quantity scales with the system size.
+
+        1 for extensive, 0 for intensive arrays (see :py:attr:`extensive`). Other degrees result
+        from operations, e.g. 2 for the product of two extensive arrays. None if unknown.
+        """
+        if self.extensive is None:
+            return self._higher_degree
+        return 1 if self.extensive else 0
+
+    def _set_degree(self, degree: int | None) -> None:
+        """Set :py:attr:`extensive` and the hidden degree from an extensivity degree."""
+        self.extensive = {1: True, 0: False}.get(degree) if degree is not None else None
+        if degree not in (0, 1):
+            self._higher_degree = degree
+
+    def _with_degree(self, degree: int | None) -> Self:
+        """Set the extensivity degree (see :py:meth:`_set_degree`) and return the array."""
+        self._set_degree(degree)
+        return self
+
     def _check_is_set(self, operation: str) -> None:
         if not self._is_set:
             handle_error(
@@ -976,6 +1202,106 @@ class FlodymArray(FlodymBaseModel):
                     "(is_set=False). If its values are intended, call mark_set() on it."
                 ),
             )
+
+    def _check_reduction(
+        self, removed_dims: DimensionSet, operation: str, degree: int | None = None
+    ) -> None:
+        """Report summation over dimensions if the array is not extensive.
+
+        Args:
+            removed_dims: Dimensions summed over. Dimensions with a single item are ignored.
+            operation: Description of the operation, for the message.
+            degree: Extensivity degree to check. Defaults to the degree of the array.
+        """
+        if degree is None:
+            degree = self._degree
+        names = [dim.name for dim in removed_dims if dim.len > 1]
+        if degree in (1, None) or not names:
+            return
+        handle_error(
+            config.error_behaviors.extensivity,
+            message=(
+                f"{_array_label(self, degree)} is summed over the dimensions {names} in "
+                f"{operation}. Summation is only correct for extensive quantities."
+            ),
+        )
+
+    def _check_expansion(self, added_dims: DimensionSet, operation: str) -> None:
+        """Report copying values along new dimensions if the array is not intensive.
+
+        Args:
+            added_dims: Dimensions added. Dimensions with a single item are ignored.
+            operation: Description of the operation, for the message.
+        """
+        names = [dim.name for dim in added_dims if dim.len > 1]
+        if self._degree in (0, None) or not names:
+            return
+        handle_error(
+            config.error_behaviors.extensivity,
+            message=(
+                f"{_array_label(self, self._degree)} is copied along the dimensions {names} in "
+                f"{operation}. Copying is only correct for intensive quantities."
+            ),
+        )
+
+    def _check_assigned_degree(self, item: "FlodymArray") -> None:
+        """Check the degree of an array assigned to this one, or take it if this one has none."""
+        if self._degree is None:
+            self._set_degree(item._degree)
+        elif item._degree is not None and item._degree != self._degree:
+            handle_error(
+                config.error_behaviors.extensivity,
+                message=(
+                    f"{_array_label(item, item._degree)} is assigned to "
+                    f"{_array_label(self, self._degree)}."
+                ),
+            )
+
+    def _values_for_assignment(self, target_letters: tuple[str, ...]) -> np.ndarray:
+        """Values of this array, to be assigned to a slice with the given dimension letters.
+
+        Dimensions which the slice does not have are summed over; this is reported if the array
+        is not extensive. An intensive array gets size-one axes for the dimensions of the slice
+        which it does not have, along which it is broadcast when assigned. For other arrays,
+        such dimensions raise an error.
+
+        Raises:
+            ValueError: If the array is not intensive and lacks dimensions of the slice.
+        """
+        extra_dims = self.dims - self.dims.get_subset(
+            tuple(letter for letter in self.dims.letters if letter in target_letters)
+        )
+        self._check_reduction(extra_dims, "an assignment")
+        missing = [letter for letter in target_letters if letter not in self.dims.letters]
+        if missing and self._degree != 0:
+            raise ValueError(
+                f"{_array_label(self, self._degree)} is assigned to an array with the dimensions "
+                f"{list(missing)}, which it does not have. Values are only copied along missing "
+                "dimensions for intensive arrays (extensive=False). Use cast_to() to copy them "
+                "explicitly."
+            )
+        kept = tuple(letter for letter in target_letters if letter in self.dims.letters)
+        values = self.sum_values_to(kept)
+        index = tuple(slice(None) if letter in kept else np.newaxis for letter in target_letters)
+        return values[index]
+
+
+def _combine_degrees(degree: int | None, other_degree: int | None, sign: int) -> int | None:
+    """Degree of a product (``sign=1``) or quotient (``sign=-1``); None if one is unknown."""
+    if degree is None or other_degree is None:
+        return None
+    return degree + sign * other_degree
+
+
+def _degree_description(degree: int | None) -> str:
+    """Description of an extensivity degree, for messages."""
+    descriptions = {1: "extensive", 0: "intensive", None: "of unknown extensivity"}
+    return descriptions.get(degree, f"of extensivity degree {degree}")
+
+
+def _array_label(array: FlodymArray, degree: int | None) -> str:
+    """Class, name and extensivity of an array, for messages."""
+    return f"{array.__class__.__name__} '{array.name}' ({_degree_description(degree)})"
 
 
 class _SubArrayHandler:
@@ -1038,7 +1364,7 @@ class _SubArrayHandler:
 
         return FlodymArray(
             dims=self.dims_out, values=self.values_pointer, name=self.flodym_array.name
-        )
+        )._with_degree(self.flodym_array._degree)
 
     def _get_def_dict(self, definition: dict[str, Any] | Hashable) -> None:
         self.def_dict: dict[str, Any]
@@ -1233,6 +1559,8 @@ class Flow(_PrescribableArray):
     """Process from which the flow originates."""
     to_process: Process
     """Process to which the flow goes."""
+    extensive: bool | None = True
+    """Whether the flow is extensive, see :py:attr:`FlodymArray.extensive`. True by default."""
     _named_after_processes: bool = False
     """Whether the name was generated from the connected processes (see
     :py:attr:`flodym.Config.flow_naming`), and is thus updated by
@@ -1290,6 +1618,9 @@ class StockArray(_PrescribableArray):
     StockArray's are used in the :py:class:`flodym.Stock` for the inflow, outflow and stock.
     """
 
+    extensive: bool | None = True
+    """Whether the array is extensive, see :py:attr:`FlodymArray.extensive`. True by default."""
+
 
 class Parameter(FlodymArray):
     """Parameters quantify the links between stocks and flows in an MFA system.
@@ -1300,4 +1631,8 @@ class Parameter(FlodymArray):
     flow splits at a process.
 
     Parameter inherits all its functionality from :py:class:`FlodymArray`.
+    Its :py:attr:`extensive` flag is None by default. It can be given in the
+    :py:class:`flodym.ParameterDefinition`, and is set by
+    :py:meth:`flodym.MFASystem.link_parameters` for parameters used as shares, dimension
+    splitters or prescribed arrays.
     """

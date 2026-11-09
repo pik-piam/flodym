@@ -43,6 +43,8 @@ class DataReader(ABC):
     ) -> dict[str, Parameter]:
         """Method to read data for a list of parameters, by looping over `read_parameter_values`.
 
+        The ``extensive`` flag of a definition is set on the parameter if it is not None.
+
         Args:
             parameter_definitions: Definitions of the parameters to read.
             dims: Dimensions of the MFA system; each parameter receives the subset given by the
@@ -54,10 +56,13 @@ class DataReader(ABC):
         parameters = {}
         for parameter_definition in parameter_definitions:
             dim_subset = dims.get_subset(parameter_definition.dim_letters)
-            parameters[parameter_definition.name] = self.read_parameter_values(
+            parameter = self.read_parameter_values(
                 parameter_name=parameter_definition.name,
                 dims=dim_subset,
             )
+            if parameter_definition.extensive is not None:
+                parameter.extensive = parameter_definition.extensive
+            parameters[parameter_definition.name] = parameter
         return parameters
 
 
