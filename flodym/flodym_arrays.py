@@ -111,8 +111,14 @@ class FlodymArray(FlodymBaseModel):
       *Example:* `foo['C']` addresses all values where the element is carbon.
       `foo['C', 'EUR', 'USA']` addresses all values where the element is carbon and the region is
       Europe or the USA.
-    - Only when setting values: For a dimension with a parent (see :py:class:`flodym.Dimension`),
-      an item of the parent or a further ancestor addresses all items belonging to it.
+    - For a dimension created by :py:meth:`flodym.Dimension.split`, a split item of the parent
+      addresses its sub-items. The dimension is replaced by the one the item is split into.
+
+      *Example:* `foo['Res']` returns an array over the residential types.
+    - Only when setting values: For any dimension with a parent (see
+      :py:class:`flodym.Dimension`), an item of the parent or a further ancestor addresses all
+      items belonging to it. When getting values, this is not possible, since no dimension exists
+      for the result.
 
       *Example:* `foo[{'c': 'EUR'}] = 0.0` sets the values of all European countries.
 
@@ -1686,9 +1692,11 @@ class _SubArrayHandler:
     Note that does not inherit from FlodymArray, so it is not a FlodymArray object itself.
     However, one can use it to create a FlodymArray object with the `to_flodym_array()` method.
 
-    Items of ancestors of a dimension are resolved to the items of the dimension belonging to
-    them, if ``allow_ancestor_items`` is True. This is only done when setting values, as no
-    dimension is created implicitly for the result of slicing.
+    A split item of the parent of a dimension created by :py:meth:`flodym.Dimension.split` is
+    resolved to its sub-items, and the dimension is replaced by the one the item is split into.
+    Other items of ancestors are resolved to the items belonging to them only if
+    ``allow_ancestor_items`` is True, i.e. when setting values, as no dimension is created
+    implicitly for the result of slicing.
     """
 
     def __init__(
@@ -1699,8 +1707,11 @@ class _SubArrayHandler:
     ) -> None:
         self.flodym_array = flodym_array
         self._get_def_dict(definition)
+        self._sub_dims_out: dict[str, Dimension] = {}
         self._resolve_ancestor_items(allow_ancestor_items)
-        self.invalid_flodym_array = any(_is_iterable(v) for v in self.def_dict.values())
+        self.invalid_flodym_array = any(
+            _is_iterable(v) for k, v in self.def_dict.items() if k not in self._sub_dims_out
+        )
         self._init_dims_out()
         self._init_ids()
 
@@ -1770,6 +1781,9 @@ class _SubArrayHandler:
     def _resolve_ancestor_items(self, allowed: bool) -> None:
         """Replace items of ancestors in the slicing definition by the items belonging to them.
 
+        A single split item of the parent is replaced by its sub-items, and the dimension it is
+        split into is stored to replace the sliced dimension.
+
         Raises:
             ValueError: If an ancestor item is found, but ancestor items are not allowed.
         """
@@ -1778,6 +1792,12 @@ class _SubArrayHandler:
             if isinstance(value, Dimension):
                 continue
             dim = self.flodym_array.dims[letter]
+            if not _is_iterable(value) and value not in dim.items:
+                sub_dim = (dim.sub_dims or {}).get(value)
+                if sub_dim is not None and sub_dim.letter not in self.flodym_array.dims:
+                    self._sub_dims_out[letter] = sub_dim
+                    self.def_dict[letter] = _items_below(dim, value)
+                    continue
             values = value if _is_iterable(value) else [value]
             resolved: list = []
             found_ancestor_item = False
@@ -1788,9 +1808,9 @@ class _SubArrayHandler:
                     continue
                 if not allowed:
                     raise ValueError(
-                        f"'{item}' is an item of an ancestor of dimension '{dim.name}'. Such items "
-                        "can only be used to set values, not to get them. Use aggregate_to() or "
-                        "the items of the dimension instead."
+                        f"'{item}' is an item of an ancestor of dimension '{dim.name}'. Except for "
+                        "single split items of the parent, such items can only be used to set "
+                        "values. Use aggregate_to() or the items of the dimension instead."
                     )
                 found_ancestor_item = True
                 resolved.extend(items_below)
@@ -1812,6 +1832,8 @@ class _SubArrayHandler:
                 self.dims_out.replace(letter, value, inplace=True)
             elif not _is_iterable(value):
                 self.dims_out.drop(letter, inplace=True)
+        for letter, sub_dim in self._sub_dims_out.items():
+            self.dims_out.replace(letter, sub_dim, inplace=True)
 
     def _init_ids(self) -> None:
         """Initialize the internal list of indices used for slicing the values array.

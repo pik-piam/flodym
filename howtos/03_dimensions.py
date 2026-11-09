@@ -181,8 +181,17 @@ material_demand_by_type[...] = material_demand
 print(material_demand_by_type.values)
 
 # %% [markdown]
-# When setting values, an item of the parent addresses all items belonging to it.
-# This is not possible when getting values, as no dimension is created implicitly for the result.
+# For a split dimension, a split item of the parent addresses its sub-items.
+# The result is defined over the dimension the item was split into.
+
+# %%
+residential_intensity = material_intensity["Res"]
+print(residential_intensity.dims.letters, residential_intensity.values)
+
+# %% [markdown]
+# When setting values, any item of the parent or a further ancestor addresses all items belonging
+# to it, also for dimensions created from a mapping.
+# This is not possible when getting values, as no dimension exists for the result.
 
 # %%
 material_intensity[{"s": "Res"}] = 15.0

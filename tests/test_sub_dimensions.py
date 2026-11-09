@@ -276,12 +276,40 @@ def test_setitem_by_higher_ancestor_item(building, residential):
     np.testing.assert_allclose(array.values, [0.0, 1.0, 2.0, 2.0])
 
 
-def test_getitem_by_parent_item_fails(production_s):
+def test_getitem_by_split_item(production_s, residential):
     slicing_dict = {"s": "Res"}
     for keys in (slicing_dict, "Res"):
-        with pytest.raises(ValueError, match="only be used to set values"):
-            production_s[keys]
+        sliced = production_s[keys]
+        assert sliced.dims.letters == ("r", "t")
+        assert sliced.dims["r"] == residential
+        np.testing.assert_allclose(sliced.values, [[8.0, 8.0], [2.0, 2.0]])
     assert slicing_dict == {"s": "Res"}
+    np.testing.assert_allclose(production_s["Res", 2030].values, [8.0, 2.0])
+
+
+def test_setitem_by_split_item_with_sub_dim_array(production_s, residential):
+    production_s["Res"] = production_s["Res"] * 2.0
+    np.testing.assert_allclose(production_s[{"t": 2020}].values, [1.0, 16.0, 4.0])
+    values = fd.FlodymArray(dims=residential.as_dimset(), values=np.array([3.0, 5.0]))
+    production_s[{"s": "Res", "t": 2030}] = values
+    np.testing.assert_allclose(production_s[{"t": 2030}].values, [2.0, 3.0, 5.0])
+
+
+def test_getitem_by_other_ancestor_items_fails(production_s, building, residential):
+    with pytest.raises(ValueError, match="only be used to set values"):
+        production_s[{"s": ["Com", "Res"]}]
+    infra = fd.Dimension(name="Infrastructure", letter="i", items=["Infr", "Build"])
+    level_1 = infra.split(name="Level 1", letter="l", splitting={"Build": building})
+    level_2 = level_1.split(name="Level 2", letter="m", splitting={"Build|Res": residential})
+    array = fd.FlodymArray(dims=level_2.as_dimset(), values=np.arange(4.0))
+    np.testing.assert_allclose(array["Build|Res"].values, [2.0, 3.0])
+    with pytest.raises(ValueError, match="only be used to set values"):
+        array["Build"]
+    regions = fd.Dimension(name="Region", letter="w", items=["EUR", "USA"])
+    countries = fd.Dimension.from_mapping("Country", "c", regions, {"DEU": "EUR", "USA": "USA"})
+    population = fd.FlodymArray(dims=countries.as_dimset(), values=np.array([1.0, 2.0]))
+    with pytest.raises(ValueError, match="only be used to set values"):
+        population["EUR"]
 
 
 # Extensivity -----------------------------------------------------------------------------------
