@@ -364,6 +364,49 @@ def test_combine_splits_errors(building, residential):
             fd.Dimension.combine_splits(name="Level 2", letter="m", upper=level_1, lower=lower)
 
 
+def test_combine_splits_with_several_split_items(building, residential, sub_type):
+    construction = fd.Dimension(name="Construction type", letter="i", items=["Infr", "Build"])
+    infrastructure = fd.Dimension(name="Infrastructure type", letter="f", items=["Road", "Rail"])
+    level_1 = construction.split(
+        name="Level 1", letter="l", splitting={"Infr": infrastructure, "Build": building}
+    )
+
+    # Infr is not split further, so it keeps its sub-dimension from level_1
+    level_2 = fd.Dimension.combine_splits(name="Level 2", letter="m", upper=level_1, lower=sub_type)
+    assert level_2.sub_dims == {"Infr": infrastructure, "Build": sub_type, "Build|Res": residential}
+    array = fd.FlodymArray(dims=level_2.as_dimset(), values=np.arange(1.0, 6.0))
+    assert array["Infr"].dims.letters == ("f",)
+    np.testing.assert_allclose(array["Infr"].values, [1.0, 2.0])
+
+    # several lower splits
+    road = fd.Dimension(name="Road type", letter="o", items=["Urban", "Rural"])
+    infrastructure_sub_type = infrastructure.split(
+        name="Infrastructure sub-type", letter="g", splitting={"Road": road}
+    )
+    level_2 = fd.Dimension.combine_splits(
+        name="Level 2", letter="m", upper=level_1, lower=[sub_type, infrastructure_sub_type]
+    )
+    assert level_2.items == [
+        "Infr|Road|Urban",
+        "Infr|Road|Rural",
+        "Infr|Rail",
+        "Build|Com",
+        "Build|Res|Sin",
+        "Build|Res|Mul",
+    ]
+    assert level_2.parent is level_1
+    assert level_2.sub_dims == {
+        "Infr": infrastructure_sub_type,
+        "Build": sub_type,
+        "Infr|Road": road,
+        "Build|Res": residential,
+    }
+    array = fd.FlodymArray(dims=level_2.as_dimset(), values=np.arange(1.0, 7.0))
+    assert array["Infr"].dims.letters == ("g",)
+    np.testing.assert_allclose(array["Infr|Road"].values, [1.0, 2.0])
+    np.testing.assert_allclose(array.aggregate_to(construction).values, [6.0, 15.0])
+
+
 def test_dict_weights_ignore_lower_split(combined_splits, residential):
     _, level_1, level_2 = combined_splits
     total = fd.FlodymArray(dims=level_1.as_dimset(), values=np.array([1.0, 2.0, 10.0]))
@@ -524,6 +567,35 @@ def test_read_mapping_and_split_dimensions(tmp_path):
     assert dims["s"].parent == dims["b"]
 
 
+def test_read_combined_splits(tmp_path):
+    (tmp_path / "construction.csv").write_text("Infr\nBuild\n")
+    (tmp_path / "buildings.csv").write_text("Com\nRes\n")
+    (tmp_path / "residential.csv").write_text("Sin\nMul\n")
+    reader = CSVDimensionReader(
+        dimension_files={
+            "Construction type": tmp_path / "construction.csv",
+            "Building type": tmp_path / "buildings.csv",
+            "Residential type": tmp_path / "residential.csv",
+        }
+    )
+    definitions = [
+        DimensionDefinition(name="Level 2", letter="m", dtype=str, combine_splits=("l", "s")),
+        DimensionDefinition(name="Construction type", letter="i", dtype=str),
+        DimensionDefinition(name="Building type", letter="b", dtype=str),
+        DimensionDefinition(name="Residential type", letter="r", dtype=str),
+        DimensionDefinition(
+            name="Level 1", letter="l", dtype=str, parent="i", splitting={"Build": "b"}
+        ),
+        DimensionDefinition(
+            name="Building sub-type", letter="s", dtype=str, parent="b", splitting={"Res": "r"}
+        ),
+    ]
+    dims = reader.read_dimensions(definitions)
+    assert dims["m"].items == ["Infr", "Build|Com", "Build|Res|Sin", "Build|Res|Mul"]
+    assert dims["m"].parent == dims["l"]
+    assert dims["m"].sub_dims == {"Build": dims["s"], "Build|Res": dims["r"]}
+
+
 def test_read_mapping_with_single_column_fails(tmp_path):
     (tmp_path / "regions.csv").write_text("EUR\nUSA\n")
     reader = CSVDimensionReader(
@@ -540,6 +612,12 @@ def test_read_mapping_with_single_column_fails(tmp_path):
 def test_definition_checks():
     with pytest.raises(ValueError, match="no parent"):
         DimensionDefinition(name="Sub", letter="s", dtype=str, splitting={"Res": "r"})
+    with pytest.raises(ValueError, match="at least two letters"):
+        DimensionDefinition(name="Level 2", letter="m", dtype=str, combine_splits=("l",))
+    with pytest.raises(ValueError, match="without parent"):
+        DimensionDefinition(
+            name="Level 2", letter="m", dtype=str, parent="l", combine_splits=("l", "s")
+        )
 
     def make_definition(dimensions):
         return MFADefinition(dimensions=dimensions, processes=[], flows=[])

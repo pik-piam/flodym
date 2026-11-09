@@ -261,15 +261,22 @@ class Dimension(FlodymBaseModel):
 
     @classmethod
     def combine_splits(
-        cls, name: str, letter: str, upper: Dimension, lower: Dimension, separator: str = "|"
+        cls,
+        name: str,
+        letter: str,
+        upper: Dimension,
+        lower: Dimension | list[Dimension],
+        separator: str = "|",
     ) -> Dimension:
-        """Combine two splits into a dimension with two levels of splitting.
+        """Combine splits into a dimension with two levels of splitting.
 
-        ``upper`` splits items of a dimension into the items of other dimensions, and ``lower``
-        splits items of one of these dimensions further (see :py:meth:`split`). The result is
-        ``upper``, with the items split further as in ``lower``. Its parent is ``upper``, so arrays
-        over it can be aggregated to ``upper`` and its ancestors. Slicing an array by an item of
-        the parent of ``upper`` which is split as in ``lower`` returns an array over ``lower``.
+        ``upper`` splits items of a dimension into the items of other dimensions, and each
+        dimension in ``lower`` splits items of one of these dimensions further (see
+        :py:meth:`split`). The result is ``upper``, with the items split further as in ``lower``.
+        Its parent is ``upper``, so arrays over it can be aggregated to ``upper`` and its
+        ancestors. Slicing an array by an item of the parent of ``upper`` returns an array over
+        the dimension in ``lower`` it is split as, or over the dimension it is split into in
+        ``upper``, if it is not split further.
 
         **Example**
 
@@ -294,37 +301,46 @@ class Dimension(FlodymBaseModel):
             letter: Letter of the new dimension.
             upper: Dimension created by :py:meth:`split`.
             lower: Dimension created by :py:meth:`split` from a dimension into which items of
-                ``upper`` are split.
+                ``upper`` are split, or a list of such dimensions for different such dimensions.
             separator: String between parent item and sub-item in the new item names.
 
         Returns:
             The new dimension, with ``upper`` as parent.
 
         Raises:
-            ValueError: If ``lower`` is not created by splitting a dimension into which items of
-                ``upper`` are split.
+            ValueError: If a dimension in ``lower`` is not created by splitting a dimension into
+                which items of ``upper`` are split.
         """
-        lower_parent = lower.parent
-        split_items = [
-            item
-            for item, sub_dim in (upper.sub_dims or {}).items()
-            if lower_parent is not None and sub_dim.letter == lower_parent.letter
-        ]
-        if lower_parent is None or lower.sub_dims is None or not split_items:
-            raise ValueError(
-                f"Dimension '{lower.name}' must be created by split() from a dimension into which "
-                f"items of '{upper.name}' are split."
-            )
-        splitting = {
-            item: lower.sub_dims[lower_parent_item]
-            for upper_item in split_items
-            for item, lower_parent_item in zip(
-                upper._items_below(upper_item) or [], lower_parent.items
-            )
-            if lower_parent_item in lower.sub_dims
-        }
+        splitting: dict[Any, Dimension] = {}
+        lower_sub_dims: dict[Any, Dimension] = {}
+        for lower_dim in [lower] if isinstance(lower, Dimension) else lower:
+            lower_parent = lower_dim.parent
+            split_items = [
+                item
+                for item, sub_dim in (upper.sub_dims or {}).items()
+                if lower_parent is not None and sub_dim.letter == lower_parent.letter
+            ]
+            if lower_parent is None or lower_dim.sub_dims is None or not split_items:
+                raise ValueError(
+                    f"Dimension '{lower_dim.name}' must be created by split() from a dimension "
+                    f"into which items of '{upper.name}' are split."
+                )
+            splitting |= {
+                item: lower_dim.sub_dims[lower_parent_item]
+                for upper_item in split_items
+                for item, lower_parent_item in zip(
+                    upper._items_below(upper_item) or [], lower_parent.items
+                )
+                if lower_parent_item in lower_dim.sub_dims
+            }
+            lower_sub_dims |= dict.fromkeys(split_items, lower_dim)
         combined = upper.split(name=name, letter=letter, splitting=splitting, separator=separator)
-        sub_dims = {**splitting, **dict.fromkeys(split_items, lower)}
+        unchanged_sub_dims = {
+            item: sub_dim
+            for item, sub_dim in (upper.sub_dims or {}).items()
+            if combined._items_below(item) == upper._items_below(item)
+        }
+        sub_dims = {**unchanged_sub_dims, **lower_sub_dims, **splitting}
         return cls.model_validate({**dict(combined), "sub_dims": sub_dims})
 
     @property

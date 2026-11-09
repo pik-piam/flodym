@@ -23,7 +23,9 @@ class DataReader(ABC):
 
         Sub-dimensions (see :py:attr:`flodym.DimensionDefinition.parent`) are linked to their
         parent. Dimensions with :py:attr:`flodym.DimensionDefinition.splitting` are not read, but
-        created from their parent with :py:meth:`flodym.Dimension.split`.
+        created from their parent with :py:meth:`flodym.Dimension.split`. Likewise, dimensions with
+        :py:attr:`flodym.DimensionDefinition.combine_splits` are created with
+        :py:meth:`flodym.Dimension.combine_splits`.
 
         Args:
             dimension_definitions: Definitions of the dimensions to read.
@@ -35,6 +37,15 @@ class DataReader(ABC):
         for definition in _dimension_dependency_order(dimension_definitions):
             if definition.splitting is not None:
                 dimensions[definition.letter] = _split_dimension(definition, dimensions)
+                continue
+            if definition.combine_splits is not None:
+                upper, *lower = (dimensions[letter] for letter in definition.combine_splits)
+                combined = Dimension.combine_splits(
+                    name=definition.name, letter=definition.letter, upper=upper, lower=lower
+                )
+                dimensions[definition.letter] = Dimension.model_validate(
+                    {**dict(combined), "dtype": definition.dtype}
+                )
                 continue
             dimension = self.read_dimension(definition)
             if definition.parent is not None:

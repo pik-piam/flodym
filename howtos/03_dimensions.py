@@ -213,16 +213,21 @@ print(material_intensity.values)
 # sliced by the items of each level.
 # Getting values by an item returns an array over the dimension the item was split into:
 # `"Build|Res"` gives an array over `fine`, and `"Build"` an array over `medium_and_fine`.
+#
+# If `coarse_and_medium` splits several items into different dimensions, and more than one of them
+# is split further, pass a list of these further splits as `lower`.
 
 # %%
 coarse = fd.Dimension(name="Construction type", letter="i", items=["Infr", "Build"])
 medium = fd.Dimension(name="Building type", letter="b", items=["Com", "Res"])
 fine = fd.Dimension(name="Residential type", letter="y", items=["Sin", "Mul"])
 
-coarse_and_medium = coarse.split(name="Level 1", letter="l", splitting={"Build": medium})
+coarse_and_medium = coarse.split(
+    name="Construction sub-type", letter="l", splitting={"Build": medium}
+)
 medium_and_fine = medium.split(name="Building sub-type", letter="s", splitting={"Res": fine})
 coarse_and_medium_and_fine = fd.Dimension.combine_splits(
-    name="Level 2", letter="m", upper=coarse_and_medium, lower=medium_and_fine
+    name="Construction sub-sub-type", letter="m", upper=coarse_and_medium, lower=medium_and_fine
 )
 print(coarse_and_medium_and_fine.items)
 
@@ -241,14 +246,23 @@ print(stock.aggregate_to(coarse_and_medium).values)
 # The dimension file then has two columns: the items, and the parent item of each item.
 # A split dimension is defined by `splitting`, which gives the dimension each parent item is split
 # into. It is not read from a file, but created from the other dimensions.
+# Likewise, `combine_splits` gives the letters of `upper` and `lower` of
+# `Dimension.combine_splits()`.
 
 # %%
 dimension_definitions = [
     fd.DimensionDefinition(name="World region", letter="w", dtype=str),
     fd.DimensionDefinition(name="Country", letter="c", dtype=str, parent="w"),
+    fd.DimensionDefinition(name="Construction type", letter="i", dtype=str),
     fd.DimensionDefinition(name="Building type", letter="b", dtype=str),
     fd.DimensionDefinition(name="Residential type", letter="y", dtype=str),
     fd.DimensionDefinition(
+        name="Construction sub-type", letter="l", dtype=str, parent="i", splitting={"Build": "b"}
+    ),
+    fd.DimensionDefinition(
         name="Building sub-type", letter="s", dtype=str, parent="b", splitting={"Res": "y"}
+    ),
+    fd.DimensionDefinition(
+        name="Construction sub-sub-type", letter="m", dtype=str, combine_splits=("l", "s")
     ),
 ]
