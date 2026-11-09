@@ -47,21 +47,6 @@ def _group_sums(values: np.ndarray, indices: np.ndarray, n_groups: int, axis: in
     return np.stack([values.take(group, axis=axis).sum(axis=axis) for group in groups], axis=axis)
 
 
-def _items_below(dim: Dimension, ancestor_item: Any) -> list | None:
-    """Return the items of dim belonging to an item of its nearest ancestor which has this item.
-
-    Returns:
-        The items of dim, or None if no ancestor has the item.
-    """
-    for ancestor in dim.ancestors:
-        if ancestor_item in ancestor.items:
-            ancestor_items = dim.ancestor_items(ancestor)
-            return [
-                item for item, other in zip(dim.items, ancestor_items) if other == ancestor_item
-            ]
-    return None
-
-
 class FlodymArray(FlodymBaseModel):
     """Parent class for an array with pre-defined dimensions, which are addressed by name.
 
@@ -112,7 +97,8 @@ class FlodymArray(FlodymBaseModel):
       `foo['C', 'EUR', 'USA']` addresses all values where the element is carbon and the region is
       Europe or the USA.
     - For a dimension created by :py:meth:`flodym.Dimension.split`, a split item of the parent
-      addresses its sub-items. The dimension is replaced by the one the item is split into.
+      addresses its sub-items. The dimension is replaced by the one the item is split into. The
+      same holds for items of further ancestors given as ``ancestor_sub_dims`` in ``split()``.
 
       *Example:* `foo['Res']` returns an array over the residential types.
     - Only when setting values: For any dimension with a parent (see
@@ -1767,7 +1753,7 @@ class _SubArrayHandler:
             )
         key = None
         for d in self.flodym_array.dims:
-            if item in d.items or _items_below(d, item) is not None:
+            if item in d.items or d._items_below(item) is not None:
                 if key is not None:
                     raise ValueError(
                         f"Ambiguous slicing: Item '{item}' is found in multiple dimensions. Please specify the "
@@ -1796,13 +1782,13 @@ class _SubArrayHandler:
                 sub_dim = (dim.sub_dims or {}).get(value)
                 if sub_dim is not None and sub_dim.letter not in self.flodym_array.dims:
                     self._sub_dims_out[letter] = sub_dim
-                    self.def_dict[letter] = _items_below(dim, value)
+                    self.def_dict[letter] = dim._items_below(value)
                     continue
             values = value if _is_iterable(value) else [value]
             resolved: list = []
             found_ancestor_item = False
             for item in values:
-                items_below = None if item in dim.items else _items_below(dim, item)
+                items_below = None if item in dim.items else dim._items_below(item)
                 if items_below is None:
                     resolved.append(item)
                     continue
@@ -2114,21 +2100,20 @@ def _weights_from_dict(weights: dict[Any, FlodymArray], split_dim: Dimension) ->
         ValueError: If split_dim was not created by splitting, or if weights are missing for a
             split item or lack the dimension it is split into.
     """
-    if split_dim.sub_dims is None or split_dim.parent_items is None:
+    if split_dim.sub_dims is None or split_dim.parent is None or split_dim.parent_items is None:
         raise ValueError(
             f"Weights can only be given as a dictionary for dimensions created by "
             f"Dimension.split(), not for '{split_dim.name}'."
         )
-    unknown_items = set(weights) - set(split_dim.sub_dims)
-    missing_items = set(split_dim.sub_dims) - set(weights)
-    if unknown_items or missing_items:
+    split_items = {k: v for k, v in split_dim.sub_dims.items() if k in split_dim.parent.items}
+    if set(weights) != set(split_items):
         raise ValueError(
             f"Keys of the weights dictionary must be the split items of '{split_dim.name}' "
-            f"{sorted(map(str, split_dim.sub_dims))}, but are {sorted(map(str, weights))}."
+            f"{sorted(map(str, split_items))}, but are {sorted(map(str, weights))}."
         )
     extra_dims = DimensionSet.empty()
     for parent_item, item_weights in weights.items():
-        sub_dim = split_dim.sub_dims[parent_item]
+        sub_dim = split_items[parent_item]
         if sub_dim.letter not in item_weights.dims:
             raise ValueError(
                 f"Weights for '{parent_item}' must have the dimension '{sub_dim.name}'."
@@ -2143,7 +2128,7 @@ def _weights_from_dict(weights: dict[Any, FlodymArray], split_dim: Dimension) ->
     for item, parent_item in zip(split_dim.items, split_dim.parent_items):
         if parent_item not in weights:
             continue
-        sub_dim = split_dim.sub_dims[parent_item]
+        sub_dim = split_items[parent_item]
         sub_item = sub_dim.items[positions_in_group[parent_item]]
         positions_in_group[parent_item] += 1
         item_weights = weights[parent_item][{sub_dim.letter: sub_item}]

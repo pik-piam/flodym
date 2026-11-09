@@ -69,7 +69,8 @@ class Dimension(FlodymBaseModel):
     linked by :py:meth:`flodym.DataReader.read_dimensions`."""
     sub_dims: dict[Any, Dimension] | None = None
     """Only for dimensions created by :py:meth:`split`: The dimension each split parent item is
-    split into."""
+    split into, and the dimensions given as ``ancestor_sub_dims`` for items of further ancestors.
+    Slicing an array by one of the keys returns an array over the corresponding dimension."""
 
     @model_validator(mode="after")
     def _items_have_datatype(self) -> Dimension:
@@ -107,6 +108,13 @@ class Dimension(FlodymBaseModel):
                 f"Items of parent '{self.parent.name}' are not assigned to any item of dimension "
                 f"'{self.name}': {sorted(map(str, uncovered_items))}"
             )
+        for ancestor_item, sub_dim in (self.sub_dims or {}).items():
+            items_below = self._items_below(ancestor_item)
+            if items_below is None or len(items_below) != sub_dim.len:
+                raise ValueError(
+                    f"Dimension '{sub_dim.name}' in sub_dims of '{self.name}' must have one item "
+                    f"for each item below '{ancestor_item}'."
+                )
         return self
 
     def __add__(self, other: Dimension | DimensionSet) -> DimensionSet:
@@ -271,11 +279,16 @@ class Dimension(FlodymBaseModel):
         letter: str,
         splitting: dict[Any, Dimension],
         separator: str = "|",
+        ancestor_sub_dims: dict[Any, Dimension] | None = None,
     ) -> Dimension:
         """Create a sub-dimension by splitting some items into the items of other dimensions.
 
         The name of a split item is the parent item and the sub-item, joined by ``separator``.
         Items which are not split are kept.
+
+        Arrays over the new dimension can be sliced by a split item, which returns an array over
+        the dimension it is split into (see :py:class:`flodym.FlodymArray`). For items of further
+        ancestors, dimensions to slice by can be given in ``ancestor_sub_dims``.
 
         **Example**
 
@@ -294,15 +307,20 @@ class Dimension(FlodymBaseModel):
             name: Name of the new dimension.
             letter: Letter of the new dimension.
             splitting: Dictionary of the items to split, and the dimension each is split into.
-            separator: String between parent item and sub-item in the new item names. Must not
-                occur in the sub-items.
+            separator: String between parent item and sub-item in the new item names. It may
+                occur in the sub-items, e.g. if they result from splitting themselves.
+            ancestor_sub_dims: Dictionary of items of further ancestors (not of this dimension),
+                and dimensions for slicing by them. The items of such a dimension must be the
+                items of the new dimension below the ancestor item, without the leading ancestor
+                item and separator, in the same order.
 
         Returns:
             The new dimension, with this dimension as parent.
 
         Raises:
-            ValueError: If a key of ``splitting`` is not an item, if a sub-item contains the
-                separator, or if the new item names are not unique.
+            ValueError: If a key of ``splitting`` is not an item, if the new item names are not
+                unique, or if a dimension in ``ancestor_sub_dims`` does not match the items below
+                its key.
         """
         unknown_items = set(splitting) - set(self.items)
         if unknown_items:
@@ -318,16 +336,11 @@ class Dimension(FlodymBaseModel):
                 parent_items.append(item)
                 continue
             for sub_item in splitting[item].items:
-                if separator in str(sub_item):
-                    raise ValueError(
-                        f"Item '{sub_item}' of dimension '{splitting[item].name}' must not "
-                        f"contain the separator '{separator}'."
-                    )
                 items.append(f"{item}{separator}{sub_item}")
                 parent_items.append(item)
         if len(set(items)) != len(items):
             raise ValueError(f"Items of the split dimension '{name}' are not unique: {items}")
-        return Dimension(
+        split_dim = Dimension(
             name=name,
             letter=letter,
             items=items,
@@ -336,6 +349,18 @@ class Dimension(FlodymBaseModel):
             parent_items=parent_items,
             sub_dims=dict(splitting),
         )
+        if not ancestor_sub_dims:
+            return split_dim
+        for ancestor_item, sub_dim in ancestor_sub_dims.items():
+            expected = [f"{ancestor_item}{separator}{sub_item}" for sub_item in sub_dim.items]
+            if ancestor_item in self.items or split_dim._items_below(ancestor_item) != expected:
+                raise ValueError(
+                    f"Items of dimension '{sub_dim.name}' must correspond to the items of '{name}' "
+                    f"below the item '{ancestor_item}' of a further ancestor: Expected {expected}, "
+                    f"found {split_dim._items_below(ancestor_item)}."
+                )
+        sub_dims = {**splitting, **ancestor_sub_dims}
+        return Dimension.model_validate({**dict(split_dim), "sub_dims": sub_dims})
 
     def is_descendant_of(self, other: Dimension) -> bool:
         """Check whether ``other`` is the parent, the parent of the parent, etc.
@@ -409,6 +434,22 @@ class Dimension(FlodymBaseModel):
     def as_dimset(self) -> DimensionSet:
         """Convert the Dimension to a DimensionSet containing only this Dimension."""
         return DimensionSet(dim_list=[self])
+
+    def _items_below(self, ancestor_item: Any) -> list | None:
+        """Return the items belonging to an item of the nearest ancestor which has this item.
+
+        Returns:
+            The items, or None if no ancestor has the item.
+        """
+        for ancestor in self.ancestors:
+            if ancestor_item in ancestor.items:
+                ancestor_items = self.ancestor_items(ancestor)
+                return [
+                    item
+                    for item, other in zip(self.items, ancestor_items)
+                    if other == ancestor_item
+                ]
+        return None
 
     def _indices_in_ancestor(self, ancestor: Dimension) -> np.ndarray:
         """For each item, the index of the ancestor item it belongs to, in ``ancestor.items``.

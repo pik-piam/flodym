@@ -47,8 +47,15 @@ def test_split_errors(building, residential):
     with pytest.raises(ValueError, match="not items"):
         building.split(name="Sub-type", letter="s", splitting={"Ind": residential})
     piped = fd.Dimension(name="Piped", letter="p", items=["a|b"])
-    with pytest.raises(ValueError, match="separator"):
-        building.split(name="Sub-type", letter="s", splitting={"Res": piped})
+    split = building.split(name="Sub-type", letter="s", splitting={"Res": piped})
+    assert split.items == ["Com", "Res|a|b"]
+    clashing = fd.Dimension(name="Clashing", letter="c", items=["Res", "Res|a"])
+    with pytest.raises(ValueError, match="not unique"):
+        clashing.split(
+            name="Sub-type",
+            letter="s",
+            splitting={"Res": fd.Dimension(name="Sub-items", letter="a", items=["a"])},
+        )
 
 
 def test_nested_split(building, residential):
@@ -310,6 +317,61 @@ def test_getitem_by_other_ancestor_items_fails(production_s, building, residenti
     population = fd.FlodymArray(dims=countries.as_dimset(), values=np.array([1.0, 2.0]))
     with pytest.raises(ValueError, match="only be used to set values"):
         population["EUR"]
+
+
+@pytest.fixture
+def nested_with_ancestor_sub_dims(building, residential, sub_type):
+    infra = fd.Dimension(name="Infrastructure", letter="i", items=["Infr", "Build"])
+    level_1 = infra.split(name="Level 1", letter="l", splitting={"Build": building})
+    level_2 = level_1.split(
+        name="Level 2",
+        letter="m",
+        splitting={"Build|Res": residential},
+        ancestor_sub_dims={"Build": sub_type},
+    )
+    return infra, level_1, level_2
+
+
+def test_ancestor_sub_dims_slicing(nested_with_ancestor_sub_dims, sub_type, residential):
+    _, level_1, level_2 = nested_with_ancestor_sub_dims
+    assert level_2.sub_dims == {"Build|Res": residential, "Build": sub_type}
+    array = fd.FlodymArray(dims=level_2.as_dimset(), values=np.array([1.0, 2.0, 3.0, 4.0]))
+    by_build = array["Build"]
+    assert by_build.dims.letters == ("s",)
+    np.testing.assert_allclose(by_build.values, [2.0, 3.0, 4.0])
+    np.testing.assert_allclose(array["Build|Res"].values, [3.0, 4.0])
+    np.testing.assert_allclose(array.aggregate_to(level_1).values, [1.0, 2.0, 7.0])
+    np.testing.assert_allclose(by_build.aggregate_to(sub_type.parent).values, [2.0, 7.0])
+    array["Build"] = by_build * 10.0
+    np.testing.assert_allclose(array.values, [1.0, 20.0, 30.0, 40.0])
+
+
+def test_ancestor_sub_dims_errors(building, residential):
+    infra = fd.Dimension(name="Infrastructure", letter="i", items=["Infr", "Build"])
+    level_1 = infra.split(name="Level 1", letter="l", splitting={"Build": building})
+    reordered = fd.Dimension(name="Reordered", letter="s", items=["Res|Sin", "Com", "Res|Mul"])
+    with pytest.raises(ValueError, match="must correspond"):
+        level_1.split(
+            name="Level 2",
+            letter="m",
+            splitting={"Build|Res": residential},
+            ancestor_sub_dims={"Build": reordered},
+        )
+    with pytest.raises(ValueError, match="must correspond"):
+        level_1.split(
+            name="Level 2",
+            letter="m",
+            splitting={"Build|Res": residential},
+            ancestor_sub_dims={"Build|Com": residential},
+        )
+
+
+def test_dict_weights_ignore_ancestor_sub_dims(nested_with_ancestor_sub_dims, residential):
+    _, level_1, level_2 = nested_with_ancestor_sub_dims
+    total = fd.FlodymArray(dims=level_1.as_dimset(), values=np.array([1.0, 2.0, 10.0]))
+    weights = {"Build|Res": fd.FlodymArray(dims=residential.as_dimset(), values=np.array([4, 1]))}
+    split = total.disaggregate_to(level_2, weights=weights)
+    np.testing.assert_allclose(split.values, [1.0, 2.0, 8.0, 2.0])
 
 
 # Extensivity -----------------------------------------------------------------------------------
