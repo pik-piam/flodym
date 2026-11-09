@@ -1065,3 +1065,54 @@ def test_process_id_and_to_stock_type():
     assert np.array_equal(dsm.inflow.values, stock.inflow.values)
     dsm.compute()
     assert_almost_equal(dsm.stock.values[:5], [1.0, 2.0, 3.0, 3.0, 3.0])
+
+
+def test_flodym_arrays_are_converted_to_stock_arrays():
+    inflow = FlodymArray(dims=DIMS, values=np.ones(DIMS.shape), name="my_inflow")
+    stock = SimpleFlowDrivenStock(dims=DIMS, inflow=inflow, outflow=FlodymArray(dims=DIMS))
+    assert type(stock.inflow) is StockArray
+    assert type(stock.outflow) is StockArray
+    assert stock.inflow.name == "my_inflow"
+    assert stock.inflow.is_set
+    assert not stock.outflow.is_set
+    np.testing.assert_array_equal(stock.inflow.values, inflow.values)
+
+
+def test_inflow_by_cohort_is_converted_to_stock_array():
+    cohort_dim = Dimension(name="cohort", letter="c", items=DIMS["t"].items, dtype=int)
+    dims_cohort = DIMS["t"] + cohort_dim + DIMS.drop("t")
+    dsm = DynamicStockModel(
+        dims=DIMS,
+        cohort_dim=cohort_dim,
+        lifetime_model=FixedLifetime,
+        inflow_by_cohort=FlodymArray(dims=dims_cohort),
+    )
+    assert type(dsm.inflow_by_cohort) is StockArray
+
+
+@pytest.mark.parametrize(
+    "other_letters, expected_letter",
+    [((), "c"), (("c",), "C"), (("c", "C"), "d"), (("c", "C", "d"), "D")],
+)
+def test_cohort_dim_created_if_not_given(caplog, other_letters, expected_letter):
+    time = DIMS["t"]
+    other_dims = [
+        Dimension(name=f"dim_{letter}", letter=letter, items=[0]) for letter in other_letters
+    ]
+    dims = DimensionSet(dim_list=[time] + other_dims)
+    with caplog.at_level(logging.WARNING):
+        dsm = DynamicStockModel(dims=dims, lifetime_model=FixedLifetime)
+    assert "No cohort_dim given" in caplog.text
+    assert dsm.cohort_dim.name == "cohort"
+    assert dsm.cohort_dim.letter == expected_letter
+    assert dsm.cohort_dim.items == time.items
+    assert dsm.inflow_by_cohort.dims.letters == ("t", expected_letter) + other_letters
+    assert dsm.get_stock_by_cohort().dims.letters == ("t", expected_letter) + other_letters
+
+
+def test_no_warning_if_cohort_dim_given(caplog):
+    cohort_dim = Dimension(name="production year", letter="y", items=DIMS["t"].items)
+    with caplog.at_level(logging.WARNING):
+        dsm = DynamicStockModel(dims=DIMS, cohort_dim=cohort_dim, lifetime_model=FixedLifetime)
+    assert "No cohort_dim given" not in caplog.text
+    assert dsm.cohort_dim is cohort_dim

@@ -10,10 +10,10 @@ from typing import Any, ClassVar, Literal, SupportsFloat, TypeAlias
 import numpy as np
 import scipy.special
 import scipy.stats
-from pydantic import BaseModel as PydanticBaseModel
 from pydantic import ConfigDict, PrivateAttr, model_validator
 from typing_extensions import Self
 
+from ._base_model import FlodymBaseModel
 from ._gauss_lobatto import GL_NODES, GL_WEIGHTS
 from .dimensions import Dimension, DimensionSet
 from .flodym_arrays import FlodymArray
@@ -23,7 +23,7 @@ LifetimeArrayType: TypeAlias = FlodymArray | np.ndarray | SupportsFloat
 dimensions, a numpy array broadcastable to the lifetime model shape, or a number."""
 
 
-class _UnevenTimeDim(PydanticBaseModel):
+class _UnevenTimeDim(FlodymBaseModel):
     """Time dimension with possibly uneven spacing, where each item is the center of a time step.
 
     The bounds of the time steps lie halfway between neighboring items. The outer bounds are
@@ -57,12 +57,10 @@ class _UnevenTimeDim(PydanticBaseModel):
         )
 
 
-class LifetimeModel(PydanticBaseModel):
+class LifetimeModel(FlodymBaseModel):
     """Contains shared functionality across the various lifetime models."""
 
-    model_config = ConfigDict(
-        validate_assignment=True, arbitrary_types_allowed=True, extra="forbid"
-    )
+    model_config = ConfigDict(validate_assignment=True)
 
     dims: DimensionSet
     time_letter: str = "t"

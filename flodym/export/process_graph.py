@@ -19,8 +19,7 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, TypeVar
 
 import plotly.graph_objects as go
-from pydantic import BaseModel as PydanticBaseModel
-from pydantic import ConfigDict, model_validator
+from pydantic import model_validator
 from typing_extensions import Self
 
 from ..flodym_arrays import Flow
@@ -36,13 +35,11 @@ _NodeT = TypeVar("_NodeT", Process, Stock)
 _NodeKeyT = TypeVar("_NodeKeyT", int, str)
 
 
-class ProcessGraphPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
+class ProcessGraphPlotter(CustomNameDisplayer, ABC):
     """Abstract base class for plotting the structure of an MFA system as a directed graph.
 
     Subclasses implement the actual rendering for a specific backend.
     """
-
-    model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow", protected_namespaces=())
 
     mfa: MFASystem
     """MFA system whose structure is visualized."""
@@ -148,8 +145,8 @@ class GraphvizProcessGraphPlotter(ProcessGraphPlotter):
     system binaries (the ``dot`` executable).
 
     Example:
-        >>> from flodym.export import GraphvizProcessGraphPlotter
-        >>> dot = GraphvizProcessGraphPlotter(mfa=mfa).plot()
+        >>> import flodym.export as fde
+        >>> dot = fde.GraphvizProcessGraphPlotter(mfa=mfa).plot()
         >>> dot.render("system_structure", format="png")
     """
 
@@ -227,8 +224,8 @@ class PlotlyProcessGraphPlotter(ProcessGraphPlotter):
         within each layer horizontally.
 
     Example:
-        >>> from flodym.export import PlotlyProcessGraphPlotter
-        >>> fig = PlotlyProcessGraphPlotter(mfa=mfa).plot()
+        >>> import flodym.export as fde
+        >>> fig = fde.PlotlyProcessGraphPlotter(mfa=mfa).plot()
         >>> fig.show()  # doctest: +SKIP
     """
 

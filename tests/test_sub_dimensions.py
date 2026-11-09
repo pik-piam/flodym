@@ -284,6 +284,125 @@ def test_getitem_by_parent_item_fails(production_s):
     assert slicing_dict == {"s": "Res"}
 
 
+# Extensivity -----------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def strict():
+    """Raise on any extensivity report."""
+    with fd.config.override(error_behaviors={"extensivity": "error"}):
+        yield
+
+
+@pytest.fixture
+def flow_s(production_s):
+    return production_s.to_class(fd.FlodymArray, extensive=True)
+
+
+@pytest.fixture
+def intensity_s(sub_type):
+    values = np.array([5.0, 10.0, 20.0])
+    return fd.FlodymArray(dims=sub_type.as_dimset(), values=values, extensive=False)
+
+
+@pytest.fixture
+def intensity_b(building):
+    return fd.FlodymArray(dims=building.as_dimset(), values=np.array([5.0, 10.0]), extensive=False)
+
+
+def test_correct_usage_is_not_reported(
+    strict, flow_s, intensity_s, intensity_b, building, sub_type, time
+):
+    flow_b = flow_s.aggregate_to(building)
+    assert flow_b.extensive is True
+    shares = fd.FlodymArray(
+        dims=sub_type.as_dimset(), values=np.array([1.0, 0.8, 0.2]), extensive=False
+    )
+    split = flow_b.disaggregate_to(sub_type, weights=shares)
+    assert split.extensive is True
+    np.testing.assert_allclose(split.values, flow_s.values)
+    mean = intensity_s.aggregate_to(building, weights=flow_s)
+    assert mean.extensive is False
+    copied = intensity_b.disaggregate_to(sub_type)
+    assert copied.extensive is False
+    assert (flow_s + flow_b).extensive is True
+    assert (intensity_b * flow_s).extensive is True
+    assert flow_s.sum_to(("b", "t")).extensive is True
+    target_b = fd.FlodymArray(dims=building + time, extensive=True)
+    target_b[...] = flow_s
+    np.testing.assert_allclose(target_b.values, flow_b.values)
+
+
+@pytest.mark.parametrize(
+    "operation, message",
+    [
+        (lambda arrays: arrays["intensity_s"].aggregate_to(arrays["b"]), "summed"),
+        (lambda arrays: arrays["intensity_s"].sum_to(("b",)), "summed"),
+        (lambda arrays: arrays["flow_b"].disaggregate_to(arrays["s"]), "copied"),
+        (
+            lambda arrays: arrays["flow_s"].aggregate_to(arrays["b"], weights=arrays["flow_s"]),
+            "averaged with weights",
+        ),
+        (
+            lambda arrays: arrays["intensity_b"].disaggregate_to(
+                arrays["s"], weights=arrays["flow_s"]
+            ),
+            "split by weights",
+        ),
+    ],
+)
+def test_wrong_usage_is_reported(
+    strict, operation, message, flow_s, intensity_s, intensity_b, building, sub_type
+):
+    arrays = {
+        "flow_s": flow_s,
+        "flow_b": flow_s.aggregate_to(building),
+        "intensity_s": intensity_s,
+        "intensity_b": intensity_b,
+        "b": building,
+        "s": sub_type,
+    }
+    with pytest.raises(ValueError, match=message):
+        operation(arrays)
+
+
+def test_check_extensivity_false_skips_reports(strict, intensity_s, building):
+    summed = intensity_s.aggregate_to(building, check_extensivity=False)
+    np.testing.assert_allclose(summed.values, [5.0, 30.0])
+
+
+def test_addition_of_intensive_arrays_refines(strict, intensity_s, intensity_b):
+    for result in (intensity_b + intensity_s, intensity_s + intensity_b):
+        assert result.dims.letters == ("s",)
+        assert result.extensive is False
+        np.testing.assert_allclose(result.values, [10.0, 20.0, 30.0])
+    minimum = intensity_s.minimum(intensity_b)
+    np.testing.assert_allclose(minimum.values, [5.0, 10.0, 10.0])
+
+
+def test_assignment_of_intensive_coarse_array_copies(strict, intensity_b, sub_type):
+    target = fd.FlodymArray(dims=sub_type.as_dimset(), extensive=False)
+    target[...] = intensity_b
+    np.testing.assert_allclose(target.values, [5.0, 10.0, 10.0])
+    unknown_target = fd.FlodymArray(dims=sub_type.as_dimset())
+    unknown_target[{"s": "Res"}] = intensity_b[{"b": "Res"}]
+    np.testing.assert_allclose(unknown_target.values, [0.0, 10.0, 10.0])
+    assert unknown_target.extensive is False
+
+
+def test_assignment_of_extensive_coarse_array_fails(flow_s, building, sub_type, time):
+    flow_b = flow_s.aggregate_to(building)
+    target = fd.FlodymArray(dims=sub_type + time, extensive=True)
+    with pytest.raises(ValueError, match="only copied to sub-items for intensive arrays"):
+        target[...] = flow_b
+
+
+def test_assignment_of_intensive_fine_array_is_reported(strict, intensity_s, building):
+    target = fd.FlodymArray(dims=building.as_dimset(), extensive=False)
+    with pytest.raises(ValueError, match="summed"):
+        target[...] = intensity_s
+
+
 # Read-in ---------------------------------------------------------------------------------------
 
 

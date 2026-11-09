@@ -19,20 +19,20 @@
 # %%
 import numpy as np
 
-from flodym import Dimension, DimensionSet, FlodymArray
+import flodym as fd
 
 # Create a dimension set
-dims = DimensionSet(
+dims = fd.DimensionSet(
     dim_list=[
-        Dimension(name="Region", letter="r", items=["EU", "US", "MEX"]),
-        Dimension(name="Product", letter="p", items=["A", "B"]),
-        Dimension(name="Time", letter="t", items=[2020]),
+        fd.Dimension(name="Region", letter="r", items=["EU", "US", "MEX"]),
+        fd.Dimension(name="Product", letter="p", items=["A", "B"]),
+        fd.Dimension(name="Time", letter="t", items=[2020]),
     ]
 )
 
-flow_a = FlodymArray(dims=dims["t", "p"], values=0.2 * np.ones((1, 2)))
-flow_b = FlodymArray(dims=dims["r", "t"], values=0.1 * np.ones((3, 1)))
-parameter_a = FlodymArray(dims=dims["r", "p"], values=0.5 * np.ones((3, 2)))
+flow_a = fd.FlodymArray(dims=dims["t", "p"], values=0.2 * np.ones((1, 2)))
+flow_b = fd.FlodymArray(dims=dims["r", "t"], values=0.1 * np.ones((3, 1)))
+parameter_a = fd.FlodymArray(dims=dims["r", "p"], values=0.5 * np.ones((3, 2)))
 
 
 # %% [markdown]
@@ -47,7 +47,7 @@ parameter_a = FlodymArray(dims=dims["r", "p"], values=0.5 * np.ones((3, 2)))
 
 
 # %%
-def show_array(arr: FlodymArray):
+def show_array(arr: fd.FlodymArray):
     print(f"  dimensions: {arr.dims.letters}")
     print(f"  shape: {arr.dims.shape}")
     print(f"  name: {arr.name}")
@@ -155,7 +155,7 @@ show_array(flow_a)
 
 # %%
 # define and initialize values with zero
-predefined_flow = FlodymArray(name="predefined", dims=dims["r", "p"])
+predefined_flow = fd.FlodymArray(name="predefined", dims=dims["r", "p"])
 print("predefined_flow:")
 show_array(predefined_flow)
 
@@ -256,7 +256,7 @@ show_array(slice_a4)
 # If we want to access several items along one dimension, that creates a problem, as the dimension can't be dropped, but is changed, as it does not contain all items of the original one anymore. To cope with that, we have to create a new dimension object with a new name and letter, and pass it to the slice, along with the dimension letter we're taking a subset of:
 
 # %%
-regions_na = Dimension(name="RegionsNA", letter="n", items=["US", "MEX"])
+regions_na = fd.Dimension(name="RegionsNA", letter="n", items=["US", "MEX"])
 
 slice_b1 = flow_b[{"r": regions_na}]
 print("slice_a5:")
@@ -288,14 +288,40 @@ show_array(flow_b)
 # - When setting the values of an existing array, the array on the right-hand side of the assignment is summed down to the dimensions of the left-hand side. Missing dimensions on the right-hand side will lead to an error
 # - Scalars are converted to an array of equal dimensions before the operation is performed.
 #
-# ### Caveat
+# These rules hold for arrays of unknown and of extensive quantities. For intensive arrays, they are adapted, see below.
 #
-# We found these rules to yield the right behavior in almost all cases.
+# ## Extensive and intensive arrays
 #
-# There are exceptions: When adding two dimensionless parameters with different dimensions, it may be intended that the dimensions of both inputs are still used.
+# Summing over a dimension is only correct for extensive quantities, which scale with the size of the system, such as masses.
+# Copying values along a new dimension is only correct for intensive quantities, such as shares, yields or concentrations.
+# The `extensive` flag of an array states which of the two it holds:
+# `None` (unknown) by default, `True` for `Flow` and `StockArray` objects.
+# Parameters used as shares, dimension splitters or prescribed flows get it in `MFASystem.link_parameters()`,
+# and it can be given in the `ParameterDefinition`.
 #
-# A flodym extension is planned to account for this. In the meantime, we advise to use the `FlodymArray.cast_to()` method on the arrays before performing the operation.
+# - Arrays with `extensive=None` follow the rules above.
+# - Adding or subtracting two intensive arrays yields the set union: Dimensions which only one array has are copied to the other.
+# - When setting the values of an existing array from an intensive array, the right-hand side is copied along missing dimensions.
+# - `sum_to()` and `sum_over()` of intensive arrays, `cast_to()` of extensive arrays, and adding arrays of different extensivity are reported
+#   according to `flodym.config.error_behaviors.extensivity` (default: `"warn"`).
+#   Where such a sum or cast is intended, pass `check_extensivity=False` to `sum_to()`, `sum_over()` or `cast_to()`.
 #
+# The flag is propagated through operations: The quotient of two extensive arrays is intensive,
+# the product of an extensive and an intensive array is extensive.
+
+# %%
+share_a = fd.FlodymArray(
+    dims=dims.get_subset(("r",)), values=np.array([0.1, 0.2, 0.3]), extensive=False
+)
+share_b = fd.FlodymArray(dims=dims.get_subset(("p",)), values=np.array([0.4, 0.5]), extensive=False)
+share_sum = share_a + share_b
+print("dimensions of the sum of intensive arrays:", share_sum.dims.letters)
+
+mass = fd.FlodymArray(dims=dims["r", "p"], values=np.ones((3, 2)), extensive=True)
+print("extensive flag of extensive * intensive:", (mass * share_a).extensive)
+print("extensive flag of extensive / extensive:", (mass / mass.sum_to(("r",))).extensive)
+
+# %% [markdown]
 # ## Set and unset arrays
 #
 # Each array records whether its values are known, in the `is_set` property.
@@ -307,7 +333,7 @@ show_array(flow_b)
 # In this case, or if the zeros are intended, call `mark_set()`. `mark_unset()` reverts this, but keeps the values.
 
 # %%
-flow_c = FlodymArray(dims=dims["r", "t"])
+flow_c = fd.FlodymArray(dims=dims["r", "t"])
 print("Initialized without values:", flow_c.is_set)
 flow_c.values[0, ...] = 1.0
 print("After direct assignment to values:", flow_c.is_set)
@@ -321,11 +347,9 @@ print("After assignment via flow_c[...]:", flow_c.is_set)
 # functions are not checked.
 
 # %%
-import flodym
-
-with flodym.config.override(error_behaviors={"unset_array_used": "error"}):
+with fd.config.override(error_behaviors={"unset_array_used": "error"}):
     try:
-        2 * FlodymArray(dims=dims["r", "t"], name="unset_flow")
+        2 * fd.FlodymArray(dims=dims["r", "t"], name="unset_flow")
     except ValueError as error:
         print(error)
 

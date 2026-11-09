@@ -12,9 +12,9 @@
 # When loading items from file, it can be useful to check that for example years are integers and not converted to strings.
 
 # %%
-from flodym import Dimension
+import flodym as fd
 
-regions = Dimension(name="Region", letter="r", items=["EU", "US", "MEX"])
+regions = fd.Dimension(name="Region", letter="r", items=["EU", "US", "MEX"])
 
 # %% [markdown]
 #
@@ -22,14 +22,14 @@ regions = Dimension(name="Region", letter="r", items=["EU", "US", "MEX"])
 
 # %%
 # historic and future time
-time = Dimension(name="Time", letter="t", items=["2010", "2020", "2030"])
+time = fd.Dimension(name="Time", letter="t", items=["2010", "2020", "2030"])
 # Historic time - a subset of time
 
 # WRONG! (same letter t)
-historic_time = Dimension(name="Historic Time", letter="t", items=["2010", "2020"])
+historic_time = fd.Dimension(name="Historic Time", letter="t", items=["2010", "2020"])
 
 # Correct
-historic_time = Dimension(name="Historic Time", letter="h", items=["2010", "2020"])
+historic_time = fd.Dimension(name="Historic Time", letter="h", items=["2010", "2020"])
 
 # %% [markdown]
 # ## DimensionSets
@@ -37,13 +37,11 @@ historic_time = Dimension(name="Historic Time", letter="h", items=["2010", "2020
 # Multiple dimensions are grouped in a DimensionSet object:
 
 # %%
-from flodym import DimensionSet
-
-dims = DimensionSet(
+dims = fd.DimensionSet(
     dim_list=[
-        Dimension(name="Region", letter="r", items=["EU", "US", "MEX"]),
-        Dimension(name="Product", letter="p", items=["A", "B"]),
-        Dimension(name="Time", letter="t", items=[2020]),
+        fd.Dimension(name="Region", letter="r", items=["EU", "US", "MEX"]),
+        fd.Dimension(name="Product", letter="p", items=["A", "B"]),
+        fd.Dimension(name="Time", letter="t", items=[2020]),
     ]
 )
 
@@ -102,8 +100,8 @@ print(f"Reduced DimensionSet | type: {type(reduced_dims)}, names: {reduced_dims.
 # A mapping from items to parent items can be given directly:
 
 # %%
-world_regions = Dimension(name="World region", letter="w", items=["EUR", "USA"])
-countries = Dimension.from_mapping(
+world_regions = fd.Dimension(name="World region", letter="w", items=["EUR", "USA"])
+countries = fd.Dimension.from_mapping(
     name="Country",
     letter="c",
     parent=world_regions,
@@ -116,8 +114,8 @@ print(countries)
 # Items which are not split are kept. Several levels of splitting are possible.
 
 # %%
-building_types = Dimension(name="Building type", letter="b", items=["Com", "Res"])
-residential_types = Dimension(name="Residential type", letter="y", items=["Sin", "Mul"])
+building_types = fd.Dimension(name="Building type", letter="b", items=["Com", "Res"])
+residential_types = fd.Dimension(name="Residential type", letter="y", items=["Sin", "Mul"])
 building_sub_types = building_types.split(
     name="Building sub-type", letter="s", splitting={"Res": residential_types}
 )
@@ -128,7 +126,8 @@ print(building_sub_types.items)
 #
 # Arrays can be aggregated to a coarser dimension with `aggregate_to()` and disaggregated to a finer
 # one with `disaggregate_to()`.
-# Whether weights are needed depends on the kind of quantity:
+# Whether weights are needed depends on whether the array is extensive or intensive (see the
+# HOWTO on arrays):
 #
 # - Extensive quantities such as flows are summed when aggregating, but need shares or weights when
 #   splitting.
@@ -137,43 +136,47 @@ print(building_sub_types.items)
 #
 # Weights are normalized within each parent item, so they can be shares or absolute values, e.g.
 # production volumes.
+# Using one of the methods in a way that does not fit the `extensive` flag of the array is reported.
 
 # %%
 import numpy as np
 
-from flodym import FlodymArray
-
-production = FlodymArray(
-    dims=building_types.as_dimset(), values=np.array([1.0, 10.0]), name="production"
+production = fd.FlodymArray(
+    dims=building_types.as_dimset(), values=np.array([1.0, 10.0]), name="production", extensive=True
 )
-shares = FlodymArray(dims=building_sub_types.as_dimset(), values=np.array([1.0, 0.8, 0.2]))
+shares = fd.FlodymArray(
+    dims=building_sub_types.as_dimset(), values=np.array([1.0, 0.8, 0.2]), extensive=False
+)
 
 production_by_sub_type = production.disaggregate_to(building_sub_types, weights=shares)
 print(production_by_sub_type.values)
 
-material_intensity = FlodymArray(
-    dims=building_sub_types.as_dimset(), values=np.array([5.0, 10.0, 20.0])
+material_intensity = fd.FlodymArray(
+    dims=building_sub_types.as_dimset(), values=np.array([5.0, 10.0, 20.0]), extensive=False
 )
 mean_intensity = material_intensity.aggregate_to(building_types, weights=production_by_sub_type)
 print(mean_intensity.values)
 
 # %% [markdown]
-# Operations between arrays over related dimensions follow the general flodym rule:
-# Reducing dimensions sums, and expanding dimensions copies.
+# Operations between arrays over related dimensions treat them like other dimensions, which only
+# one operand has: Reducing sums, expanding copies.
 #
 # - `+`, `-`, `minimum()`, `maximum()`, `sum_to()` and assignments such as `coarse[...] = fine`
 #   aggregate to the coarser dimension by summation.
+#   For intensive arrays, `+`, `-`, `minimum()` and `maximum()` instead disaggregate to the finer
+#   dimension by copying.
 # - `*`, `/` and `cast_to()` disaggregate to the finer dimension by copying values.
+# - Assignments such as `fine[...] = coarse` copy values for intensive arrays, and raise an error
+#   otherwise.
 #
-# This is correct for the common cases of adding flows and multiplying them with intensive
-# parameters. Splitting extensive quantities and aggregating intensive quantities is never done
+# Splitting extensive quantities and aggregating intensive quantities is never done
 # automatically; use the methods above with weights.
 
 # %%
 material_demand = production_by_sub_type * material_intensity
 print(material_demand.dims.letters, material_demand.values)
 
-material_demand_by_type = FlodymArray(dims=building_types.as_dimset())
+material_demand_by_type = fd.FlodymArray(dims=building_types.as_dimset(), extensive=True)
 material_demand_by_type[...] = material_demand
 print(material_demand_by_type.values)
 
@@ -193,14 +196,12 @@ print(material_intensity.values)
 # into. It is not read from a file, but created from the other dimensions.
 
 # %%
-from flodym import DimensionDefinition
-
 dimension_definitions = [
-    DimensionDefinition(name="World region", letter="w", dtype=str),
-    DimensionDefinition(name="Country", letter="c", dtype=str, parent="w"),
-    DimensionDefinition(name="Building type", letter="b", dtype=str),
-    DimensionDefinition(name="Residential type", letter="y", dtype=str),
-    DimensionDefinition(
+    fd.DimensionDefinition(name="World region", letter="w", dtype=str),
+    fd.DimensionDefinition(name="Country", letter="c", dtype=str, parent="w"),
+    fd.DimensionDefinition(name="Building type", letter="b", dtype=str),
+    fd.DimensionDefinition(name="Residential type", letter="y", dtype=str),
+    fd.DimensionDefinition(
         name="Building sub-type", letter="s", dtype=str, parent="b", splitting={"Res": "y"}
     ),
 ]

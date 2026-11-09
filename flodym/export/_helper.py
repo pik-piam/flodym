@@ -3,7 +3,7 @@
 import re
 import unicodedata
 
-from pydantic import BaseModel as PydanticBaseModel
+from .._base_model import FlodymBaseModel
 
 
 def to_valid_file_name(value: str) -> str:
@@ -26,7 +26,7 @@ def to_valid_file_name(value: str) -> str:
     return re.sub(r"[-\s]", "_", value).strip("-_")
 
 
-class CustomNameDisplayer(PydanticBaseModel):
+class CustomNameDisplayer(FlodymBaseModel):
     """Base class for plotters that allow replacing names in figures by custom display names."""
 
     display_names: dict[str, str] = {}

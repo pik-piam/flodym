@@ -15,23 +15,20 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from pydantic import (
-    BaseModel as PydanticBaseModel,
-)
 from typing_extensions import Self
 
+from ._base_model import FlodymBaseModel
 
-class DimensionDefinition(PydanticBaseModel):
+
+class DimensionDefinition(FlodymBaseModel):
     """Define the model dimensions.
 
     **Examples**
 
-        >>> from flodym import DimensionDefinition
-        >>> time_definition = DimensionDefinition(name="Time", letter="t", dtype=int)
-        >>> region_definition = DimensionDefinition(name="Region", letter="r", dtype=str)
+        >>> import flodym as fd
+        >>> time_definition = fd.DimensionDefinition(name="Time", letter="t", dtype=int)
+        >>> region_definition = fd.DimensionDefinition(name="Region", letter="r", dtype=str)
     """
-
-    model_config = ConfigDict(protected_namespaces=())
 
     name: str = Field(..., min_length=2)
     """Name of the dimension, with at least two characters."""
@@ -61,10 +58,8 @@ class DimensionDefinition(PydanticBaseModel):
         return self
 
 
-class _DefinitionWithDimLetters(PydanticBaseModel):
+class _DefinitionWithDimLetters(FlodymBaseModel):
     """Base class for any definition that contains dimension letters."""
-
-    model_config = ConfigDict(protected_namespaces=())
 
     dim_letters: tuple[str, ...]
     """Letters of the dimensions that the object is defined on."""
@@ -83,11 +78,11 @@ class FlowDefinition(_DefinitionWithDimLetters):
 
     **Examples**
 
-        >>> from flodym import FlowDefinition
-        >>> flow_one = FlowDefinition(
+        >>> import flodym as fd
+        >>> flow_one = fd.FlowDefinition(
         ...     from_process_name="fabrication", to_process_name="use", dim_letters=("r", "t")
         ... )
-        >>> flow_two = FlowDefinition(
+        >>> flow_two = fd.FlowDefinition(
         ...     from_process_name="use", to_process_name="end_of_life", dim_letters=("r", "t")
         ... )
 
@@ -121,11 +116,11 @@ class StockDefinition(_DefinitionWithDimLetters):
     computation mode (see :py:meth:`flodym.DynamicStockModel.compute`).
     """
 
+    model_config = ConfigDict(validate_by_name=True)
+
     name: str = "undefined stock"
     """Name of the stock."""
-    process_name: str | None = Field(
-        default=None, validation_alias=AliasChoices("process", "process_name")
-    )
+    process_name: str | None = Field(default=None, alias="process")
     """Name of the process to which the stock is connected."""
     time_letter: str = "t"
     """Letter of the time dimension, to ensure it's the first appearing in dim_letters."""
@@ -220,9 +215,13 @@ class ParameterDefinition(_DefinitionWithDimLetters):
 
     name: str
     """Name of the parameter."""
+    extensive: bool | None = None
+    """Whether the parameter is extensive, see :py:attr:`flodym.FlodymArray.extensive`. If
+    None, it is set by :py:meth:`flodym.MFASystem.link_parameters` for parameters used as shares,
+    dimension splitters or prescribed arrays."""
 
 
-class ProcessDefinition(PydanticBaseModel):
+class ProcessDefinition(FlodymBaseModel):
     """Define a process.
 
     A process can be defined optionally with an explicit ID and with parameters used by
@@ -235,8 +234,8 @@ class ProcessDefinition(PydanticBaseModel):
 
     **Examples**
 
-        >>> from flodym import ProcessDefinition
-        >>> ProcessDefinition(name="shredder", outflow_shares={"remelting": "shredder yield"})
+        >>> import flodym as fd
+        >>> fd.ProcessDefinition(name="shredder", outflow_shares={"remelting": "shredder yield"})
     """
 
     name: str
@@ -260,13 +259,11 @@ class ProcessDefinition(PydanticBaseModel):
     (see :py:meth:`flodym.Process.compute`). It must sum to one over the added dimensions."""
 
 
-class MFADefinition(PydanticBaseModel):
+class MFADefinition(FlodymBaseModel):
     """All the information needed to define an MFA system.
 
     It is compiled of lists of definition objects.
     """
-
-    model_config = ConfigDict(protected_namespaces=())
 
     dimensions: list[DimensionDefinition]
     """List of definitions of dimensions used in the model."""

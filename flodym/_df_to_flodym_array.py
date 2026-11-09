@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel as PydanticBaseModel
 
+from ._base_model import FlodymBaseModel
 from .dimensions import Dimension
 
 if TYPE_CHECKING:
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class FlodymDataFormat(PydanticBaseModel):
+class FlodymDataFormat(FlodymBaseModel):
     """Format of a DataFrame holding the values of a FlodymArray."""
 
     type: Literal["long", "wide"]

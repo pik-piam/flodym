@@ -13,16 +13,27 @@ uv run pytest
 
 CI runs both of these on Python 3.10 to 3.12, on Linux, macOS and Windows.
 
-Never run any formatter, linter, pre-commit - except if you work on the linter configuration itself.
-In that case, run only the ruff hooks, `uvx pre-commit run ruff-check --all-files` and
-`uvx pre-commit run ruff-format --all-files`, to check the linter configuration. Running all hooks
-would also sync the notebooks (see below).
+Before pushing, check that pre-commit.ci will pass the ruff hooks:
+
+```bash
+uvx ruff@0.17.3 check
+uvx ruff@0.17.3 format --check
+```
+
+Use the ruff version given as `rev` of `ruff-pre-commit` in `.pre-commit-config.yaml` (here
+0.17.3), since the version installed by `uv sync` may differ. Both commands only report; fix
+the reported issues by hand.
+
+Apart from these checks, never run any formatter, linter, pre-commit - except if you work on the
+linter configuration itself. In that case, run only the ruff hooks,
+`uvx pre-commit run ruff-check --all-files` and `uvx pre-commit run ruff-format --all-files`, to
+check the linter configuration. Running all hooks would also sync the notebooks (see below).
 
 # Repository structure
 
 - `flodym`: the library itself
 - `flodym/export`: plotting, Sankey diagrams, process graphs and data writers
-- `examples`, `howtos`: jupytext notebooks, executed by the test suite
+- `examples`, `howtos`: jupytext notebooks. `tests/test_notebooks.py` executes their `.py` sources.
 - `tests`: pytest suite
 - `docs/source`: Sphinx documentation
 - `scripts`: helper scripts
@@ -74,5 +85,9 @@ files. Both are tracked in git, but the `.py` file is the source of truth.
   `"<old> is deprecated since v<X>. It will be removed in v3.0.0. Use <new> instead."`.
 - Changes that can affect existing models, including deprecations, belong in
   `docs/source/migration_v2.rst`.
+- In examples, howtos, docstring examples and docs, import flodym as `import flodym as fd` and
+  `import flodym.export as fde`, and access names as `fd.X` and `fde.X`, never via sub-modules
+  such as `flodym.lifetime_models`. `import flodym as fd` does not load `flodym.export`.
+  Exception: helpers from `flodym.example_objects` are imported directly.
 - `flodym/example_objects.py` provides a ready-made `ExampleMFA` for tests
 - use [Conventional Commits](https://www.conventionalcommits.org/) restricted to the types `feat`, `fix`, `docs`, and `chore`.

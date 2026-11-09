@@ -9,20 +9,20 @@ from typing import Any, Literal, overload
 import numpy as np
 import pandas as pd
 from pydantic import AliasChoices, Field, model_validator
-from pydantic import BaseModel as PydanticBaseModel
 
+from ._base_model import FlodymBaseModel
 from .mfa_definition import DimensionDefinition
 
 
-class Dimension(PydanticBaseModel):
+class Dimension(FlodymBaseModel):
     """One of multiple dimensions over which MFA arrays are defined.
 
     Defined by a name, a letter for shorter addressing, and a list of items.
 
     **Example**
 
-    >>> from flodym import Dimension
-    >>> regions = Dimension(name="Region", letter="r", items=["Earth", "Moon", "Sun"])
+    >>> import flodym as fd
+    >>> regions = fd.Dimension(name="Region", letter="r", items=["Earth", "Moon", "Sun"])
 
     The list of items can be loaded using a :py:class:`flodym.DataReader` object,
     or set directly, for example if a subset of an existing dimension is formed.
@@ -34,8 +34,8 @@ class Dimension(PydanticBaseModel):
     assigned to world regions, or building types split into sub-types. Several levels are
     possible, as the parent can have a parent itself.
 
-    >>> world_regions = Dimension(name="World region", letter="w", items=["EUR", "USA"])
-    >>> countries = Dimension(
+    >>> world_regions = fd.Dimension(name="World region", letter="w", items=["EUR", "USA"])
+    >>> countries = fd.Dimension(
     ...     name="Country",
     ...     letter="c",
     ...     items=["DEU", "FRA", "USA"],
@@ -279,8 +279,11 @@ class Dimension(PydanticBaseModel):
 
         **Example**
 
-        >>> building_types = Dimension(name="Building type", letter="b", items=["Com", "Res"])
-        >>> residential_types = Dimension(name="Residential type", letter="r", items=["Sin", "Mul"])
+        >>> import flodym as fd
+        >>> building_types = fd.Dimension(name="Building type", letter="b", items=["Com", "Res"])
+        >>> residential_types = fd.Dimension(
+        ...     name="Residential type", letter="r", items=["Sin", "Mul"]
+        ... )
         >>> sub_types = building_types.split(
         ...     name="Building sub-type", letter="s", splitting={"Res": residential_types}
         ... )
@@ -424,36 +427,40 @@ class Dimension(PydanticBaseModel):
         return np.array([index_of[item] for item in ancestor_items], dtype=int)
 
 
-class DimensionSet(PydanticBaseModel):
+class DimensionSet(FlodymBaseModel):
     """A set of Dimension objects which MFA arrays are defined over.
 
     **Example**
 
-        >>> from flodym import Dimension, DimensionSet
-        >>> regions = Dimension(name="Region", letter="r", items=["Earth", "Moon", "Sun"])
-        >>> time = Dimension(name="Time", letter="t", items=[1990, 2000, 2010, 2020, 2030])
-        >>> dimensions = DimensionSet(dim_list=[regions, time])
+        >>> import flodym as fd
+        >>> regions = fd.Dimension(name="Region", letter="r", items=["Earth", "Moon", "Sun"])
+        >>> time = fd.Dimension(name="Time", letter="t", items=[1990, 2000, 2010, 2020, 2030])
+        >>> dimensions = fd.DimensionSet(dim_list=[regions, time])
 
     It is expected that DimensionSet instances are created via the :py:class:`flodym.DataReader`.
 
-        >>> from flodym import DataReader, Dimension, DimensionDefinition, DimensionSet, Parameter
-        >>> class MyDataReader(DataReader):
-        ...     def read_dimension(self, dimension_definition: DimensionDefinition) -> Dimension:
+        >>> import flodym as fd
+        >>> class MyDataReader(fd.DataReader):
+        ...     def read_dimension(
+        ...         self, dimension_definition: fd.DimensionDefinition
+        ...     ) -> fd.Dimension:
         ...         if dimension_definition.letter == "t":
-        ...             return Dimension(
+        ...             return fd.Dimension(
         ...                 name="Time", letter="t", items=[1990, 2000, 2010, 2020, 2030]
         ...             )
         ...         elif dimension_definition.letter == "r":
-        ...             return Dimension(name="Region", letter="r", items=["Earth", "Moon", "Sun"])
+        ...             return fd.Dimension(
+        ...                 name="Region", letter="r", items=["Earth", "Moon", "Sun"]
+        ...             )
         ...         raise ValueError("No data available for desired dimension")
         ...
         ...     def read_parameter_values(
-        ...         self, parameter_name: str, dims: DimensionSet
-        ...     ) -> Parameter:
+        ...         self, parameter_name: str, dims: fd.DimensionSet
+        ...     ) -> fd.Parameter:
         ...         raise NotImplementedError("This reader only provides dimensions")
         >>> data_reader = MyDataReader()
-        >>> time_definition = DimensionDefinition(name="Time", letter="t", dtype=int)
-        >>> region_definition = DimensionDefinition(name="Region", letter="r", dtype=str)
+        >>> time_definition = fd.DimensionDefinition(name="Time", letter="t", dtype=int)
+        >>> region_definition = fd.DimensionDefinition(name="Region", letter="r", dtype=str)
         >>> definitions = [time_definition, region_definition]
         >>> dimensions = data_reader.read_dimensions(dimension_definitions=definitions)
 

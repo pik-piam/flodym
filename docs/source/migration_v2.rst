@@ -7,8 +7,8 @@ the API reference.
 
 Most models run under v2 without changes. The changes that are most likely to matter are:
 
-- stricter checks of the model structure, which turn silent overwrites into errors
-  (see :ref:`v2-structure`);
+- stricter checks of the model structure and of class arguments, which turn silent overwrites
+  and ignored arguments into errors (see :ref:`v2-structure`);
 - a stricter mass balance check (see :ref:`v2-mass-balance`);
 - changed results of dynamic stock models with unequal time steps (see :ref:`v2-stocks`);
 - internal names that now start with an underscore, which matters if you override a validator
@@ -42,6 +42,13 @@ objects instead.
 - **Subclasses of** ``DataReader`` must implement both ``read_dimension()`` and
   ``read_parameter_values()``, since ``DataReader`` is now an abstract base class. Otherwise,
   creating an instance raises a ``TypeError``.
+- **Unknown arguments** of flodym classes raise a ``ValidationError``. In v1, most classes
+  ignored them, so that a misspelled argument with a default value went unnoticed, e.g.
+  ``FlowDefinition(..., name_overide="x")``. This also applies to definitions loaded from
+  dictionaries or configuration files.
+- **Attributes of** ``MFASystem`` **subclasses** must be declared as fields, e.g.
+  ``cfg: MyConfig`` in the class body. In v1, ``MFASystem`` accepted undeclared keyword
+  arguments and attributes. The same applies to the array and process graph plotters.
 
 
 .. _v2-mass-balance:
@@ -75,13 +82,13 @@ Tolerances and error handling are set globally in ``flodym.config``, for example
 
 .. code-block:: python
 
-   import flodym
+   import flodym as fd
 
-   flodym.config.relative_tolerance = 1000           # default: 100 (times machine epsilon)
-   flodym.config.error_behaviors.mass_balance = "warn"  # default: "error"
+   fd.config.relative_tolerance = 1000           # default: 100 (times machine epsilon)
+   fd.config.error_behaviors.mass_balance = "warn"  # default: "error"
 
    # temporarily, within a block:
-   with flodym.config.override(error_behaviors={"mass_balance": "warn"}):
+   with fd.config.override(error_behaviors={"mass_balance": "warn"}):
        mfa.check_mass_balance()
 
 Renamed arguments and methods:
@@ -139,9 +146,15 @@ Removed or changed interface:
 - ``LifetimeModel.compute_survival_factor()`` is now private. Use the property
   ``lifetime_model.cumulative_survival``, which is computed when needed, or
   ``lifetime_model.get_cumulative_survival()``, which returns a ``FlodymArray``.
-- ``get_stock_by_cohort()`` and ``get_outflow_by_cohort()`` log a warning if the stock has no
-  ``cohort_dim``. They still return numpy arrays in this case. With ``cohort_dim`` (or
-  ``StockDefinition.cohort_letter``), they return ``StockArray`` objects.
+- Dynamic stock models without ``cohort_dim`` (or ``StockDefinition.cohort_letter``) create a
+  cohort dimension and log a warning. It has the name ``cohort``, the items of the time dimension,
+  and the letter ``c``; if ``c`` is a stock dimension, ``C``, else the next free letter
+  (``d``, ``D``, ...). Therefore, ``get_stock_by_cohort()`` and ``get_outflow_by_cohort()`` always
+  return ``StockArray`` objects, no longer numpy arrays, and ``inflow_by_cohort`` always exists.
+
+  *Action:* Use ``.values`` on the results of ``get_stock_by_cohort()`` and
+  ``get_outflow_by_cohort()`` where numpy arrays are needed. Pass ``cohort_dim`` to avoid the
+  warning.
 - ``DynamicStockModel`` is no longer abstract. Its ``compute()`` chooses the compute mode from the
   given arrays. ``InflowDrivenDSM`` and ``StockDrivenDSM`` are used as before.
 
@@ -169,6 +182,37 @@ With the default ``flodym.config.error_behaviors.unset_array_used = "ignore"``, 
 nothing. It matters if you enable this check, or if you use the automatic process computation,
 which treats unset flows as unknown. Use ``array.mark_set()``, or assign with ``array[...] = ...``,
 to mark values written directly to ``.values``.
+
+
+Arrays: extensive and intensive
+-------------------------------
+
+Arrays have a new flag ``extensive`` (see the docstring of ``FlodymArray``). Summing over
+dimensions is only correct for extensive quantities such as masses, copying along new dimensions
+only for intensive quantities such as shares. The flag is ``None`` (unknown) by default, ``True``
+for ``Flow`` and ``StockArray``, and can be given in ``ParameterDefinition``. It is propagated
+through arithmetic operations. Arrays with ``extensive=None`` behave as in v1.
+
+Changed behavior:
+
+- ``MFASystem.link_parameters()`` sets the flag of parameters which have none: shares and
+  dimension splitters are intensive, parameters prescribing flows or stock arrays extensive.
+- In ``+``, ``-``, ``minimum()`` and ``maximum()`` of two intensive arrays (or an intensive and
+  an unknown one), dimensions which only one operand has are copied to the other operand. In v1,
+  they were summed over.
+- ``foo[...] = bar`` with an intensive ``bar`` copies ``bar`` along the dimensions of ``foo``
+  which ``bar`` does not have. In v1, this raised an error. If the extensivity of ``foo`` is
+  unknown, it takes the one of ``bar``.
+- The following are reported according to the new option
+  ``flodym.config.error_behaviors.extensivity`` (default ``"warn"``): ``cast_to()`` of flows,
+  stock arrays and other extensive arrays; ``sum_to()`` and ``sum_over()`` of intensive arrays;
+  adding, subtracting or assigning arrays of different extensivity; and parameters whose given
+  flag contradicts their use in definitions.
+
+*Action:* Check warnings about extensivity. Most point to a summation or copy that was wrong in
+v1 already. If a parameter is used in arithmetic with other dimensions, check whether the new
+broadcasting of intensive arrays changes results. Set ``extensive`` explicitly where flodym cannot
+infer it.
 
 
 Automatic process computation
@@ -202,7 +246,8 @@ Public and private names
 
 Names that are only used inside flodym now start with an underscore. The public API consists of
 the names exported by ``flodym`` and ``flodym.export`` and documented in the API reference. Models
-that only use these are not affected.
+that only use these are not affected. The documentation accesses them as ``fd.X`` and ``fde.X``,
+after ``import flodym as fd`` and ``import flodym.export as fde``.
 
 *Action:* If a subclass overrides one of the validators below, e.g. to switch it off, rename the
 override as well. Otherwise, the flodym validator runs in addition to it.
@@ -297,5 +342,8 @@ New features
   the conditional one-step survival ``conditional_survival``; ``get_cumulative_survival()``,
   ``get_conditional_survival()`` and ``get_outflow_pmf()``, which return ``FlodymArray`` objects.
 - **Set and unset arrays:** ``FlodymArray.is_set``, ``mark_set()`` and ``mark_unset()``.
+- **Input conversion:** ``FlodymArray`` accepts a single ``Dimension`` as ``dims``. Stocks accept
+  any ``FlodymArray`` for ``stock``, ``inflow``, ``outflow`` and ``inflow_by_cohort`` and convert
+  it to a ``StockArray``.
 - **Attribute access:** ``mfa.flows.my_flow`` in addition to ``mfa.flows["my_flow"]``, also for
   stocks, processes and parameters (``flodym.AttributeDict``).

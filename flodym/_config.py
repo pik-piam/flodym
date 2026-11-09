@@ -6,8 +6,9 @@ from contextlib import contextmanager
 from enum import Enum
 from typing import Annotated, Any
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
+from ._base_model import FlodymBaseModel
 from .flow_naming import process_names_with_arrow
 
 logger = logging.getLogger(__name__)
@@ -59,7 +60,7 @@ def handle_error(
         pass
 
 
-class Checks(BaseModel, validate_assignment=True):
+class Checks(FlodymBaseModel, validate_assignment=True):
     """Which checks to perform automatically during computation."""
 
     mass_balance_after_compute: bool = False
@@ -72,7 +73,7 @@ class Checks(BaseModel, validate_assignment=True):
     violated."""
 
 
-class ErrorBehaviors(BaseModel, validate_assignment=True):
+class ErrorBehaviors(FlodymBaseModel, validate_assignment=True):
     """What to do if a check fails."""
 
     unset_array_used: ErrorBehavior = ErrorBehavior.IGNORE
@@ -109,13 +110,20 @@ class ErrorBehaviors(BaseModel, validate_assignment=True):
     were set are changed by the computation. Also applies to processes whose flows were all set
     by the computation of neighboring processes. Inconsistent mass balances are handled by
     :py:attr:`mass_balance`. If ``"ignore"``, the checks are skipped."""
+    extensivity: ErrorBehavior = ErrorBehavior.WARN
+    """What to do if an operation is inconsistent with the extensivity of arrays (see
+    :py:attr:`flodym.FlodymArray.extensive`): If an array which is not extensive is summed over
+    dimensions, an array which is not intensive is copied along new dimensions, arrays of
+    different extensivity are added, subtracted, compared or assigned to each other, an array is
+    converted to a class of different default extensivity, or a parameter's extensivity
+    contradicts its use in :py:meth:`flodym.MFASystem.link_parameters`."""
     unused_dimension_splitter: ErrorBehavior = ErrorBehavior.WARN
     """What to do if a process has a dimension splitter, but it is not used when computing the
     flows of its side in :py:meth:`flodym.Process.compute`, since no dimensions have to be
     added."""
 
 
-class Config(BaseModel, validate_assignment=True):
+class Config(FlodymBaseModel, validate_assignment=True):
     """Configuration class for Flodym."""
 
     checks: Checks = Checks()
@@ -128,8 +136,9 @@ class Config(BaseModel, validate_assignment=True):
     """Function which generates the name of a flow from the process it starts from and the process
     it ends in, as ``flow_naming(from_process, to_process)``. Used by
     :py:func:`flodym.make_empty_flows` and :py:meth:`flodym.MFASystem.relink`, but not for flows
-    with a ``name_override``. Predefined functions are found in :py:mod:`flodym.flow_naming`.
-    Default: :py:func:`flodym.flow_naming.process_names_with_arrow`.
+    with a ``name_override``. Predefined functions are :py:func:`flodym.process_ids`,
+    :py:func:`flodym.process_names_no_spaces` and :py:func:`flodym.process_names_with_arrow`
+    (default).
     """
 
     relative_tolerance: Annotated[float, Field(ge=0)] = 100.0

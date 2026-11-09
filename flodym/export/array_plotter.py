@@ -9,8 +9,7 @@ from matplotlib import pyplot as plt
 from plotly import colors as plc
 from plotly import graph_objects as go
 from plotly.subplots import make_subplots
-from pydantic import BaseModel as PydanticBaseModel
-from pydantic import ConfigDict, PrivateAttr, model_validator
+from pydantic import PrivateAttr, model_validator
 from typing_extensions import Self
 
 from ..dimensions import DimensionSet
@@ -18,15 +17,13 @@ from ..flodym_arrays import FlodymArray
 from ._helper import CustomNameDisplayer
 
 
-class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
+class ArrayPlotter(CustomNameDisplayer, ABC):
     """Abstract base class for array plotting classes.
 
     Subclasses exist for pyplot and plotly.
     Mostly recommended for plotting multi-dimensional arrays, where subplots and multiple lines are
     needed.
     """
-
-    model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow", protected_namespaces=())
 
     array: FlodymArray
     """Values to plot, usually a Flow or Stock; sliced or summed along excess dimensions."""
@@ -215,7 +212,7 @@ class ArrayPlotter(CustomNameDisplayer, ABC, PydanticBaseModel):
             self.x_array = FlodymArray(
                 dims=x_dimset, values=np.array(x_dim_obj.items), name=self.intra_line_dim
             )
-        self.x_array = self.x_array.cast_to(self.array.dims)
+        self.x_array = self.x_array.cast_to(self.array.dims, check_extensivity=False)
 
     def _plot_subplot(self, i_subplot: int, array: FlodymArray, x_array: FlodymArray) -> None:
         linedict_array = self._dict_of_slices(array, self.linecolor_dim)

@@ -33,8 +33,8 @@ df.head()
 # Let's try both:
 
 # %%
+import flodym.export as fde
 from flodym.example_objects import get_example_mfa
-from flodym.export import convert_to_dict
 
 
 # printing function
@@ -51,13 +51,13 @@ mfa = get_example_mfa()
 mfa.compute()
 
 print("Pandas:")
-df_dict = convert_to_dict(mfa, type="pandas")
+df_dict = fde.convert_to_dict(mfa, type="pandas")
 print_types(df_dict)
 print()
 
 
 print("Numpy:")
-np_dict = convert_to_dict(mfa, type="numpy")
+np_dict = fde.convert_to_dict(mfa, type="numpy")
 print_types(np_dict)
 
 # %% [markdown]
@@ -72,10 +72,8 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
-from flodym.export import export_mfa_to_pickle
-
 export_path = "output_data/mfa.pickle"
-export_mfa_to_pickle(mfa=mfa, export_path=export_path)
+fde.export_mfa_to_pickle(mfa=mfa, export_path=export_path)
 
 # %% [markdown]
 # ## To CSV
@@ -85,10 +83,8 @@ export_mfa_to_pickle(mfa=mfa, export_path=export_path)
 # %%
 import os
 
-from flodym.export import export_mfa_flows_to_csv, export_mfa_stocks_to_csv
-
 export_dir = "output_data/flows"
-export_mfa_flows_to_csv(mfa, export_directory=export_dir)
+fde.export_mfa_flows_to_csv(mfa, export_directory=export_dir)
 
 # print files list
 print("\nFiles in folder:\n")
@@ -110,7 +106,7 @@ print("".join(head))
 import os
 
 export_dir = "output_data/stocks"
-export_mfa_stocks_to_csv(mfa, export_directory=export_dir, with_in_and_out=True)
+fde.export_mfa_stocks_to_csv(mfa, export_directory=export_dir, with_in_and_out=True)
 
 # print files list
 print("\nFiles in folder:\n")
@@ -128,17 +124,13 @@ print("\n".join(os.listdir(export_dir)))
 # %%
 from plotly.colors import qualitative
 
-from flodym.export import PlotlySankeyPlotter
-
 # set up a dictionary of how to color the flows
 colors = {"default": "gray"}
 colorful_flows = [f for f in mfa.flows.values() if "Material" in f.dims.names]
 colors.update({f.name: ("Material", qualitative.Dark24) for f in colorful_flows})
 
 # plot
-plotter = PlotlySankeyPlotter(
-    mfa=mfa, split_flows_by="Material", slice_dict={"t": 2000}, flow_color_dict=colors
-)
+plotter = fde.PlotlySankeyPlotter(mfa=mfa, slice_dict={"t": 2000}, flow_color_dict=colors)
 fig = plotter.plot()
 fig.show(renderer="notebook")
 
@@ -175,9 +167,7 @@ fig.show(renderer="notebook")
 # ### Plotly backend
 #
 # %%
-from flodym.export import PlotlyProcessGraphPlotter
-
-graph_plotter = PlotlyProcessGraphPlotter(mfa=mfa)
+graph_plotter = fde.PlotlyProcessGraphPlotter(mfa=mfa)
 fig = graph_plotter.plot()
 fig.show(renderer="notebook")
 
@@ -190,7 +180,7 @@ custom_stock_positions = {
     "landfills": (4, 1),
     "slag piles": (5, 1),
 }
-fig = PlotlyProcessGraphPlotter(mfa=mfa).plot(
+fig = fde.PlotlyProcessGraphPlotter(mfa=mfa).plot(
     process_positions=custom_process_positions, stock_positions=custom_stock_positions
 )
 fig.show(renderer="notebook")
@@ -199,9 +189,7 @@ fig.show(renderer="notebook")
 # ### Graphviz backend
 #
 # %%
-from flodym.export import GraphvizProcessGraphPlotter
-
-dot = GraphvizProcessGraphPlotter(mfa=mfa, rankdir="LR").plot()
+dot = fde.GraphvizProcessGraphPlotter(mfa=mfa, rankdir="LR").plot()
 dot
 
 # %%
