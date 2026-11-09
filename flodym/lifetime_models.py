@@ -125,9 +125,17 @@ class LifetimeModel(FlodymBaseModel):
     _quad_weights: list[float] | None = PrivateAttr(default=None)
     """Intra-time step quadrature weights for numerical integration of the cumulative survival."""
     _scaled_prms: dict[str, np.ndarray] = PrivateAttr(default={})
+    _reduce_index_cache: tuple[slice, ...] | None = PrivateAttr(default=None)
 
     _prm_names: ClassVar[list[str]] = []
     _prm_names_to_scale: ClassVar[list[str]] = []
+    _modifier_names: ClassVar[list[str]] = [
+        "lt_factor_by_year",
+        "lt_factor_by_cohort",
+        "hazard_factor_by_year",
+        "removal_share_by_year",
+    ]
+    """Names of the arrays of lifetime factors and period effects."""
 
     @model_validator(mode="after")
     def _init_t(self) -> Self:
@@ -142,17 +150,10 @@ class LifetimeModel(FlodymBaseModel):
 
     @model_validator(mode="after")
     def _cast_all(self) -> Self:
-        array_fields = [
-            "lt_factor_by_year",
-            "lt_factor_by_cohort",
-            "hazard_factor_by_year",
-            "removal_share_by_year",
-        ]
-        for prm_name in self._prm_names + array_fields:
-            prm_value = getattr(self, prm_name)
-            if prm_value is not None:
-                casted = self._any_to_np(prm_value, name=prm_name)
-                object.__setattr__(self, prm_name, casted)
+        for name in self._array_names:
+            value = getattr(self, name)
+            if value is not None:
+                object.__setattr__(self, name, self._any_to_np(value, name=name))
         self.reset_cached_arrays()
         return self
 
@@ -203,6 +204,43 @@ class LifetimeModel(FlodymBaseModel):
         return tuple(list(self.shape)[1:])
 
     @property
+    def _reduce_index(self) -> tuple[slice, ...]:
+        """Index reducing arrays to length 1 along non-time axes without parameter variation.
+
+        The survival is computed with the reduced shape and broadcast to the full shape in the
+        public properties, which saves time if e.g. the parameters only vary along some of the
+        dimensions.
+        """
+        if self._reduce_index_cache is None:
+            arrays = [getattr(self, name) for name in self._array_names]
+            arrays = [a for a in arrays if a is not None]
+            index = [slice(None)]
+            for axis in range(1, len(self.shape)):
+                varies = any(not np.all(a == a.take([0], axis=axis)) for a in arrays)
+                index.append(slice(None) if varies else slice(0, 1))
+            self._reduce_index_cache = tuple(index)
+        return self._reduce_index_cache
+
+    def _reduced(self, a: np.ndarray) -> np.ndarray:
+        """View of an array of the lifetime model shape with the reduced shape."""
+        return a[self._reduce_index]
+
+    @property
+    def _reduced_shape_no_t(self) -> tuple[int, ...]:
+        return tuple(
+            n if s == slice(None) else 1 for n, s in zip(self._shape_no_t, self._reduce_index[1:])
+        )
+
+    def _broadcast(self, a: np.ndarray) -> np.ndarray:
+        """Read-only view of a reduced array by year and age-cohort, broadcast to the full shape."""
+        return np.broadcast_to(a, self._shape_cohort)
+
+    @property
+    def _array_names(self) -> list[str]:
+        """Names of all arrays of the lifetime model shape on which the survival depends."""
+        return self._prm_names + self._modifier_names
+
+    @property
     def prms(self) -> Mapping[str, np.ndarray | None]:
         """Read-only mapping of lifetime parameter names to their values.
 
@@ -227,9 +265,9 @@ class LifetimeModel(FlodymBaseModel):
     def _scale_prms(self) -> None:
         names_to_scale = self._get_prm_names_to_scale()
         for prm_name in self._prm_names:
-            value = getattr(self, prm_name)
+            value = self._reduced(getattr(self, prm_name))
             if self.lt_factor_by_cohort is not None and prm_name in names_to_scale:
-                value = self._scale_prm(value, self.lt_factor_by_cohort)
+                value = self._scale_prm(value, self._reduced(self.lt_factor_by_cohort))
             self._scaled_prms[prm_name] = value
 
     @property
@@ -241,12 +279,15 @@ class LifetimeModel(FlodymBaseModel):
         """Cumulative survival by year and age-cohort.
 
         cum_surv(t,c) is the share of the inflow of cohort c still present at the end of year t.
-        Zero for c > t. Shape (time, cohort, other dims).
+        Zero for c > t. Shape (time, cohort, other dims). Read-only.
         """
+        return self._broadcast(self._get_reduced_cumulative_survival())
+
+    def _get_reduced_cumulative_survival(self) -> np.ndarray:
         if self._cumulative_survival is None:
             if self._has_period_effects:
                 self._cumulative_survival = self._cumulative_from_conditional_survival(
-                    self.conditional_survival
+                    self._get_reduced_conditional_survival()
                 )
             else:
                 self._cumulative_survival = self._compute_base_cumulative_survival()
@@ -266,10 +307,10 @@ class LifetimeModel(FlodymBaseModel):
     def _compute_base_cumulative_survival(self) -> np.ndarray:
         """Cumulative survival of the lifetime distribution.
 
-        Includes lifetime factors, but not period effects.
+        Includes lifetime factors, but not period effects. Has the reduced shape.
         """
-        cum_surv = np.zeros(self._shape_cohort)
         self._check_prms_set()
+        cum_surv = np.zeros((self._n_t, self._n_t) + self._reduced_shape_no_t)
         self._scale_prms()
         self._quad_points, self._quad_weights = self._get_quad_points_and_weights()
         if self.lt_factor_by_year is not None:
@@ -285,12 +326,11 @@ class LifetimeModel(FlodymBaseModel):
         outflow_pmf(t,c) is the share of the inflow of cohort c leaving the stock during year t.
         It is a share per time step, i.e. the lifetime density integrated over the time step, not
         a density. It equals cum_surv(t-1,c) - cum_surv(t,c) for c < t, 1 - cum_surv(t,t) for
-        c = t, and zero for c > t. Shape (time, cohort, other dims).
+        c = t, and zero for c > t. Shape (time, cohort, other dims). Read-only.
         """
         if self._outflow_pmf is None:
-            self._outflow_pmf = np.zeros(self._shape_cohort)
-            self._compute_outflow_pmf()
-        return self._outflow_pmf
+            self._outflow_pmf = self._compute_outflow_pmf(self._get_reduced_cumulative_survival())
+        return self._broadcast(self._outflow_pmf)
 
     @property
     def pdf(self) -> np.ndarray:
@@ -312,8 +352,11 @@ class LifetimeModel(FlodymBaseModel):
         during year t which is still present at the end of year t.
         It equals cum_surv(t,c) / cum_surv(t-1,c) for c < t, cum_surv(t,t) for c = t, and zero
         for c > t. Period effects are applied to it, and the cumulative survival is then computed
-        from it. Shape (time, cohort, other dims).
+        from it. Shape (time, cohort, other dims). Read-only.
         """
+        return self._broadcast(self._get_reduced_conditional_survival())
+
+    def _get_reduced_conditional_survival(self) -> np.ndarray:
         if self._conditional_survival is None:
             if self._has_period_effects:
                 cond_surv = self._conditional_from_cumulative_survival(
@@ -323,12 +366,12 @@ class LifetimeModel(FlodymBaseModel):
                 self._conditional_survival = cond_surv
             else:
                 self._conditional_survival = self._conditional_from_cumulative_survival(
-                    self.cumulative_survival
+                    self._get_reduced_cumulative_survival()
                 )
         return self._conditional_survival
 
     def _conditional_from_cumulative_survival(self, cum_surv: np.ndarray) -> np.ndarray:
-        cond_surv = np.zeros(self._shape_cohort)
+        cond_surv = np.zeros_like(cum_surv)
         # The share of cohort c present at the end of year t-1 which survives year t is
         # cum_surv(t,c) / cum_surv(t-1,c). If cum_surv(t-1,c) is zero, nothing is left to survive.
         cum_surv_prev = cum_surv[:-1, ...]
@@ -353,13 +396,13 @@ class LifetimeModel(FlodymBaseModel):
         age-cohorts in year t.
         """
         if self.hazard_factor_by_year is not None:
-            hazard_factor = self.hazard_factor_by_year[:, np.newaxis, ...]
+            hazard_factor = self._reduced(self.hazard_factor_by_year)[:, np.newaxis, ...]
             if np.min(hazard_factor) < 0:
                 raise ValueError("hazard_factor_by_year must not be negative.")
             # zero values stay zero, also for a hazard factor of zero
             np.power(cond_surv, hazard_factor, out=cond_surv, where=cond_surv > 0)
         if self.removal_share_by_year is not None:
-            share = self.removal_share_by_year
+            share = self._reduced(self.removal_share_by_year)
             if np.min(share) < 0 or np.max(share) > 1:
                 raise ValueError("removal_share_by_year must be between 0 and 1.")
             t_diag_indices = self._t_diag_indices
@@ -526,9 +569,10 @@ class LifetimeModel(FlodymBaseModel):
         self._cumulative_survival = None
         self._outflow_pmf = None
         self._conditional_survival = None
+        self._reduce_index_cache = None
 
     def _tile(self, a: np.ndarray) -> np.ndarray:
-        """Tiles the input array a to the shape of the lifetime model, adding non-time dimensions.
+        """Tiles the input array a to the reduced shape, adding non-time dimensions.
 
         Args:
             a: either of shape (n_t,) or (n_t, n_t), where the second dimension
@@ -539,7 +583,7 @@ class LifetimeModel(FlodymBaseModel):
         """
         index = (slice(None),) * a.ndim + (np.newaxis,) * len(self._shape_no_t)
         out = a[index]
-        return np.tile(out, self._shape_no_t)
+        return np.tile(out, self._reduced_shape_no_t)
 
     def _quad_point_time(self, m: int | np.ndarray, quad_point: float) -> float | np.ndarray:
         """Returns the time point within inflow time period m, given the quadrature point eta."""
@@ -576,7 +620,7 @@ class LifetimeModel(FlodymBaseModel):
         cum_surv(t) = cum_surv(t-1) * cond_surv(t)
         cum_surv(t) = cum_surv(t-1) * sf_e(t)/sf_e(t-1)
         """
-        factor = self.lt_factor_by_year
+        factor = self._reduced(self.lt_factor_by_year)
 
         scaled_prms_orig = dict(self._scaled_prms)
         names_to_scale = self._get_prm_names_to_scale()
@@ -591,7 +635,7 @@ class LifetimeModel(FlodymBaseModel):
             # max(i_t, 1) omits prev time step for i_t = 0
             curr_time = self._t.bounds[max(i_t, 1) : i_t + 2]
             cohort_ids = np.arange(i_t + 1)
-            curr_survival = np.zeros((len(curr_time), i_t + 1) + self._shape_no_t)
+            curr_survival = np.zeros((len(curr_time), i_t + 1) + self._reduced_shape_no_t)
             for quad_point, quad_weight in zip(self._quad_points, self._quad_weights):
                 cohort_time = self._quad_point_time(cohort_ids, quad_point)
                 curr_ages = self._tile(curr_time[:, np.newaxis] - cohort_time[np.newaxis, :])
@@ -638,17 +682,18 @@ class LifetimeModel(FlodymBaseModel):
             i_c: cohort index or a slice of cohorts.
         """
 
-    def _compute_outflow_pmf(self) -> None:
+    def _compute_outflow_pmf(self, cum_surv: np.ndarray) -> np.ndarray:
         """Computes the outflow pmf from the cumulative survival.
 
         outflow_pmf(t,c) is the probability that an item added to the stock in year c (cohort c)
         leaves during year t.
         """
-        cum_surv = self.cumulative_survival
-        t_diag_indices = np.diag_indices(self._n_t) + (slice(None),) * len(self._shape_no_t)
-        self._outflow_pmf[t_diag_indices] = 1.0 - np.moveaxis(cum_surv.diagonal(0, 0, 1), -1, 0)
+        outflow_pmf = np.zeros_like(cum_surv)
+        t_diag_indices = self._t_diag_indices
+        outflow_pmf[t_diag_indices] = 1.0 - np.moveaxis(cum_surv.diagonal(0, 0, 1), -1, 0)
         for i_c in range(self._n_t):
-            self._outflow_pmf[i_c + 1 :, i_c, ...] = -1 * np.diff(cum_surv[i_c:, i_c, ...], axis=0)
+            outflow_pmf[i_c + 1 :, i_c, ...] = -1 * np.diff(cum_surv[i_c:, i_c, ...], axis=0)
+        return outflow_pmf
 
 
 class FixedLifetime(LifetimeModel):
@@ -853,7 +898,8 @@ class WeibullMeanStdLifetime(StandardDeviationLifetimeModel):
 
     def _scale_prms(self) -> None:
         super()._scale_prms()
-        cv = self.std if self.relative_std else self.std / self.mean
+        mean, std = self._reduced(self.mean), self._reduced(self.std)
+        cv = std if self.relative_std else std / mean
         self._weibull_shape = self._weibull_shape_from_cv(cv)
 
     @classmethod
@@ -970,6 +1016,11 @@ class TabulatedLifetime(LifetimeModel):
             raise ValueError(
                 "cumulative_survival_table must not increase over time for an age-cohort."
             )
+
+    @property
+    def _reduce_index(self) -> tuple[slice, ...]:
+        """No reduction, as the cumulative survival is given with the full shape."""
+        return (slice(None),) * len(self.shape)
 
     def _check_prms_set(self) -> None:
         if self.cumulative_survival_table is None:
@@ -1090,6 +1141,11 @@ class CompetingRisksLifetime(LifetimeModel):
         if changed:
             self.reset_cached_arrays()
             self._model_cumulative_survivals = model_cum_survs
+
+    @property
+    def _reduce_index(self) -> tuple[slice, ...]:
+        """No reduction, as the cumulative survival is computed from the arrays of the models."""
+        return (slice(None),) * len(self.shape)
 
     def _check_prms_set(self) -> None:
         for model in self.models:
