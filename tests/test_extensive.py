@@ -116,10 +116,14 @@ def test_unary_operations(strict):
     assert extensive.sign().extensive is False
     assert extensive.cumsum("t").extensive is True
     assert extensive.apply(np.sqrt).extensive is None
+    assert extensive.apply(np.round, preserve_extensivity=True).extensive is True
+    assert (extensive * extensive).apply(np.round, preserve_extensivity=True)._degree == 2
     extensive.apply(np.sqrt, inplace=True)
     assert extensive.extensive is True
     assert extensive[{"r": "north"}].extensive is True
     assert all(a.extensive for a in extensive.split("r").values())
+    extensive.apply(np.sqrt, inplace=True, preserve_extensivity=False)
+    assert extensive.extensive is None
 
 
 def test_intensive_addition_broadcasts(strict):

@@ -784,24 +784,33 @@ class FlodymArray(PydanticBaseModel):
         func: Callable[..., np.ndarray],
         kwargs: dict[str, Any] | None = None,
         inplace: bool = False,
+        *,
+        preserve_extensivity: bool | None = None,
     ) -> Optional["FlodymArray"]:
         """Apply a function to the values of the FlodymArray.
 
-        As the function is arbitrary, the returned array has an unknown extensivity
-        (``extensive=None``); set :py:attr:`extensive` afterwards if it is known. If ``inplace``
-        is True, the flag of this array is kept.
+        As the function is arbitrary, the extensivity of the result is unknown
+        (``extensive=None``), unless ``preserve_extensivity`` is True. By default, it is kept
+        only if ``inplace`` is True.
 
         Args:
             func: Function to apply to the values. Must be a function that can be applied to a
                 numpy array, and return a numpy array of the same shape.
             kwargs: Keyword argument dictionary to pass to the function.
             inplace: Whether to apply the function in place. Defaults to False.
+            preserve_extensivity: Whether the result keeps the extensivity of this array (see
+                :py:attr:`extensive`). Use it for functions which do not change whether a
+                quantity is extensive, e.g. rounding or clipping. If None, the value of
+                ``inplace`` is used.
 
         Returns:
             FlodymArray object with the values transformed by the function,
                 or None if ``inplace`` is True.
         """
-        return self._apply(func, kwargs, inplace, degree=self._degree if inplace else None)
+        if preserve_extensivity is None:
+            preserve_extensivity = inplace
+        degree = self._degree if preserve_extensivity else None
+        return self._apply(func, kwargs, inplace, degree=degree)
 
     def _apply(
         self,
