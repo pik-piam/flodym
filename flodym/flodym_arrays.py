@@ -98,7 +98,8 @@ class FlodymArray(FlodymBaseModel):
       Europe or the USA.
     - For a dimension created by :py:meth:`flodym.Dimension.split`, a split item of the parent
       addresses its sub-items. The dimension is replaced by the one the item is split into. The
-      same holds for items of further ancestors given as ``ancestor_sub_dims`` in ``split()``.
+      same holds for items of further ancestors in dimensions created by
+      :py:meth:`flodym.Dimension.combine_splits`.
 
       *Example:* `foo['Res']` returns an array over the residential types.
     - Only when setting values: For any dimension with a parent (see

@@ -69,8 +69,9 @@ class Dimension(FlodymBaseModel):
     linked by :py:meth:`flodym.DataReader.read_dimensions`."""
     sub_dims: dict[Any, Dimension] | None = None
     """Only for dimensions created by :py:meth:`split`: The dimension each split parent item is
-    split into, and the dimensions given as ``ancestor_sub_dims`` for items of further ancestors.
-    Slicing an array by one of the keys returns an array over the corresponding dimension."""
+    split into. For dimensions created by :py:meth:`combine_splits`, also the lower split for
+    the items of the further ancestor which are split. Slicing an array by one of the keys returns
+    an array over the corresponding dimension."""
 
     @model_validator(mode="after")
     def _items_have_datatype(self) -> Dimension:
@@ -258,6 +259,74 @@ class Dimension(FlodymBaseModel):
             parent_items=list(mapping.values()),
         )
 
+    @classmethod
+    def combine_splits(
+        cls, name: str, letter: str, upper: Dimension, lower: Dimension, separator: str = "|"
+    ) -> Dimension:
+        """Combine two splits into a dimension with two levels of splitting.
+
+        ``upper`` splits items of a dimension into the items of other dimensions, and ``lower``
+        splits items of one of these dimensions further (see :py:meth:`split`). The result is
+        ``upper``, with the items split further as in ``lower``. Its parent is ``upper``, so arrays
+        over it can be aggregated to ``upper`` and its ancestors. Slicing an array by an item of
+        the parent of ``upper`` which is split as in ``lower`` returns an array over ``lower``.
+
+        **Example**
+
+        >>> import flodym as fd
+        >>> coarse = fd.Dimension(name="Construction type", letter="i", items=["Infr", "Build"])
+        >>> medium = fd.Dimension(name="Building type", letter="b", items=["Com", "Res"])
+        >>> fine = fd.Dimension(name="Residential type", letter="y", items=["Sin", "Mul"])
+        >>> coarse_and_medium = coarse.split(
+        ...     name="Level 1", letter="l", splitting={"Build": medium}
+        ... )
+        >>> medium_and_fine = medium.split(
+        ...     name="Building sub-type", letter="s", splitting={"Res": fine}
+        ... )
+        >>> combined = fd.Dimension.combine_splits(
+        ...     name="Level 2", letter="m", upper=coarse_and_medium, lower=medium_and_fine
+        ... )
+        >>> combined.items
+        ['Infr', 'Build|Com', 'Build|Res|Sin', 'Build|Res|Mul']
+
+        Args:
+            name: Name of the new dimension.
+            letter: Letter of the new dimension.
+            upper: Dimension created by :py:meth:`split`.
+            lower: Dimension created by :py:meth:`split` from a dimension into which items of
+                ``upper`` are split.
+            separator: String between parent item and sub-item in the new item names.
+
+        Returns:
+            The new dimension, with ``upper`` as parent.
+
+        Raises:
+            ValueError: If ``lower`` is not created by splitting a dimension into which items of
+                ``upper`` are split.
+        """
+        lower_parent = lower.parent
+        split_items = [
+            item
+            for item, sub_dim in (upper.sub_dims or {}).items()
+            if lower_parent is not None and sub_dim.letter == lower_parent.letter
+        ]
+        if lower_parent is None or lower.sub_dims is None or not split_items:
+            raise ValueError(
+                f"Dimension '{lower.name}' must be created by split() from a dimension into which "
+                f"items of '{upper.name}' are split."
+            )
+        splitting = {
+            item: lower.sub_dims[lower_parent_item]
+            for upper_item in split_items
+            for item, lower_parent_item in zip(
+                upper._items_below(upper_item) or [], lower_parent.items
+            )
+            if lower_parent_item in lower.sub_dims
+        }
+        combined = upper.split(name=name, letter=letter, splitting=splitting, separator=separator)
+        sub_dims = {**splitting, **dict.fromkeys(split_items, lower)}
+        return cls.model_validate({**dict(combined), "sub_dims": sub_dims})
+
     @property
     def len(self) -> int:
         """The number of items in the dimension."""
@@ -279,7 +348,6 @@ class Dimension(FlodymBaseModel):
         letter: str,
         splitting: dict[Any, Dimension],
         separator: str = "|",
-        ancestor_sub_dims: dict[Any, Dimension] | None = None,
     ) -> Dimension:
         """Create a sub-dimension by splitting some items into the items of other dimensions.
 
@@ -287,8 +355,8 @@ class Dimension(FlodymBaseModel):
         Items which are not split are kept.
 
         Arrays over the new dimension can be sliced by a split item, which returns an array over
-        the dimension it is split into (see :py:class:`flodym.FlodymArray`). For items of further
-        ancestors, dimensions to slice by can be given in ``ancestor_sub_dims``.
+        the dimension it is split into (see :py:class:`flodym.FlodymArray`). To split several
+        levels, see :py:meth:`combine_splits`.
 
         **Example**
 
@@ -309,18 +377,13 @@ class Dimension(FlodymBaseModel):
             splitting: Dictionary of the items to split, and the dimension each is split into.
             separator: String between parent item and sub-item in the new item names. It may
                 occur in the sub-items, e.g. if they result from splitting themselves.
-            ancestor_sub_dims: Dictionary of items of further ancestors (not of this dimension),
-                and dimensions for slicing by them. The items of such a dimension must be the
-                items of the new dimension below the ancestor item, without the leading ancestor
-                item and separator, in the same order.
 
         Returns:
             The new dimension, with this dimension as parent.
 
         Raises:
-            ValueError: If a key of ``splitting`` is not an item, if the new item names are not
-                unique, or if a dimension in ``ancestor_sub_dims`` does not match the items below
-                its key.
+            ValueError: If a key of ``splitting`` is not an item, or if the new item names are not
+                unique.
         """
         unknown_items = set(splitting) - set(self.items)
         if unknown_items:
@@ -340,7 +403,7 @@ class Dimension(FlodymBaseModel):
                 parent_items.append(item)
         if len(set(items)) != len(items):
             raise ValueError(f"Items of the split dimension '{name}' are not unique: {items}")
-        split_dim = Dimension(
+        return Dimension(
             name=name,
             letter=letter,
             items=items,
@@ -349,18 +412,6 @@ class Dimension(FlodymBaseModel):
             parent_items=parent_items,
             sub_dims=dict(splitting),
         )
-        if not ancestor_sub_dims:
-            return split_dim
-        for ancestor_item, sub_dim in ancestor_sub_dims.items():
-            expected = [f"{ancestor_item}{separator}{sub_item}" for sub_item in sub_dim.items]
-            if ancestor_item in self.items or split_dim._items_below(ancestor_item) != expected:
-                raise ValueError(
-                    f"Items of dimension '{sub_dim.name}' must correspond to the items of '{name}' "
-                    f"below the item '{ancestor_item}' of a further ancestor: Expected {expected}, "
-                    f"found {split_dim._items_below(ancestor_item)}."
-                )
-        sub_dims = {**splitting, **ancestor_sub_dims}
-        return Dimension.model_validate({**dict(split_dim), "sub_dims": sub_dims})
 
     def is_descendant_of(self, other: Dimension) -> bool:
         """Check whether ``other`` is the parent, the parent of the parent, etc.

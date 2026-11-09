@@ -201,39 +201,39 @@ print(material_intensity.values)
 # ### Several levels of nesting
 #
 # Splitting can be repeated, so a dimension can have a parent, which has a parent itself, and so on.
-# Build such levels top-down: Split the top level first, then split its items further.
-# Then each intermediate level is an ancestor, so arrays can be aggregated to it, combined with
-# arrays over it, and sliced by its items.
+# Such a dimension is built in three steps:
 #
-# Getting values by an item returns an array over the dimension the item was split into.
-# For items of further ancestors, such as `"Build"` below, give this dimension with
-# `ancestor_sub_dims`. Its items must be the items below the ancestor item without the leading
-# ancestor item and separator, in the same order, which is checked by `split()`.
+# 1. Create the flat dimensions of each level, here `coarse`, `medium` and `fine`.
+# 2. Split each level by the next finer one: `coarse_and_medium` splits `"Build"` into the items of
+#    `medium`, and `medium_and_fine` splits `"Res"` into the items of `fine`.
+# 3. Combine both splits with `Dimension.combine_splits()` into `coarse_and_medium_and_fine`.
+#
+# The combined dimension has `coarse_and_medium` as parent, which has `coarse` as parent.
+# So arrays over it can be aggregated to each level, combined with arrays over each level, and
+# sliced by the items of each level.
+# Getting values by an item returns an array over the dimension the item was split into:
+# `"Build|Res"` gives an array over `fine`, and `"Build"` an array over `medium_and_fine`.
 
 # %%
+coarse = fd.Dimension(name="Construction type", letter="i", items=["Infr", "Build"])
+medium = fd.Dimension(name="Building type", letter="b", items=["Com", "Res"])
+fine = fd.Dimension(name="Residential type", letter="y", items=["Sin", "Mul"])
 
-construction_types = fd.Dimension(name="Construction type", letter="i", items=["Infr", "Build"])
-building_types = fd.Dimension(name="Building type", letter="b", items=["Com", "Res"])
-residential_types = fd.Dimension(name="Residential type", letter="y", items=["Sin", "Mul"])
-
-building_sub_types = building_types.split(
-    name="Building sub-type", letter="s", splitting={"Res": residential_types}
+coarse_and_medium = coarse.split(name="Level 1", letter="l", splitting={"Build": medium})
+medium_and_fine = medium.split(name="Building sub-type", letter="s", splitting={"Res": fine})
+coarse_and_medium_and_fine = fd.Dimension.combine_splits(
+    name="Level 2", letter="m", upper=coarse_and_medium, lower=medium_and_fine
 )
-level_1 = construction_types.split(name="Level 1", letter="l", splitting={"Build": building_types})
-level_2 = level_1.split(
-    name="Level 2",
-    letter="m",
-    splitting={"Build|Res": residential_types},
-    ancestor_sub_dims={"Build": building_sub_types},
-)
-print(level_2.items)
+print(coarse_and_medium_and_fine.items)
 
 stock = fd.FlodymArray(
-    dims=level_2.as_dimset(), values=np.array([1.0, 2.0, 3.0, 4.0]), extensive=True
+    dims=coarse_and_medium_and_fine.as_dimset(),
+    values=np.array([1.0, 2.0, 3.0, 4.0]),
+    extensive=True,
 )
 print(stock["Build"].dims.letters, stock["Build"].values)
 print(stock["Build|Res"].dims.letters, stock["Build|Res"].values)
-print(stock.aggregate_to(level_1).values)
+print(stock.aggregate_to(coarse_and_medium).values)
 
 # %% [markdown]
 # When reading dimensions with a data reader, sub-dimensions are defined in the

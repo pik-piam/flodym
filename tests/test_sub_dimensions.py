@@ -320,21 +320,24 @@ def test_getitem_by_other_ancestor_items_fails(production_s, building, residenti
 
 
 @pytest.fixture
-def nested_with_ancestor_sub_dims(building, residential, sub_type):
-    infra = fd.Dimension(name="Infrastructure", letter="i", items=["Infr", "Build"])
-    level_1 = infra.split(name="Level 1", letter="l", splitting={"Build": building})
-    level_2 = level_1.split(
-        name="Level 2",
-        letter="m",
-        splitting={"Build|Res": residential},
-        ancestor_sub_dims={"Build": sub_type},
-    )
-    return infra, level_1, level_2
+def combined_splits(building, residential, sub_type):
+    construction = fd.Dimension(name="Construction type", letter="i", items=["Infr", "Build"])
+    level_1 = construction.split(name="Level 1", letter="l", splitting={"Build": building})
+    level_2 = fd.Dimension.combine_splits(name="Level 2", letter="m", upper=level_1, lower=sub_type)
+    return construction, level_1, level_2
 
 
-def test_ancestor_sub_dims_slicing(nested_with_ancestor_sub_dims, sub_type, residential):
-    _, level_1, level_2 = nested_with_ancestor_sub_dims
+def test_combine_splits_items(combined_splits, building, residential, sub_type):
+    _, level_1, level_2 = combined_splits
+    nested = level_1.split(name="Level 2", letter="m", splitting={"Build|Res": residential})
+    assert level_2.items == nested.items
+    assert level_2.parent_items == nested.parent_items
+    assert level_2.parent is level_1
     assert level_2.sub_dims == {"Build|Res": residential, "Build": sub_type}
+
+
+def test_combine_splits_slicing(combined_splits, sub_type):
+    _, level_1, level_2 = combined_splits
     array = fd.FlodymArray(dims=level_2.as_dimset(), values=np.array([1.0, 2.0, 3.0, 4.0]))
     by_build = array["Build"]
     assert by_build.dims.letters == ("s",)
@@ -346,28 +349,23 @@ def test_ancestor_sub_dims_slicing(nested_with_ancestor_sub_dims, sub_type, resi
     np.testing.assert_allclose(array.values, [1.0, 20.0, 30.0, 40.0])
 
 
-def test_ancestor_sub_dims_errors(building, residential):
-    infra = fd.Dimension(name="Infrastructure", letter="i", items=["Infr", "Build"])
-    level_1 = infra.split(name="Level 1", letter="l", splitting={"Build": building})
-    reordered = fd.Dimension(name="Reordered", letter="s", items=["Res|Sin", "Com", "Res|Mul"])
-    with pytest.raises(ValueError, match="must correspond"):
-        level_1.split(
-            name="Level 2",
-            letter="m",
-            splitting={"Build|Res": residential},
-            ancestor_sub_dims={"Build": reordered},
-        )
-    with pytest.raises(ValueError, match="must correspond"):
-        level_1.split(
-            name="Level 2",
-            letter="m",
-            splitting={"Build|Res": residential},
-            ancestor_sub_dims={"Build|Com": residential},
-        )
+def test_combine_splits_errors(building, residential):
+    construction = fd.Dimension(name="Construction type", letter="i", items=["Infr", "Build"])
+    level_1 = construction.split(name="Level 1", letter="l", splitting={"Build": building})
+    unrelated = residential.split(
+        name="Unrelated",
+        letter="u",
+        splitting={"Sin": fd.Dimension(name="Size", letter="z", items=["a"])},
+    )
+    regions = fd.Dimension(name="Region", letter="w", items=["Com", "Res"])
+    mapped = fd.Dimension.from_mapping("Country", "c", building, {"DEU": "Com", "FRA": "Res"})
+    for lower in (unrelated, mapped, regions):
+        with pytest.raises(ValueError, match="must be created by split"):
+            fd.Dimension.combine_splits(name="Level 2", letter="m", upper=level_1, lower=lower)
 
 
-def test_dict_weights_ignore_ancestor_sub_dims(nested_with_ancestor_sub_dims, residential):
-    _, level_1, level_2 = nested_with_ancestor_sub_dims
+def test_dict_weights_ignore_lower_split(combined_splits, residential):
+    _, level_1, level_2 = combined_splits
     total = fd.FlodymArray(dims=level_1.as_dimset(), values=np.array([1.0, 2.0, 10.0]))
     weights = {"Build|Res": fd.FlodymArray(dims=residential.as_dimset(), values=np.array([4, 1]))}
     split = total.disaggregate_to(level_2, weights=weights)
