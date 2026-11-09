@@ -9,7 +9,7 @@ import pandas as pd
 
 from .dimensions import Dimension, DimensionSet
 from .flodym_arrays import Parameter
-from .mfa_definition import DimensionDefinition, ParameterDefinition
+from .mfa_definition import DimensionDefinition, ParameterDefinition, _dimension_dependency_order
 
 
 class DataReader(ABC):
@@ -21,14 +21,37 @@ class DataReader(ABC):
     def read_dimensions(self, dimension_definitions: list[DimensionDefinition]) -> DimensionSet:
         """Method to read data for multiple dimensions, by looping over `read_dimension`.
 
+        Sub-dimensions (see :py:attr:`flodym.DimensionDefinition.parent`) are linked to their
+        parent. Dimensions with :py:attr:`flodym.DimensionDefinition.splitting` are not read, but
+        created from their parent with :py:meth:`flodym.Dimension.split`. Likewise, dimensions with
+        :py:attr:`flodym.DimensionDefinition.combine_splits` are created with
+        :py:meth:`flodym.Dimension.combine_splits`.
+
         Args:
             dimension_definitions: Definitions of the dimensions to read.
 
         Returns:
             The dimensions, in the order of the definitions.
         """
-        dimensions = [self.read_dimension(definition) for definition in dimension_definitions]
-        return DimensionSet(dim_list=dimensions)
+        dimensions: dict[str, Dimension] = {}
+        for definition in _dimension_dependency_order(dimension_definitions):
+            if definition.splitting is not None:
+                dimensions[definition.letter] = _split_dimension(definition, dimensions)
+                continue
+            if definition.combine_splits is not None:
+                upper, *lower = (dimensions[letter] for letter in definition.combine_splits)
+                combined = Dimension.combine_splits(
+                    name=definition.name, letter=definition.letter, upper=upper, lower=lower
+                )
+                dimensions[definition.letter] = Dimension.model_validate(
+                    {**dict(combined), "dtype": definition.dtype}
+                )
+                continue
+            dimension = self.read_dimension(definition)
+            if definition.parent is not None:
+                dimension = _link_parent(dimension, definition, dimensions[definition.parent])
+            dimensions[definition.letter] = dimension
+        return DimensionSet(dim_list=[dimensions[d.letter] for d in dimension_definitions])
 
     @abstractmethod
     def read_dimension(self, definition: DimensionDefinition) -> Dimension:
@@ -83,6 +106,8 @@ class CSVDimensionReader(DimensionReader):
     """Read dimensions from a CSV file.
 
     Expects a single row or single column csv file with no header, containing the dimension items.
+    For a dimension with a :py:attr:`flodym.DimensionDefinition.parent`, the file has two columns:
+    the items, and the parent item of each item.
 
     Args:
         dimension_files: {dimension_name: file_path, ...}
@@ -112,7 +137,8 @@ class ExcelDimensionReader(DimensionReader):
     """Read dimensions from Excel file(s).
 
     Expects a single row or single column excel sheet with no header, containing the dimension
-    items.
+    items. For a dimension with a :py:attr:`flodym.DimensionDefinition.parent`, the sheet has two
+    columns: the items, and the parent item of each item.
 
     Args:
         dimension_files: {dimension_name: file_path, ...}
@@ -313,3 +339,53 @@ class CompoundDataReader(DataReader):
     def read_parameter_values(self, parameter_name: str, dims: DimensionSet) -> Parameter:
         """Read parameter values using the parameter reader."""
         return self.parameter_reader.read_parameter_values(parameter_name, dims)
+
+
+def _link_parent(
+    dimension: Dimension, definition: DimensionDefinition, parent: Dimension
+) -> Dimension:
+    """Return a copy of a read dimension, linked to its parent.
+
+    The parent items are converted to the datatype of the parent, if it has one.
+
+    Raises:
+        ValueError: If the read dimension has no parent items.
+    """
+    if dimension.parent_items is None:
+        raise ValueError(
+            f"Dimension '{definition.name}' has parent '{definition.parent}' in its definition, "
+            "but no parent items were read. Give the parent item of each item, e.g. as a second "
+            "column in the dimension file."
+        )
+    parent_items = dimension.parent_items
+    if parent.dtype is not None:
+        parent_items = [parent.dtype(item) for item in parent_items]
+    return Dimension(
+        name=dimension.name,
+        letter=dimension.letter,
+        items=dimension.items,
+        dtype=dimension.dtype,
+        parent=parent,
+        parent_items=parent_items,
+    )
+
+
+def _split_dimension(
+    definition: DimensionDefinition, dimensions: dict[str, Dimension]
+) -> Dimension:
+    """Create a dimension by splitting items of its parent, as given in the definition.
+
+    Args:
+        definition: Definition with parent and splitting.
+        dimensions: Already created dimensions by letter, including those the definition
+            depends on.
+    """
+    if definition.parent is None or definition.splitting is None:
+        raise ValueError(f"Dimension definition '{definition.name}' has no parent or splitting.")
+    parent = dimensions[definition.parent]
+    splitting = {
+        (parent.dtype(item) if parent.dtype is not None else item): dimensions[letter]
+        for item, letter in definition.splitting.items()
+    }
+    split = parent.split(name=definition.name, letter=definition.letter, splitting=splitting)
+    return Dimension.model_validate({**dict(split), "dtype": definition.dtype})

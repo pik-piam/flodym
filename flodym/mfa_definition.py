@@ -38,6 +38,45 @@ class DimensionDefinition(FlodymBaseModel):
     """Single-character key of the dimension. Can also be given as ``dim_letter``."""
     dtype: type
     """Data type of the dimension items, e.g. ``int`` or ``str``."""
+    parent: str | None = None
+    """Letter of the parent dimension, if this dimension is a finer resolution of another one
+    (see :py:class:`flodym.Dimension`). Without :py:attr:`splitting`, the dimension data must
+    give the parent item of each item, e.g. as a second column in a CSV file."""
+    splitting: dict[Any, str] | None = None
+    """For a dimension created by splitting items of the parent: The parent items to split, and
+    the letter of the dimension each is split into (see :py:meth:`flodym.Dimension.split`). Such
+    a dimension is not read, but created from the other dimensions."""
+    combine_splits: tuple[str, ...] | None = None
+    """For a dimension with two levels of splitting: The letter of a split dimension, followed
+    by the letters of the split dimensions splitting its sub-dimensions further (see
+    :py:meth:`flodym.Dimension.combine_splits`). The parent is the first of them, so
+    :py:attr:`parent` and :py:attr:`splitting` are not given. Such a dimension is not read, but
+    created from the other dimensions."""
+
+    @model_validator(mode="after")
+    def _check_parent(self) -> Self:
+        """Check the consistency of parent, splitting and combine_splits.
+
+        Splitting is only given with a parent, combine_splits only alone, and no letter refers to
+        the dimension itself.
+        """
+        if self.splitting is not None and self.parent is None:
+            raise ValueError(f"Dimension definition '{self.name}' has splitting, but no parent.")
+        if self.combine_splits is not None and (
+            self.parent is not None or self.splitting is not None or len(self.combine_splits) < 2
+        ):
+            raise ValueError(
+                f"Dimension definition '{self.name}' must give combine_splits with at least two "
+                "letters, and without parent or splitting."
+            )
+        referenced_letters = [
+            self.parent,
+            *(self.splitting or {}).values(),
+            *(self.combine_splits or ()),
+        ]
+        if self.letter in referenced_letters:
+            raise ValueError(f"Dimension definition '{self.name}' refers to its own letter.")
+        return self
 
 
 class _DefinitionWithDimLetters(FlodymBaseModel):
@@ -274,6 +313,7 @@ class MFADefinition(FlodymBaseModel):
         for stock in self.stocks:
             if stock.cohort_letter is not None and stock.cohort_letter not in defined_dim_letters:
                 raise ValueError(f"Undefined cohort dimension in {stock}")
+        _check_dimension_dependencies(self.dimensions)
         return self
 
     @model_validator(mode="after")
@@ -329,3 +369,61 @@ class MFADefinition(FlodymBaseModel):
             df = pd.concat(def_dfs)
             all_dfs[field_name] = df
         return all_dfs
+
+
+def _dimension_dependency_order(
+    definitions: list[DimensionDefinition],
+) -> list[DimensionDefinition]:
+    """Sort dimension definitions such that each comes after the dimensions it depends on.
+
+    A dimension depends on its parent, if it is created by splitting, on the dimensions its
+    parent items are split into, and, if it is created by combining splits, on these splits.
+
+    Args:
+        definitions: The dimension definitions.
+
+    Returns:
+        The definitions, sorted by dependency. Independent definitions keep their order.
+
+    Raises:
+        ValueError: If a referenced letter is not defined, or if the dependencies are cyclic.
+    """
+    by_letter = {definition.letter: definition for definition in definitions}
+    ordered: list[DimensionDefinition] = []
+    visited: set[str] = set()
+
+    def visit(definition: DimensionDefinition, path: tuple[str, ...]) -> None:
+        if definition.letter in visited:
+            return
+        if definition.letter in path:
+            cycle = " -> ".join([*path, definition.letter])
+            raise ValueError(f"Cyclic dependency between dimension definitions: {cycle}")
+        dependencies = [
+            definition.parent,
+            *(definition.splitting or {}).values(),
+            *(definition.combine_splits or ()),
+        ]
+        for letter in dependencies:
+            if letter is None:
+                continue
+            if letter not in by_letter:
+                raise ValueError(
+                    f"Dimension '{letter}' referenced in the definition of dimension "
+                    f"'{definition.name}' is not defined."
+                )
+            visit(by_letter[letter], (*path, definition.letter))
+        visited.add(definition.letter)
+        ordered.append(definition)
+
+    for definition in definitions:
+        visit(definition, ())
+    return ordered
+
+
+def _check_dimension_dependencies(definitions: list[DimensionDefinition]) -> None:
+    """Check that parents and splitting dimensions are defined, and that there are no cycles.
+
+    Raises:
+        ValueError: If a referenced letter is not defined, or if the dependencies are cyclic.
+    """
+    _dimension_dependency_order(definitions)

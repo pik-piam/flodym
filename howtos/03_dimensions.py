@@ -90,4 +90,184 @@ reduced_dims = dims - dims["t"]
 print(f"Reduced DimensionSet | type: {type(reduced_dims)}, names: {reduced_dims.names}")
 
 
+# %% [markdown]
+# ## Sub-dimensions
+#
+# A dimension can be a finer resolution of another dimension, called its parent.
+# Each item is assigned to exactly one item of the parent.
+# Typical examples are countries assigned to world regions, or building types split into sub-types.
+#
+# A mapping from items to parent items can be given directly:
+
 # %%
+world_regions = fd.Dimension(name="World region", letter="w", items=["EUR", "USA"])
+countries = fd.Dimension.from_mapping(
+    name="Country",
+    letter="c",
+    parent=world_regions,
+    mapping={"DEU": "EUR", "FRA": "EUR", "USA": "USA"},
+)
+print(countries)
+
+# %% [markdown]
+# Alternatively, some items of the parent can be split into the items of other dimensions.
+# Items which are not split are kept. Several levels of splitting are possible.
+
+# %%
+building_types = fd.Dimension(name="Building type", letter="b", items=["Com", "Res"])
+residential_types = fd.Dimension(name="Residential type", letter="y", items=["Sin", "Mul"])
+building_sub_types = building_types.split(
+    name="Building sub-type", letter="s", splitting={"Res": residential_types}
+)
+print(building_sub_types.items)
+
+# %% [markdown]
+# Parent and sub-dimension have different letters, so arrays can be defined over either of them.
+#
+# Arrays can be aggregated to a coarser dimension with `aggregate_to()` and disaggregated to a finer
+# one with `disaggregate_to()`.
+# Whether weights are needed depends on whether the array is extensive or intensive (see the
+# HOWTO on arrays):
+#
+# - Extensive quantities such as flows are summed when aggregating, but need shares or weights when
+#   splitting.
+# - Intensive quantities such as material intensities are copied when splitting, but need weights
+#   for the weighted mean when aggregating.
+#
+# Weights are normalized within each parent item, so they can be shares or absolute values, e.g.
+# production volumes.
+# Using one of the methods in a way that does not fit the `extensive` flag of the array is reported.
+
+# %%
+import numpy as np
+
+production = fd.FlodymArray(
+    dims=building_types.as_dimset(), values=np.array([1.0, 10.0]), name="production", extensive=True
+)
+shares = fd.FlodymArray(
+    dims=building_sub_types.as_dimset(), values=np.array([1.0, 0.8, 0.2]), extensive=False
+)
+
+production_by_sub_type = production.disaggregate_to(building_sub_types, weights=shares)
+print(production_by_sub_type.values)
+
+material_intensity = fd.FlodymArray(
+    dims=building_sub_types.as_dimset(), values=np.array([5.0, 10.0, 20.0]), extensive=False
+)
+mean_intensity = material_intensity.aggregate_to(building_types, weights=production_by_sub_type)
+print(mean_intensity.values)
+
+# %% [markdown]
+# Operations between arrays over related dimensions treat them like other dimensions, which only
+# one operand has: Reducing sums, expanding copies.
+#
+# - `+`, `-`, `minimum()`, `maximum()`, `sum_to()` and assignments such as `coarse[...] = fine`
+#   aggregate to the coarser dimension by summation.
+#   For intensive arrays, `+`, `-`, `minimum()` and `maximum()` instead disaggregate to the finer
+#   dimension by copying.
+# - `*`, `/` and `cast_to()` disaggregate to the finer dimension by copying values.
+# - Assignments such as `fine[...] = coarse` copy values for intensive arrays, and raise an error
+#   otherwise.
+#
+# Splitting extensive quantities and aggregating intensive quantities is never done
+# automatically; use the methods above with weights.
+
+# %%
+material_demand = production_by_sub_type * material_intensity
+print(material_demand.dims.letters, material_demand.values)
+
+material_demand_by_type = fd.FlodymArray(dims=building_types.as_dimset(), extensive=True)
+material_demand_by_type[...] = material_demand
+print(material_demand_by_type.values)
+
+# %% [markdown]
+# For a split dimension, a split item of the parent addresses its sub-items.
+# The result is defined over the dimension the item was split into.
+
+# %%
+residential_intensity = material_intensity["Res"]
+print(residential_intensity.dims.letters, residential_intensity.values)
+
+# %% [markdown]
+# When setting values, any item of the parent or a further ancestor addresses all items belonging
+# to it, also for dimensions created from a mapping.
+# This is not possible when getting values, as no dimension exists for the result.
+
+# %%
+material_intensity[{"s": "Res"}] = 15.0
+print(material_intensity.values)
+
+# %% [markdown]
+# ### Several levels of nesting
+#
+# Splitting can be repeated, so a dimension can have a parent, which has a parent itself, and so on.
+# Such a dimension is built in three steps:
+#
+# 1. Create the flat dimensions of each level, here `coarse`, `medium` and `fine`.
+# 2. Split each level by the next finer one: `coarse_and_medium` splits `"Build"` into the items of
+#    `medium`, and `medium_and_fine` splits `"Res"` into the items of `fine`.
+# 3. Combine both splits with `Dimension.combine_splits()` into `coarse_and_medium_and_fine`.
+#
+# The combined dimension has `coarse_and_medium` as parent, which has `coarse` as parent.
+# So arrays over it can be aggregated to each level, combined with arrays over each level, and
+# sliced by the items of each level.
+# Getting values by an item returns an array over the dimension the item was split into:
+# `"Build|Res"` gives an array over `fine`, and `"Build"` an array over `medium_and_fine`.
+#
+# If `coarse_and_medium` splits several items into different dimensions, and more than one of them
+# is split further, pass a list of these further splits as `lower`.
+
+# %%
+coarse = fd.Dimension(name="Construction type", letter="i", items=["Infr", "Build"])
+medium = fd.Dimension(name="Building type", letter="b", items=["Com", "Res"])
+fine = fd.Dimension(name="Residential type", letter="y", items=["Sin", "Mul"])
+
+coarse_and_medium = coarse.split(
+    name="Construction sub-type", letter="l", splitting={"Build": medium}
+)
+medium_and_fine = medium.split(name="Building sub-type", letter="s", splitting={"Res": fine})
+coarse_and_medium_and_fine = fd.Dimension.combine_splits(
+    name="Construction sub-sub-type", letter="m", upper=coarse_and_medium, lower=medium_and_fine
+)
+print(coarse_and_medium_and_fine.items)
+
+stock = fd.FlodymArray(
+    dims=coarse_and_medium_and_fine.as_dimset(),
+    values=np.array([1.0, 2.0, 3.0, 4.0]),
+    extensive=True,
+)
+print(stock["Build"].dims.letters, stock["Build"].values)
+print(stock["Build|Res"].dims.letters, stock["Build|Res"].values)
+print(stock.aggregate_to(coarse_and_medium).values)
+
+# %% [markdown]
+# When reading dimensions with a data reader, sub-dimensions are defined in the
+# `DimensionDefinition` by the letter of their `parent`.
+# The dimension file then has two columns: the items, and the parent item of each item.
+# A split dimension is defined by `splitting`, which gives the dimension each parent item is split
+# into. It is not read from a file, but created from the other dimensions.
+# Likewise, `combine_splits` gives the letters of `upper` and `lower` of
+# `Dimension.combine_splits()`.
+#
+# As `splitting` contains item names, renaming an item then requires changing the code.
+# Split dimensions only add slicing and dict weights by split items to a mapping, which also name
+# items in the code. Otherwise, prefer a dimension file with a mapping, e.g. with the items
+# `Com`, `Res|Sin`, `Res|Mul` and the parent items `Com`, `Res`, `Res`.
+
+# %%
+dimension_definitions = [
+    fd.DimensionDefinition(name="World region", letter="w", dtype=str),
+    fd.DimensionDefinition(name="Country", letter="c", dtype=str, parent="w"),
+    fd.DimensionDefinition(name="Construction type", letter="i", dtype=str),
+    fd.DimensionDefinition(name="Building type", letter="b", dtype=str),
+    fd.DimensionDefinition(name="Residential type", letter="y", dtype=str),
+    fd.DimensionDefinition(
+        name="Construction sub-type", letter="l", dtype=str, parent="i", splitting={"Build": "b"}
+    ),
+    fd.DimensionDefinition(
+        name="Building sub-type", letter="s", dtype=str, parent="b", splitting={"Res": "y"}
+    ),
+    fd.DimensionDefinition(
+        name="Construction sub-sub-type", letter="m", dtype=str, combine_splits=("l", "s")
+    ),
+]
