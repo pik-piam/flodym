@@ -449,3 +449,99 @@ def test_invalid_n_pts_per_interval(n_pts_per_interval):
     )
     with pytest.raises(ValueError, match="n_pts_per_interval must be between 1 and 10"):
         lifetime_model.cumulative_survival
+
+
+REDUCE_DIMS = DimensionSet(
+    dim_list=[
+        Dimension(name="time", letter="t", items=list(range(2000, 2021)), dtype=int),
+        Dimension(name="region", letter="r", items=["x", "y", "z"], dtype=str),
+        Dimension(name="product", letter="p", items=["a", "b"], dtype=str),
+        Dimension(name="element", letter="e", items=["C", "H"], dtype=str),
+    ]
+)
+REDUCE_PRMS = {
+    FixedLifetime: {"mean": [5.0, 8.0, 12.0]},
+    ExponentialLifetime: {"mean": [5.0, 8.0, 12.0]},
+    Leaching: {"loss_rate": [0.05, 0.1, 0.2]},
+    NormalLifetime: {"mean": [5.0, 8.0, 12.0], "std": 2.0},
+    FoldedNormalLifetime: {"mean": [5.0, 8.0, 12.0], "std": 2.0},
+    LogNormalLifetime: {"mean": [5.0, 8.0, 12.0], "std": 2.0},
+    WeibullLifetime: {"weibull_scale": [5.0, 8.0, 12.0], "weibull_shape": 2.0},
+    WeibullMeanStdLifetime: {"mean": [5.0, 8.0, 12.0], "std": 2.0},
+}
+# vary along time and product, constant along region and element
+REDUCE_FACTOR = FlodymArray(
+    dims=REDUCE_DIMS[("t", "p")],
+    values=np.linspace(1.0, 1.5, REDUCE_DIMS["t"].len)[:, None] * [1.0, 0.8],
+)
+
+
+def _reduce_prms(lt_cls):
+    region_dims = REDUCE_DIMS["r",]
+    return {
+        name: FlodymArray(dims=region_dims, values=np.array(value))
+        if isinstance(value, list)
+        else value
+        for name, value in REDUCE_PRMS[lt_cls].items()
+    }
+
+
+@pytest.mark.parametrize("lt_cls", list(REDUCE_PRMS))
+@pytest.mark.parametrize(
+    "factor_name",
+    [None, "lt_factor_by_year", "lt_factor_by_cohort", "hazard_factor_by_year"],
+)
+def test_reduced_dims_equal_full_dims(lt_cls, factor_name, monkeypatch):
+    """The survival computed on the reduced dimensions equals the one on the full dimensions."""
+    factor_kwargs = {} if factor_name is None else {factor_name: REDUCE_FACTOR}
+    kwargs = {"dims": REDUCE_DIMS, "n_pts_per_interval": 2, **_reduce_prms(lt_cls), **factor_kwargs}
+    reduced = lt_cls(**kwargs)
+    region_and_product = slice(None), slice(None), slice(None), slice(0, 1)
+    expected_index = (
+        region_and_product if factor_name else region_and_product[:2] + (slice(0, 1),) * 2
+    )
+    assert reduced._reduce_index == expected_index
+
+    full_index = property(lambda self: (slice(None),) * len(self.shape))
+    with monkeypatch.context() as patch:
+        patch.setattr(type(reduced), "_reduce_index", full_index)
+        full = lt_cls(**kwargs)
+        full_arrays = [full.cumulative_survival, full.conditional_survival, full.outflow_pmf]
+        full_mean = full.get_mean_lifetime_by_cohort(tail="none").values
+
+    reduced_arrays = [
+        reduced.cumulative_survival,
+        reduced.conditional_survival,
+        reduced.outflow_pmf,
+    ]
+    for reduced_array, full_array in zip(reduced_arrays, full_arrays):
+        assert reduced_array.shape == full_array.shape
+        np.testing.assert_allclose(reduced_array, full_array, rtol=1e-12, atol=1e-14)
+    np.testing.assert_allclose(
+        reduced.get_mean_lifetime_by_cohort(tail="none").values, full_mean, rtol=1e-12
+    )
+
+
+def test_removal_share_and_in_place_change_with_reduced_dims():
+    share = FlodymArray(dims=REDUCE_DIMS["e",], values=np.array([0.0, 0.1]))
+    model = ExponentialLifetime(dims=REDUCE_DIMS, mean=10.0, removal_share_by_year=share)
+    assert model._reduce_index[1:] == (slice(0, 1), slice(0, 1), slice(None))
+    cum_surv = model.cumulative_survival
+    no_removal = ExponentialLifetime(dims=REDUCE_DIMS, mean=10.0).cumulative_survival
+    np.testing.assert_allclose(cum_surv[..., 0], no_removal[..., 0])
+    assert np.all(cum_surv[2:, 0, :, :, 1] < cum_surv[2:, 0, :, :, 0])
+
+    # changing a parameter in place along a reduced axis is taken into account after the reset
+    model.mean[:, 1, ...] = 5.0
+    model.reset_cached_arrays()
+    assert model._reduce_index[1:] == (slice(None), slice(0, 1), slice(None))
+    assert np.all(model.cumulative_survival[2:, 0, 1] < model.cumulative_survival[2:, 0, 0])
+
+
+def test_survival_arrays_are_read_only():
+    model = LogNormalLifetime(dims=REDUCE_DIMS, mean=10.0, std=3.0)
+    for array in [model.cumulative_survival, model.conditional_survival, model.outflow_pmf]:
+        assert array.shape == (21, 21, 3, 2, 2)
+        with pytest.raises(ValueError, match="read-only"):
+            array[...] = 0.0
+    model.get_cumulative_survival().values[...] = 0.0
