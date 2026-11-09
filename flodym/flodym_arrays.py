@@ -41,6 +41,12 @@ def _has_sub_dims(dims: DimensionSet) -> bool:
     return any(dim.parent is not None for dim in dims)
 
 
+def _group_sums(values: np.ndarray, indices: np.ndarray, n_groups: int, axis: int) -> np.ndarray:
+    """Sum values along an axis within groups, given the group index of each entry on the axis."""
+    groups = [np.flatnonzero(indices == group) for group in range(n_groups)]
+    return np.stack([values.take(group, axis=axis).sum(axis=axis) for group in groups], axis=axis)
+
+
 def _items_below(dim: Dimension, ancestor_item: Any) -> list | None:
     """Return the items of dim belonging to an item of its nearest ancestor which has this item.
 
@@ -451,7 +457,7 @@ class FlodymArray(FlodymBaseModel):
         Returns:
             The values of the FlodymArray cast to the new dimensions.
         """
-        refined = self._refined_to(target_dims)
+        refined = self._to_resolution(target_dims, coarsen=False)
         if refined is not self:
             return refined.cast_values_to(target_dims)
         assert all(d in target_dims.letters for d in self.dims.letters), (
@@ -648,19 +654,19 @@ class FlodymArray(FlodymBaseModel):
                 or if it already has ``target``.
         """
         self._check_is_set("aggregate_to()")
-        fine_dim = self._dim_related_to(target, finer=True)
-        if fine_dim is None:
+        fine_dim = self._related_dim(target)
+        if fine_dim is None or not fine_dim.is_descendant_of(target):
             raise ValueError(
                 f"Array '{self.name}' has no dimension which is a sub-dimension of '{target.name}'."
             )
         if weights is None:
             if check_extensivity:
                 self._check_reduction(fine_dim.as_dimset(), "aggregate_to()")
-            return self._aggregated_to(target)
+            return self._aggregated_to(fine_dim, target)
         if check_extensivity:
             self._check_weighting("aggregate_to()", intensive=True)
         shares = _normalized_weights(weights, fine_dim, target)
-        result = (self * shares)._aggregated_to(target)
+        result = (self * shares)._aggregated_to(fine_dim, target)
         result.name = self.name
         return result
 
@@ -700,8 +706,8 @@ class FlodymArray(FlodymBaseModel):
                 from, or if it already has ``target``.
         """
         self._check_is_set("disaggregate_to()")
-        coarse_dim = self._dim_related_to(target, finer=False)
-        if coarse_dim is None:
+        coarse_dim = self._related_dim(target)
+        if coarse_dim is None or not target.is_descendant_of(coarse_dim):
             raise ValueError(
                 f"Array '{self.name}' has no dimension which '{target.name}' is a sub-dimension of."
             )
@@ -710,7 +716,7 @@ class FlodymArray(FlodymBaseModel):
                 self._check_expansion(target.as_dimset(), "disaggregate_to()")
             else:
                 self._check_weighting("disaggregate_to()", intensive=False)
-        result = self._disaggregated_to(target)
+        result = self._disaggregated_to(coarse_dim, target)
         if weights is None:
             return result
         shares = _normalized_weights(weights, target, coarse_dim)
@@ -748,25 +754,17 @@ class FlodymArray(FlodymBaseModel):
         else:
             raise KeyError(f"Dimension {dim} not found in FlodymArray dims.")
 
-    def _dim_related_to(self, target: Dimension, finer: bool) -> Dimension | None:
-        """Return the dimension of the array which descends from (or is an ancestor of) target.
-
-        Args:
-            target: The dimension to compare with.
-            finer: If True, look for a descendant of target, else for an ancestor.
-
-        Returns:
-            The related dimension, or None if there is none.
+    def _related_dim(self, target: Dimension) -> Dimension | None:
+        """Return the dimension of the array which descends from target, or which it descends from.
 
         Raises:
             ValueError: If the array already has ``target``, or several related dimensions.
         """
         if target.letter in self.dims.letters:
             raise ValueError(f"Array '{self.name}' already has dimension '{target.name}'.")
-        if finer:
-            related = [dim for dim in self.dims if dim.is_descendant_of(target)]
-        else:
-            related = [dim for dim in self.dims if target.is_descendant_of(dim)]
+        related = [
+            dim for dim in self.dims if dim.is_descendant_of(target) or target.is_descendant_of(dim)
+        ]
         if len(related) > 1:
             raise ValueError(
                 f"Array '{self.name}' has several dimensions related to '{target.name}': "
@@ -774,94 +772,105 @@ class FlodymArray(FlodymBaseModel):
             )
         return related[0] if related else None
 
-    def _aggregated_to(self, target: Dimension) -> "FlodymArray":
-        """Sum the descendant dimension of target to target. See :py:meth:`aggregate_to`."""
-        fine_dim = self._dim_related_to(target, finer=True)
-        if fine_dim is None:
-            raise ValueError(f"Array '{self.name}' has no sub-dimension of '{target.name}'.")
+    def _aggregated_to(self, fine_dim: Dimension, target: Dimension) -> "FlodymArray":
+        """Sum fine_dim to its ancestor target. See :py:meth:`aggregate_to`."""
         axis = self.dims.index(fine_dim.letter)
         indices = fine_dim._indices_in_ancestor(target)
-        values = np.moveaxis(self.values, axis, 0)
-        aggregated = np.zeros((target.len, *values.shape[1:]), dtype=self.values.dtype)
-        np.add.at(aggregated, indices, values)
+        values = _group_sums(self.values, indices, target.len, axis)
+        return self._with_dim_replaced(fine_dim, target, values)
+
+    def _disaggregated_to(self, coarse_dim: Dimension, target: Dimension) -> "FlodymArray":
+        """Copy values of coarse_dim to its descendant target. See :py:meth:`disaggregate_to`."""
+        axis = self.dims.index(coarse_dim.letter)
+        values = self.values.take(target._indices_in_ancestor(coarse_dim), axis=axis)
+        return self._with_dim_replaced(coarse_dim, target, values)
+
+    def _with_dim_replaced(
+        self, old_dim: Dimension, new_dim: Dimension, values: np.ndarray
+    ) -> "FlodymArray":
+        """Return an array with new values, in which old_dim is replaced by new_dim."""
         result = FlodymArray(
-            dims=self.dims.replace(fine_dim.letter, target),
-            values=np.moveaxis(aggregated, 0, axis),
-            name=self.name,
+            dims=self.dims.replace(old_dim.letter, new_dim), values=values, name=self.name
         )
         result._is_set = self._is_set
         return result._with_degree(self._degree)
 
-    def _disaggregated_to(self, target: Dimension) -> "FlodymArray":
-        """Copy values of the ancestor dimension of target to target. See disaggregate_to."""
-        coarse_dim = self._dim_related_to(target, finer=False)
-        if coarse_dim is None:
-            raise ValueError(f"Array '{self.name}' has no dimension that '{target.name}' refines.")
-        axis = self.dims.index(coarse_dim.letter)
-        indices = target._indices_in_ancestor(coarse_dim)
-        result = FlodymArray(
-            dims=self.dims.replace(coarse_dim.letter, target),
-            values=np.take(self.values, indices, axis=axis),
-            name=self.name,
-        )
-        result._is_set = self._is_set
-        return result._with_degree(self._degree)
+    def _to_resolution(
+        self,
+        target_dims: DimensionSet,
+        coarsen: bool = True,
+        refine: bool = True,
+        operation: str | None = None,
+        degree: int | None = None,
+    ) -> "FlodymArray":
+        """Replace dimensions of the array by related dimensions in target_dims.
+
+        A dimension of the array is replaced if a target dimension descends from it or is an
+        ancestor of it, and if the array dimension itself is not in target_dims. Returns the
+        array itself if nothing is replaced.
+
+        Args:
+            target_dims: The dimensions to convert to.
+            coarsen: Whether to aggregate to coarser target dimensions by summation.
+            refine: Whether to disaggregate to finer target dimensions by copying.
+            operation: Description of the operation. If given, aggregating an array which is not
+                extensive is reported.
+            degree: Extensivity degree to check when aggregating, see :py:meth:`_check_reduction`.
+        """
+        if not (_has_sub_dims(self.dims) or _has_sub_dims(target_dims)):
+            return self
+        array = self
+        for target in target_dims:
+            if target.letter in array.dims:
+                continue
+            own_dim = array._related_dim(target)
+            if own_dim is None or own_dim.letter in target_dims:
+                continue
+            if own_dim.is_descendant_of(target) and coarsen:
+                if operation is not None:
+                    array._check_reduction(own_dim.as_dimset(), operation, degree)
+                array = array._aggregated_to(own_dim, target)
+            elif target.is_descendant_of(own_dim) and refine:
+                array = array._disaggregated_to(own_dim, target)
+        return array
 
     def _aggregated_to_ancestors(
         self, keys: tuple[str | Dimension, ...], operation: str | None = None
     ) -> "FlodymArray":
-        """Aggregate dimensions to those given in keys which are ancestors of array dimensions.
-
-        Keys can be letters, names or Dimension objects. Keys of dimensions of the array are
-        ignored. Returns the array itself if nothing is aggregated.
+        """Aggregate to those dimensions given in keys which are ancestors of array dimensions.
 
         Args:
-            keys: The dimensions to aggregate to, if they are ancestors.
+            keys: Letters, names or Dimension objects; others than ancestors are ignored.
             operation: Description of the operation. If given, aggregating an array which is not
                 extensive is reported.
         """
         if not _has_sub_dims(self.dims):
             return self
-        array = self
+        ancestors = {}
         for key in keys:
-            if (isinstance(key, Dimension) and key.letter in array.dims) or (
-                isinstance(key, str) and key in array.dims
-            ):
-                continue
-            ancestor = array._find_ancestor(key)
-            if ancestor is None:
-                continue
-            fine_dim = array._dim_related_to(ancestor, finer=True)
-            if operation is not None and fine_dim is not None:
-                array._check_reduction(fine_dim.as_dimset(), operation)
-            array = array._aggregated_to(ancestor)
-        return array
+            ancestor = self._find_ancestor(key)
+            if ancestor is not None:
+                ancestors[ancestor.letter] = ancestor
+        return self._to_resolution(
+            DimensionSet(dim_list=list(ancestors.values())), refine=False, operation=operation
+        )
 
     def _find_ancestor(self, key: str | Dimension) -> Dimension | None:
-        """Find an ancestor of a dimension of the array, by letter, name or Dimension object."""
+        """Find an ancestor of a dimension of the array, by letter, name or Dimension object.
+
+        Returns None if the key is a dimension of the array or not related to it.
+        """
         if isinstance(key, Dimension):
-            return key if self._dim_related_to(key, finer=True) is not None else None
+            if key.letter in self.dims or not any(d.is_descendant_of(key) for d in self.dims):
+                return None
+            return key
+        if key in self.dims:
+            return None
         for dim in self.dims:
             for ancestor in dim.ancestors:
                 if key in (ancestor.letter, ancestor.name):
                     return ancestor
         return None
-
-    def _refined_to(self, target_dims: DimensionSet) -> "FlodymArray":
-        """Disaggregate dimensions of the array to their descendants in target_dims by copying.
-
-        Ancestors which are themselves in target_dims are kept.
-        """
-        if not _has_sub_dims(target_dims):
-            return self
-        array = self
-        for dim in target_dims:
-            if dim.letter in array.dims:
-                continue
-            coarse_dim = array._dim_related_to(dim, finer=False)
-            if coarse_dim is not None and coarse_dim.letter not in target_dims:
-                array = array._disaggregated_to(dim)
-        return array
 
     def _align_related_dims(
         self,
@@ -875,7 +884,7 @@ class FlodymArray(FlodymBaseModel):
         Args:
             other: The other operand.
             refine: If True, the coarser dimension is disaggregated to the finer one by copying.
-                If False, both are aggregated to their common ancestor by summation.
+                If False, both are aggregated to the coarser one or to their common ancestor.
             operation: Description of the operation. If given, aggregating arrays which are not
                 extensive is reported.
             degree: Extensivity degree to check when aggregating, see :py:meth:`_check_reduction`.
@@ -884,92 +893,39 @@ class FlodymArray(FlodymBaseModel):
             Both arrays, with related dimensions replaced.
 
         Raises:
-            ValueError: If a dimension is related to several dimensions of the other array, or
-                if refine is True and the dimensions are siblings without ancestral relation.
+            ValueError: If refine is True and the arrays have different sub-dimensions of the
+                same dimension.
         """
         if not (_has_sub_dims(self.dims) or _has_sub_dims(other.dims)):
             return self, other
-        other_only = [dim for dim in other.dims if dim.letter not in self.dims.letters]
-        pairs: list[tuple[Dimension, Dimension, Dimension]] = []
-        for own_dim in self.dims:
-            if own_dim.letter in other.dims.letters:
-                continue
-            related = [
-                (other_dim, ancestor)
-                for other_dim in other_only
-                if (ancestor := own_dim.common_ancestor(other_dim)) is not None
-            ]
-            if len(related) > 1:
+        common = self._common_ancestors(other)
+        if refine:
+            if common:
                 raise ValueError(
-                    f"Dimension '{own_dim.name}' is related to several dimensions of the other "
-                    f"operand: {[other_dim.name for other_dim, _ in related]}"
+                    f"The operands have different sub-dimensions of {list(common.names)}. "
+                    "Aggregate or disaggregate explicitly before this operation."
                 )
-            if related:
-                pairs.append((own_dim, *related[0]))
-        paired_other_letters = [other_dim.letter for _, other_dim, _ in pairs]
-        if len(set(paired_other_letters)) != len(paired_other_letters):
-            raise ValueError(
-                "A dimension of the other operand is related to several dimensions of this array."
+            return (
+                self._to_resolution(other.dims, coarsen=False),
+                other._to_resolution(self.dims, coarsen=False),
             )
-        array = self
-        for own_dim, other_dim, ancestor in pairs:
-            if refine:
-                if own_dim.is_descendant_of(other_dim):
-                    other = other._disaggregated_to(own_dim)
-                elif other_dim.is_descendant_of(own_dim):
-                    array = array._disaggregated_to(other_dim)
-                else:
-                    raise ValueError(
-                        f"Dimensions '{own_dim.name}' and '{other_dim.name}' are different "
-                        f"sub-dimensions of '{ancestor.name}'. Aggregate or disaggregate "
-                        "explicitly before this operation."
-                    )
-            else:
-                if ancestor.letter != own_dim.letter:
-                    if operation is not None:
-                        array._check_reduction(own_dim.as_dimset(), operation, degree)
-                    array = array._aggregated_to(ancestor)
-                if ancestor.letter != other_dim.letter:
-                    if operation is not None:
-                        other._check_reduction(other_dim.as_dimset(), operation, degree)
-                    other = other._aggregated_to(ancestor)
-        return array, other
+        kwargs: dict[str, Any] = {"refine": False, "operation": operation, "degree": degree}
+        return (
+            self._to_resolution(other.dims | common, **kwargs),
+            other._to_resolution(self.dims | common, **kwargs),
+        )
 
-    def _aligned_for_assignment(self, target_dims: DimensionSet) -> "FlodymArray":
-        """Bring dimensions related to those of an assignment target to their resolution.
-
-        Dimensions finer than a target dimension are aggregated by summation; this is reported
-        if the array is not extensive. Dimensions coarser than a target dimension are
-        disaggregated by copying, if the array is intensive.
-
-        Raises:
-            ValueError: If the array is not intensive and has a dimension coarser than a target
-                dimension.
-        """
-        if not (_has_sub_dims(self.dims) or _has_sub_dims(target_dims)):
-            return self
-        array = self
-        for dim in target_dims:
-            if dim.letter in array.dims:
-                continue
-            fine_dim = array._dim_related_to(dim, finer=True)
-            if fine_dim is not None:
-                array._check_reduction(fine_dim.as_dimset(), "an assignment")
-                array = array._aggregated_to(dim)
-                continue
-            coarse_dim = array._dim_related_to(dim, finer=False)
-            if coarse_dim is None:
-                continue
-            if array._degree != 0:
-                raise ValueError(
-                    f"{_array_label(array, array._degree)} has dimension '{coarse_dim.name}', "
-                    f"which is coarser than dimension '{dim.name}' of the assignment target. "
-                    "Values are only copied to sub-items for intensive arrays (extensive=False). "
-                    "Use disaggregate_to() with weights for extensive quantities, or without "
-                    "weights to copy the values."
-                )
-            array = array._disaggregated_to(dim)
-        return array
+    def _common_ancestors(self, other: "FlodymArray") -> DimensionSet:
+        """Common ancestors of dimensions of the two arrays which do not descend from each other."""
+        ancestors = {}
+        for own_dim in self.dims - other.dims:
+            for other_dim in other.dims - self.dims:
+                if own_dim.is_descendant_of(other_dim) or other_dim.is_descendant_of(own_dim):
+                    continue
+                ancestor = own_dim.common_ancestor(other_dim)
+                if ancestor is not None:
+                    ancestors[ancestor.letter] = ancestor
+        return DimensionSet(dim_list=list(ancestors.values()))
 
     def _check_weighting(self, operation: str, intensive: bool) -> None:
         """Report a weighted mean of a not intensive, or a weighted split of a not extensive array.
@@ -1136,7 +1092,7 @@ class FlodymArray(FlodymBaseModel):
 
     def __pow__(self, power: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
         degree = self._power_degree(power)
-        power = self._prepare_other(power)._refined_to(self.dims)
+        power = self._prepare_other(power)._to_resolution(self.dims, coarsen=False)
         if any(l not in self.dims.letters for l in power.dims.letters):
             raise ValueError("Power must only contain dimensions also present in the base array.")
         values_out = self.values ** power.cast_values_to(self.dims)
@@ -1373,7 +1329,9 @@ class FlodymArray(FlodymBaseModel):
         if isinstance(item, FlodymArray):
             item._check_is_set("an assignment to another array")
             self._check_assigned_degree(item)
-            item = item._aligned_for_assignment(slice_obj.dims_out)
+            item = item._to_resolution(
+                slice_obj.dims_out, refine=item._degree == 0, operation="an assignment"
+            )
             self.values[slice_obj.ids] = item._values_for_assignment(slice_obj.dim_letters)
         elif isinstance(keys, type(Ellipsis)):
             self.set_values(copy(item))
@@ -1680,8 +1638,8 @@ class FlodymArray(FlodymBaseModel):
             raise ValueError(
                 f"{_array_label(self, self._degree)} is assigned to an array with the dimensions "
                 f"{list(missing)}, which it does not have. Values are only copied along missing "
-                "dimensions for intensive arrays (extensive=False). Use cast_to() to copy them "
-                "explicitly."
+                "dimensions for intensive arrays (extensive=False). Use cast_to() or "
+                "disaggregate_to() to copy or split them explicitly."
             )
         kept = tuple(letter for letter in target_letters if letter in self.dims.letters)
         values = self.sum_values_to(kept)
@@ -2109,17 +2067,12 @@ def _normalized_weights(
     weights._check_is_set("weighting")
     axis = weights.dims.index(fine_dim.letter)
     indices = fine_dim._indices_in_ancestor(coarse_dim)
-    values = np.moveaxis(weights.values, axis, 0).astype(float)
-    group_sums = np.zeros((coarse_dim.len, *values.shape[1:]))
-    np.add.at(group_sums, indices, values)
-    denominators = group_sums[indices]
-    group_sizes = np.bincount(indices, minlength=coarse_dim.len)
-    equal_shares = (1.0 / group_sizes[indices]).reshape((-1,) + (1,) * (values.ndim - 1))
-    nonzero = denominators != 0
-    shares = np.where(nonzero, values / np.where(nonzero, denominators, 1.0), equal_shares)
-    return FlodymArray(
-        dims=weights.dims, values=np.moveaxis(shares, 0, axis), name="weights", extensive=False
-    )
+    totals = _group_sums(weights.values, indices, coarse_dim.len, axis).take(indices, axis=axis)
+    group_sizes = np.bincount(indices, minlength=coarse_dim.len)[indices]
+    group_sizes = group_sizes.reshape([-1 if i == axis else 1 for i in range(weights.dims.ndim)])
+    with np.errstate(divide="ignore", invalid="ignore"):
+        shares = np.where(totals != 0, weights.values / totals, 1.0 / group_sizes)
+    return FlodymArray(dims=weights.dims, values=shares, name="weights", extensive=False)
 
 
 def _weights_from_dict(weights: dict[Any, FlodymArray], split_dim: Dimension) -> FlodymArray:

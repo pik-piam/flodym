@@ -163,7 +163,7 @@ def test_assignment_across_several_levels(building, residential, time):
     target_reordered = fd.FlodymArray(dims=reordered_infra.as_dimset())
     target_reordered[...] = flow
     np.testing.assert_allclose(target_reordered.values, [33.0, 3.0])
-    with pytest.raises(ValueError, match="coarser"):
+    with pytest.raises(ValueError, match="does not have"):
         flow[...] = target_i
 
 
@@ -241,7 +241,7 @@ def test_assignment(production_s, building, time):
     target = fd.FlodymArray(dims=building + time)
     target[...] = production_s
     np.testing.assert_allclose(target.values, [[1.0, 2.0], [10.0, 10.0]])
-    with pytest.raises(ValueError, match="coarser"):
+    with pytest.raises(ValueError, match="does not have"):
         production_s[...] = target
 
 
@@ -393,7 +393,7 @@ def test_assignment_of_intensive_coarse_array_copies(strict, intensity_b, sub_ty
 def test_assignment_of_extensive_coarse_array_fails(flow_s, building, sub_type, time):
     flow_b = flow_s.aggregate_to(building)
     target = fd.FlodymArray(dims=sub_type + time, extensive=True)
-    with pytest.raises(ValueError, match="only copied to sub-items for intensive arrays"):
+    with pytest.raises(ValueError, match="disaggregate_to"):
         target[...] = flow_b
 
 
