@@ -201,57 +201,26 @@ print(material_intensity.values)
 # ### Several levels of nesting
 #
 # Splitting can be repeated, so a dimension can have a parent, which has a parent itself, and so on.
-# Each dimension has exactly one parent, so the levels form a chain.
-# The same items can be obtained in two orders, which lead to different chains:
+# Build such levels top-down: Split the top level first, then split its items further.
+# Then each intermediate level is an ancestor, so arrays can be aggregated to it, combined with
+# arrays over it, and sliced by its items.
 #
-# - **Top-down:** Split the top level first, then split its items further.
-#   Each intermediate level is a dimension in the chain.
-# - **Bottom-up:** Split the lower level first, and then use the result to split the top level.
-#   The lower levels are only stored as the dimension a top-level item is split into.
+# Getting values by an item returns an array over the dimension the item was split into.
+# For items of further ancestors, such as `"Build"` below, give this dimension with
+# `ancestor_sub_dims`. Its items must be the items below the ancestor item without the leading
+# ancestor item and separator, in the same order, which is checked by `split()`.
 
 # %%
 infrastructure = fd.Dimension(name="Infrastructure", letter="i", items=["Infr", "Build"])
-
-# top-down: chain level_2 -> level_1 -> infrastructure
 level_1 = infrastructure.split(name="Level 1", letter="l", splitting={"Build": building_types})
-level_2 = level_1.split(name="Level 2", letter="m", splitting={"Build|Res": residential_types})
-
-# bottom-up: chain bottom_up -> infrastructure
-bottom_up = infrastructure.split(
-    name="Bottom-up", letter="u", splitting={"Build": building_sub_types}
-)
-print(level_2.items)
-print(bottom_up.items)
-
-# %% [markdown]
-# Both dimensions have the same items, but only the dimensions in the chain are related to them.
-# This determines what is possible:
-#
-# | | top-down | bottom-up |
-# |---|---|---|
-# | aggregate to `infrastructure` | yes | yes |
-# | aggregate to the intermediate level `level_1` | yes | no |
-# | operations with arrays over the intermediate level | yes | no: both are only related via `infrastructure` |
-# | items of `level_1` as keys, e.g. to set all residential sub-types | yes | no |
-# | get values by `foo["Build"]`, returning an array over the building sub-types | only with `ancestor_sub_dims` | yes |
-#
-# Getting values by an item returns an array over the dimension the item was split into.
-# In the top-down chain, `"Build"` was split into `building_types`, which has only two items, whereas
-# `foo["Build"]` addresses three items. No dimension exists for the result, so it is not possible
-# by default.
-#
-# To get both, build the levels top-down, and give a dimension for the items of further ancestors
-# with `ancestor_sub_dims`.
-# Its items must be the items below the ancestor item without the leading ancestor item and
-# separator, in the same order. This is checked by `split()`.
-
-# %%
 level_2 = level_1.split(
     name="Level 2",
     letter="m",
     splitting={"Build|Res": residential_types},
     ancestor_sub_dims={"Build": building_sub_types},
 )
+print(level_2.items)
+
 stock = fd.FlodymArray(
     dims=level_2.as_dimset(), values=np.array([1.0, 2.0, 3.0, 4.0]), extensive=True
 )
