@@ -248,6 +248,11 @@ print(stock.aggregate_to(coarse_and_medium).values)
 # into. It is not read from a file, but created from the other dimensions.
 # Likewise, `combine_splits` gives the letters of `upper` and `lower` of
 # `Dimension.combine_splits()`.
+#
+# As `splitting` contains item names, renaming an item then requires changing the code.
+# Split dimensions only add slicing and dict weights by split items to a mapping, which also name
+# items in the code. Otherwise, prefer a dimension file with a mapping, e.g. with the items
+# `Com`, `Res|Sin`, `Res|Mul` and the parent items `Com`, `Res`, `Res`.
 
 # %%
 dimension_definitions = [
