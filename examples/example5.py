@@ -180,8 +180,8 @@ class CustomDataReader(fd.DataReader):
         self.data_directory = data_directory
         self.years = years
 
-    def read_dimension(self, dimension_definition: fd.DimensionDefinition) -> fd.Dimension:
-        if (dim_name := dimension_definition.name) == "region":
+    def read_dimension(self, definition: fd.DimensionDefinition) -> fd.Dimension:
+        if (dim_name := definition.name) == "region":
             data = pd.read_excel(
                 join(self.data_directory, "example5_vehicle_lifetime.xlsx"), "Data"
             )
@@ -191,19 +191,19 @@ class CustomDataReader(fd.DataReader):
             data = (set(data[dim_name].unique())).intersection(set(other_data[dim_name].unique()))
             data = list(data)
             data.sort()
-        elif (dim_name := dimension_definition.name) in ["waste", "material"]:
+        elif (dim_name := definition.name) in ["waste", "material"]:
             data = pd.read_excel(
                 join(self.data_directory, "example5_eol_recovery_rate.xlsx"), "Data"
             )
             data.columns = [x.lower() for x in data.columns]
             data = list(data[dim_name].unique())
             data.sort()
-        elif dimension_definition.name == "time":
+        elif definition.name == "time":
             data = self.years
         return fd.Dimension(
-            name=dimension_definition.name,
-            letter=dimension_definition.letter,
-            dtype=dimension_definition.dtype,
+            name=definition.name,
+            letter=definition.letter,
+            dtype=definition.dtype,
             items=data,
         )
 

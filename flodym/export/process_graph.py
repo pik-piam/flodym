@@ -435,7 +435,7 @@ class PlotlyProcessGraphPlotter(ProcessGraphPlotter):
         stock_positions: Mapping[str, tuple[float, float]],
     ) -> None:
         for stock in self.shown_stocks:
-            px, py = process_positions[stock.process.id]
+            px, py = process_positions[stock.process_id]
             sx, sy = stock_positions[stock.name]
             fig.add_shape(
                 type="line",
