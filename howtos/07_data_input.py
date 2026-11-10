@@ -131,6 +131,8 @@ parameters = reader.read_parameters(parameter_definitions=parameter_definitions,
 # Setting it to False is good for avoiding errors such as typos in the input data.
 # Setting it to True is necessary if you'd like to be able to run the model with a subset of the items in the input data, e.g. a shorter time period, without changing the input data.
 # The default is False.
+#
+# Instead of a boolean, both arguments also accept a list of parameter names. The setting is then only enabled for these parameters, e.g. `allow_missing_values=["p1"]`.
 
 # %% [markdown]
 # ## MFASystem `from_excel()` and `from_csv`
