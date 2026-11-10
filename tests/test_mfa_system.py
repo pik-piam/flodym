@@ -16,12 +16,12 @@ class _SingleDimDataReader(DataReader):
     def __init__(self, items_by_dimension_name: dict[str, list]):
         self.items_by_dimension_name = items_by_dimension_name
 
-    def read_dimension(self, dimension_definition: DimensionDefinition) -> Dimension:
+    def read_dimension(self, definition: DimensionDefinition) -> Dimension:
         return Dimension(
-            name=dimension_definition.name,
-            letter=dimension_definition.letter,
-            items=self.items_by_dimension_name[dimension_definition.name],
-            dtype=dimension_definition.dtype,
+            name=definition.name,
+            letter=definition.letter,
+            items=self.items_by_dimension_name[definition.name],
+            dtype=definition.dtype,
         )
 
     def read_parameter_values(self, parameter_name, dims):

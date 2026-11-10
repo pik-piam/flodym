@@ -12,7 +12,13 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, ClassVar, Concatenate, ParamSpec, TypeVar
 
 import numpy as np
-from pydantic import field_validator, model_validator
+from pydantic import (
+    Field,
+    ValidationInfo,
+    ValidatorFunctionWrapHandler,
+    field_validator,
+    model_validator,
+)
 from typing_extensions import Self
 
 from ._base_model import FlodymBaseModel
@@ -105,29 +111,37 @@ class Stock(FlodymBaseModel):
 
     dims: DimensionSet
     """Dimensions of the stock, inflow, and outflow arrays. Time must be the first dimension."""
-    stock: StockArray | None = None
-    """Accumulation of the stock. Other FlodymArrays are converted to a StockArray."""
-    inflow: StockArray | None = None
-    """Inflow into the stock. Other FlodymArrays are converted to a StockArray."""
-    outflow: StockArray | None = None
-    """Outflow from the stock. Other FlodymArrays are converted to a StockArray."""
+    stock: StockArray = Field(default=None)
+    """Accumulation of the stock. Other FlodymArrays are converted to a StockArray.
+    If not given or None, an unset StockArray of zeros is created."""
+    inflow: StockArray = Field(default=None)
+    """Inflow into the stock. Other FlodymArrays are converted to a StockArray.
+    If not given or None, an unset StockArray of zeros is created."""
+    outflow: StockArray = Field(default=None)
+    """Outflow from the stock. Other FlodymArrays are converted to a StockArray.
+    If not given or None, an unset StockArray of zeros is created."""
     name: str | None = "unnamed"
     """Name of the stock"""
     process: Process | None = None
     """Process the stock is associated with, if any. Needed for example for the mass balance."""
     time_letter: str = "t"
     """Letter of the time dimension in the dimensions set, to make sure it's the first one."""
-    _t: _UnevenTimeDim | None = None
+    _t: _UnevenTimeDim
     _in_compute: bool = False
     _n_equations: ClassVar[int] = 1
     """Number of equations relating inflow, outflow and stock. Used to detect overdetermined
     processes in :py:attr:`flodym.Process.is_overdetermined`."""
 
-    @field_validator("stock", "inflow", "outflow", mode="before")
+    @field_validator("stock", "inflow", "outflow", mode="wrap")
     @classmethod
-    def _to_stock_array(cls, value: Any) -> Any:
-        """Convert a FlodymArray which is not a StockArray to a StockArray."""
-        return _to_stock_array(value)
+    def _to_stock_array(cls, value: Any, handler: ValidatorFunctionWrapHandler) -> Any:
+        """Convert a FlodymArray which is not a StockArray to a StockArray.
+
+        None is kept and replaced in ``_validate_stock_arrays``, which needs the other fields.
+        """
+        if value is None:
+            return None
+        return handler(_to_stock_array(value))
 
     @model_validator(mode="after")
     def _validate_stock_arrays(self) -> Self:
@@ -190,7 +204,18 @@ class Stock(FlodymBaseModel):
     @property
     def process_id(self) -> int:
         """ID of the process the stock is associated with."""
-        return self.process.id
+        return self._attached_process.id
+
+    @property
+    def _attached_process(self) -> Process:
+        """Process the stock is associated with.
+
+        Raises:
+            ValueError: If the stock is not associated with a process.
+        """
+        if self.process is None:
+            raise ValueError(f"Stock '{self.name}' is not associated with a process.")
+        return self.process
 
     @property
     def is_computed(self) -> bool:
@@ -384,7 +409,7 @@ class Stock(FlodymBaseModel):
         missing_dims = array.dims - total.dims
         if missing_dims:
             raise ValueError(
-                f"In process '{self.process.name}': The stock {label} has the dimensions "
+                f"In process '{self._attached_process.name}': The stock {label} has the dimensions "
                 f"{missing_dims.names}, which the total of the {label}s of the process does not "
                 "have. Use fewer dimensions for the stock, or a neighboring process with a "
                 "dimension splitter."
@@ -486,36 +511,65 @@ class DynamicStockModel(Stock):
     instead fix the mode of :py:meth:`compute`.
     """
 
-    lifetime_model: LifetimeModel | type
+    lifetime_model: LifetimeModel
     """Lifetime model, which contains the lifetime distribution function.
-    Can be input either as a LifetimeModel subclass, or as an instance of a
-    LifetimeModel subclass. For available subclasses, see `flodym.lifetime_models`.
+    Can be input either as a LifetimeModel subclass, which is then instantiated with the
+    dimensions of the stock, or as an instance of a LifetimeModel subclass.
+    For available subclasses, see `flodym.lifetime_models`.
     """
-    cohort_dim: Dimension | None = None
+    cohort_dim: Dimension = Field(default=None)
     """Cohort (age-cohort or production year) dimension. Must have the same items as the time
     dimension, but a different letter and name. Used for :py:attr:`dims_cohort`.
     If not given, it is created with a warning: its name is "cohort", its items are those of the
     time dimension, and its letter is the first of "c", "C", "d", "D", ... not in ``dims``.
     """
-    inflow_by_cohort: StockArray | None = None
+    inflow_by_cohort: StockArray = Field(default=None)
     """Annual inflow by year and age-cohort, which can also enter older cohorts.
     Only used by :py:meth:`compute_inflow_by_cohort_driven`. Other FlodymArrays are converted to a
-    StockArray.
+    StockArray. If not given or None, an unset StockArray of zeros is created.
     """
 
-    _outflow_by_cohort: np.ndarray | None = None
-    _stock_by_cohort: np.ndarray | None = None
+    _outflow_by_cohort: np.ndarray
+    _stock_by_cohort: np.ndarray
     _dims_cohort: DimensionSet | None = None
     _initial_stock_by_cohort: np.ndarray | None = None
     _initial_stock_year: int | None = None
     _initial_stock_included_in_inflow: bool = False
     _n_equations: ClassVar[int] = 2
 
-    @field_validator("inflow_by_cohort", mode="before")
+    @field_validator("inflow_by_cohort", mode="wrap")
     @classmethod
-    def _inflow_by_cohort_to_stock_array(cls, value: Any) -> Any:
-        """Convert a FlodymArray which is not a StockArray to a StockArray."""
-        return _to_stock_array(value)
+    def _inflow_by_cohort_to_stock_array(
+        cls, value: Any, handler: ValidatorFunctionWrapHandler
+    ) -> Any:
+        """Convert a FlodymArray which is not a StockArray to a StockArray.
+
+        None is kept and replaced in ``_init_inflow_by_cohort``, which needs the other fields.
+        """
+        if value is None:
+            return None
+        return handler(_to_stock_array(value))
+
+    @field_validator("cohort_dim", mode="wrap")
+    @classmethod
+    def _keep_none_cohort_dim(cls, value: Any, handler: ValidatorFunctionWrapHandler) -> Any:
+        """Keep None, which is replaced in ``_init_cohort_dim``, which needs the other fields."""
+        if value is None:
+            return None
+        return handler(value)
+
+    @field_validator("lifetime_model", mode="before")
+    @classmethod
+    def _instantiate_lifetime_model(cls, value: Any, info: ValidationInfo) -> Any:
+        """Instantiate the lifetime model with the stock dimensions if it is given as a class."""
+        if not isinstance(value, type):
+            return value
+        if not issubclass(value, LifetimeModel):
+            raise TypeError("lifetime_model must be a subclass of LifetimeModel.")
+        if "dims" not in info.data or "time_letter" not in info.data:
+            # validation of dims or time_letter failed, which pydantic reports
+            return value
+        return value(dims=info.data["dims"], time_letter=info.data["time_letter"])
 
     @model_validator(mode="after")
     def _init_cohort_dim(self) -> Self:
@@ -556,13 +610,9 @@ class DynamicStockModel(Stock):
         return self
 
     @model_validator(mode="after")
-    def _init_lifetime_model(self) -> Self:
-        """Instantiate the lifetime model if given as a class, and check its dimensions."""
-        if isinstance(self.lifetime_model, type):
-            if not issubclass(self.lifetime_model, LifetimeModel):
-                raise TypeError("lifetime_model must be a subclass of LifetimeModel.")
-            self.lifetime_model = self.lifetime_model(dims=self.dims, time_letter=self.time_letter)
-        elif self.lifetime_model.dims.letters != self.dims.letters:
+    def _check_lifetime_model_dims(self) -> Self:
+        """Check that the lifetime model has the same dimensions as the stock."""
+        if self.lifetime_model.dims.letters != self.dims.letters:
             raise ValueError("Lifetime model dimensions do not match stock dimensions.")
         return self
 
@@ -833,7 +883,7 @@ class DynamicStockModel(Stock):
         """
         self._check_array_known(self.stock, "Stock", "This will lead to a zero inflow and outflow.")
         if self._initial_stock_by_cohort is not None:
-            self._check_stock_at_initial_year()
+            self._check_stock_at_initial_year(self._initial_stock_by_cohort)
         self._compute_cohorts(self._newest_cohort_inflow_from_stock)
 
     @_wrap_compute
@@ -1032,7 +1082,7 @@ class DynamicStockModel(Stock):
                 f"Moreover, the inflow in that year will be overwritten to introduce all initial stock, to ensure mass balance."
             )
 
-    def _check_stock_at_initial_year(self) -> None:
+    def _check_stock_at_initial_year(self, initial_stock_by_cohort: np.ndarray) -> None:
         if np.any(self.stock.values[: self._initial_year_index, ...] > 0):
             raise ValueError(
                 f"Prescribed stock before the initial stock year {self._initial_stock_year} is non-zero."
@@ -1042,7 +1092,7 @@ class DynamicStockModel(Stock):
             logger.debug(
                 f"Prescribed stock in the initial stock year {self._initial_stock_year} is zero and will be fully replaced by the initial stock."
             )
-        elif not np.all(prescribed_stock == self._initial_stock_by_cohort.sum(axis=0)):
+        elif not np.all(prescribed_stock == initial_stock_by_cohort.sum(axis=0)):
             logger.warning(
                 f"Prescribed stock in the initial stock year {self._initial_stock_year} is non-zero and different from the total initial stock. "
                 f"This creates ambiguity: Initial stock and prescribed stock both contribute to the stock of that year. "

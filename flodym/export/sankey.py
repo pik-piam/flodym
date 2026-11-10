@@ -26,7 +26,7 @@ class PlotlySankeyPlotter(CustomNameDisplayer):
 
     mfa: MFASystem
     """MFA system to visualize."""
-    slice_dict: dict | None = {}
+    slice_dict: dict = {}
     """for selection of a subset of the data; all other dimensions are summed over"""
     node_color_dict: dict | None = {"default": "gray"}
     """color of the nodes (processes and stocks)"""

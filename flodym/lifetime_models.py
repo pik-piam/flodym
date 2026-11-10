@@ -119,7 +119,7 @@ class LifetimeModel(FlodymBaseModel):
     _cumulative_survival: np.ndarray | None = PrivateAttr(default=None)
     _outflow_pmf: np.ndarray | None = PrivateAttr(default=None)
     _conditional_survival: np.ndarray | None = PrivateAttr(default=None)
-    _t: _UnevenTimeDim | None = PrivateAttr(default=None)
+    _t: _UnevenTimeDim = PrivateAttr()
     _quad_points: list[float] | None = PrivateAttr(default=None)
     """Intra-time step quadrature points for numerical integration of the cumulative survival."""
     _quad_weights: list[float] | None = PrivateAttr(default=None)

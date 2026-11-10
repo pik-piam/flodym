@@ -482,6 +482,21 @@ class Process(FlodymBaseModel):
                 "dimension splitters are not linked. Call MFASystem.link_parameters() first."
             )
 
+    def _linked_dimension_splitter(self, direction: Direction) -> Optional["FlodymArray"]:
+        """Dimension splitter of the given direction, or None if the process has none.
+
+        Raises:
+            TypeError: If the splitter is not linked to a parameter yet, i.e. still a parameter
+                name.
+        """
+        splitter = self._dimension_splitters.get(direction)
+        if isinstance(splitter, str):
+            raise TypeError(
+                f"In process '{self.name}': The {direction} dimension splitter '{splitter}' is not "
+                "linked. Call MFASystem.link_parameters() first."
+            )
+        return splitter
+
     # ------------------------------------------------------------------------------------------
     # Computation
 
