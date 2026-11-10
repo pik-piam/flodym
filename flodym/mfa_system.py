@@ -140,8 +140,8 @@ class MFASystem(FlodymBaseModel):
         definition: MFADefinition,
         dimension_files: dict[str, str | PathLike[str]],
         parameter_files: dict[str, str | PathLike[str]],
-        allow_missing_parameter_values: bool = False,
-        allow_extra_parameter_values: bool = False,
+        allow_missing_parameter_values: bool | list[str] = False,
+        allow_extra_parameter_values: bool | list[str] = False,
         link: bool = True,
     ) -> Self:
         """Define and set up the MFA system and load all required data from CSV files.
@@ -156,8 +156,10 @@ class MFASystem(FlodymBaseModel):
             dimension_files: A dictionary mapping dimension names to CSV files.
             parameter_files: A dictionary mapping parameter names to CSV files.
             allow_missing_parameter_values: Whether to allow missing values in the parameter data
-                (missing rows or empty value cells).
+                (missing rows or empty value cells). If a list of parameter names is given, only
+                for these parameters.
             allow_extra_parameter_values: Whether to allow extra values in the parameter data.
+                If a list of parameter names is given, only for these parameters.
             link: Whether to link the parameters, see :py:meth:`from_data_reader`.
 
         Returns:
@@ -185,8 +187,8 @@ class MFASystem(FlodymBaseModel):
         parameter_files: dict[str, str | PathLike[str]],
         dimension_sheets: dict[str, str] | None = None,
         parameter_sheets: dict[str, str] | None = None,
-        allow_missing_parameter_values: bool = False,
-        allow_extra_parameter_values: bool = False,
+        allow_missing_parameter_values: bool | list[str] = False,
+        allow_extra_parameter_values: bool | list[str] = False,
         link: bool = True,
     ) -> Self:
         """Define and set up the MFA system and load all required data from Excel files.
@@ -207,8 +209,10 @@ class MFASystem(FlodymBaseModel):
             parameter_sheets: A dictionary mapping parameter names to sheet names in the Excel
                 files.
             allow_missing_parameter_values: Whether to allow missing values in the parameter data
-                (missing rows or empty value cells).
+                (missing rows or empty value cells). If a list of parameter names is given, only
+                for these parameters.
             allow_extra_parameter_values: Whether to allow extra values in the parameter data.
+                If a list of parameter names is given, only for these parameters.
             link: Whether to link the parameters, see :py:meth:`from_data_reader`.
 
         Returns:
