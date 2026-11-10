@@ -234,7 +234,12 @@ class ArrayPlotter(CustomNameDisplayer, ABC):
     def _label_subplot(self, i_subplot: int) -> None:
         if self._subplot_titles is not None:
             self._set_subplot_title(i_subplot, self._subplot_titles[i_subplot])
-        xlabel = self.xlabel if self.xlabel is not None else self.display_name(self.x_array.name)
+        if self.xlabel is not None:
+            xlabel = self.xlabel
+        elif self.x_array is not None:
+            xlabel = self.display_name(self.x_array.name)
+        else:
+            xlabel = self.display_name(self.intra_line_dim)
         if xlabel != "unnamed":
             self._set_xlabel(i_subplot, xlabel)
         ylabel = self.ylabel if self.ylabel is not None else self.display_name(self.array.name)
@@ -327,9 +332,16 @@ class PyplotArrayPlotter(ArrayPlotter):
     """
 
     @property
+    def _fig(self) -> plt.Figure:
+        """The figure, which exists if given as input or after :py:meth:`plot`."""
+        if self.fig is None:
+            raise ValueError("The figure does not exist yet. Call plot() first.")
+        return self.fig
+
+    @property
     def _ax(self) -> list[plt.Axes]:
         """Axes of the figure."""
-        return self.fig.axes
+        return self._fig.axes
 
     @property
     def _allowed_line_types(self) -> list[str]:
@@ -337,11 +349,11 @@ class PyplotArrayPlotter(ArrayPlotter):
 
     def save(self, save_path: str, **kwargs: Any) -> None:
         """Save the figure to ``save_path``, passing ``kwargs`` to ``Figure.savefig``."""
-        self.fig.savefig(save_path, **kwargs)
+        self._fig.savefig(save_path, **kwargs)
 
     def show(self) -> None:
         """Show the figure."""
-        self.fig.show()
+        self._fig.show()
 
     def _get_fig(self) -> plt.Figure:
         """Create a new pyplot figure with the required subplots."""
@@ -390,11 +402,11 @@ class PyplotArrayPlotter(ArrayPlotter):
     def _plot_legend(self) -> None:
         """Add a legend below the subplots, using the labels of the first subplot."""
         handles, labels = self._ax[0].get_legend_handles_labels()
-        self.fig.legend(handles, labels, loc="lower center")
+        self._fig.legend(handles, labels, loc="lower center")
 
     def _set_title(self) -> None:
         """Set the title of the figure."""
-        self.fig.suptitle(self.title)
+        self._fig.suptitle(self.title)
 
 
 class PlotlyArrayPlotter(ArrayPlotter):
@@ -410,16 +422,23 @@ class PlotlyArrayPlotter(ArrayPlotter):
     _n_previous_lines: int = PrivateAttr(default=0)
 
     @property
+    def _fig(self) -> go.Figure:
+        """The figure, which exists if given as input or after :py:meth:`plot`."""
+        if self.fig is None:
+            raise ValueError("The figure does not exist yet. Call plot() first.")
+        return self.fig
+
+    @property
     def _allowed_line_types(self) -> list[str]:
         return ["solid", "dash", "dot", "dashdot"]
 
     def save(self, save_path: str, **kwargs: Any) -> None:
         """Save the figure to ``save_path``, passing ``kwargs`` to ``Figure.write_image``."""
-        self.fig.write_image(save_path, **kwargs)
+        self._fig.write_image(save_path, **kwargs)
 
     def show(self) -> None:
         """Show the figure."""
-        self.fig.show()
+        self._fig.show()
 
     def _get_fig(self) -> go.Figure:
         """Create a new plotly figure with the required subplots."""
@@ -432,10 +451,10 @@ class PlotlyArrayPlotter(ArrayPlotter):
         n_current_lines = (
             len(self.array.dims[self.linecolor_dim].items) if self.linecolor_dim is not None else 1
         )
-        self.fig._n_lines_flodym = self._n_previous_lines + n_current_lines
+        self._fig._n_lines_flodym = self._n_previous_lines + n_current_lines
 
     def _get_nx_ny(self) -> tuple[int, int]:
-        grid_ref = self.fig._validate_get_grid_ref()
+        grid_ref = self._fig._validate_get_grid_ref()
         nrows = len(grid_ref)
         ncols = len(grid_ref[0])
         return ncols, nrows
@@ -450,11 +469,11 @@ class PlotlyArrayPlotter(ArrayPlotter):
 
     def _set_xlabel(self, i_subplot: int, label: str) -> None:
         """Set the x-axis label of the subplot with the given index."""
-        self.fig.update_xaxes(title_text=label, row=self._row(i_subplot), col=self._col(i_subplot))
+        self._fig.update_xaxes(title_text=label, row=self._row(i_subplot), col=self._col(i_subplot))
 
     def _set_ylabel(self, i_subplot: int, label: str) -> None:
         """Set the y-axis label of the subplot with the given index."""
-        self.fig.update_yaxes(title_text=label, row=self._row(i_subplot), col=self._col(i_subplot))
+        self._fig.update_yaxes(title_text=label, row=self._row(i_subplot), col=self._col(i_subplot))
 
     def _set_subplot_title(self, i_subplot: int, title: str) -> None:
         """Do nothing, as subplot titles are already set when creating the figure."""
@@ -505,7 +524,7 @@ class PlotlyArrayPlotter(ArrayPlotter):
             )
         else:
             raise ValueError("chart_type must be either 'line' or 'scatter'.")
-        self.fig.add_trace(
+        self._fig.add_trace(
             trace=trace,
             row=self._row(i_subplot),
             col=self._col(i_subplot),
@@ -516,4 +535,4 @@ class PlotlyArrayPlotter(ArrayPlotter):
 
     def _set_title(self) -> None:
         """Set the title of the figure."""
-        self.fig.update_layout(title={"text": self.title})
+        self._fig.update_layout(title={"text": self.title})

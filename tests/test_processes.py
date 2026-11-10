@@ -54,7 +54,7 @@ def test_mfa_system_links_processes():
     linked_flows = [f for p in mfa.processes.values() for f in p.inflows.values()]
     assert len(linked_flows) == len(mfa.flows)
     for stock in mfa.stocks.values():
-        assert stock.process.stock is stock
+        assert stock.process is not None and stock.process.stock is stock
 
 
 def test_new_flow_does_not_replace_link():

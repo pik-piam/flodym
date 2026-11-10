@@ -255,7 +255,7 @@ def test_data_reader_is_abstract():
     from flodym import DataReader
 
     with pytest.raises(TypeError):
-        DataReader()  # ty: ignore[call-non-callable]
+        DataReader()  # ty: ignore[abstract-class-instantiation]
 
 
 def test_parameter_filenames_is_deprecated():

@@ -497,7 +497,7 @@ class ProcessComputation:
         have. Otherwise, the total is returned unchanged.
         """
         direction = SPLITTER_DIRECTIONS[side]
-        splitter = self.process._dimension_splitters.get(direction)
+        splitter = self.process._linked_dimension_splitter(direction)
         unknown_flows = self.sides[side].unknown.values()
         missing_dims = union_of_dims(unknown_flows) - total.dims
         if not missing_dims:
