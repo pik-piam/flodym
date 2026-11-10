@@ -156,6 +156,34 @@ def test_allow_extra_data():
         assert np.array_equal(parameters["e3"].values, [1, 2, 3])
 
 
+def test_allow_values_per_parameter():
+    dims = CSVDimensionReader(CSV_DIMENSION_FILES).read_dimensions(DIMENSION_DEFINITIONS)
+    missing_definition = ParameterDefinition(name="e1", dim_letters=["t", "a"])
+    extra_definition = ParameterDefinition(name="e3", dim_letters=["t"])
+
+    csv_reader = CSVParameterReader(
+        WRONG_CSV_PARAMETER_FILES, allow_missing_values=["e1"], allow_extra_values=["e3"]
+    )
+    excel_reader = ExcelParameterReader(
+        WRONG_EXCEL_PARAMETER_FILES,
+        WRONG_SHEET_NAMES,
+        allow_missing_values=["e1"],
+        allow_extra_values=["e3"],
+    )
+    swapped_reader = CSVParameterReader(
+        WRONG_CSV_PARAMETER_FILES, allow_missing_values=["e3"], allow_extra_values=["e1"]
+    )
+
+    for reader in [csv_reader, excel_reader]:
+        parameters = reader.read_parameters([missing_definition, extra_definition], dims)
+        assert np.array_equal(parameters["e1"].values, [[4, 1], [5, 0], [6, 3]])
+        assert np.array_equal(parameters["e3"].values, [1, 2, 3])
+
+    for prm_def in [missing_definition, extra_definition]:
+        with pytest.raises(ValueError):
+            swapped_reader.read_parameter_values(prm_def.name, dims.get_subset(prm_def.dim_letters))
+
+
 def test_build_mfa_system():
 
     definition = MFADefinition(

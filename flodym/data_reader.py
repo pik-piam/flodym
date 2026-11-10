@@ -12,6 +12,22 @@ from .flodym_arrays import Parameter
 from .mfa_definition import DimensionDefinition, ParameterDefinition, _dimension_dependency_order
 
 
+def _is_allowed_for(allowed: bool | list[str], parameter_name: str) -> bool:
+    """Resolve an ``allow_*`` setting of a parameter reader for one parameter.
+
+    Args:
+        allowed: Either a flag applying to all parameters, or the names of the parameters for
+            which the setting is enabled.
+        parameter_name: Name of the parameter that is read.
+
+    Returns:
+        Whether the setting is enabled for the parameter.
+    """
+    if isinstance(allowed, bool):
+        return allowed
+    return parameter_name in allowed
+
+
 class DataReader(ABC):
     """Template for creating a data reader.
 
@@ -197,10 +213,12 @@ class CSVParameterReader(ParameterReader):
             Format: {parameter_name: file_path, ...}
         allow_missing_values: Whether to allow missing values in the DataFrame.
             This includes both missing rows, and NaN values in the value column.
-            Defaults to False.
+            If a list of parameter names is given, missing values are only allowed for these
+            parameters. Defaults to False.
         allow_extra_values: Whether to allow extra rows in the DataFrame,
             i.e. rows with index items not present in the FlodymArray dimension items.
-            Defaults to False.
+            If a list of parameter names is given, extra rows are only allowed for these
+            parameters. Defaults to False.
         read_csv_kwargs: Additional keyword arguments passed to pandas.read_csv.
             Not encouraged to use, since it may not lead to the intended DataFrame format.
             Sticking to recommended csv file format is preferred.
@@ -209,8 +227,8 @@ class CSVParameterReader(ParameterReader):
     def __init__(
         self,
         parameter_files: dict[str, str | PathLike[str]],
-        allow_missing_values: bool = False,
-        allow_extra_values: bool = False,
+        allow_missing_values: bool | list[str] = False,
+        allow_extra_values: bool | list[str] = False,
         **read_csv_kwargs: Any,
     ) -> None:
         self.parameter_files = parameter_files
@@ -253,8 +271,8 @@ class CSVParameterReader(ParameterReader):
             dims=dims,
             name=parameter_name,
             df=data,
-            allow_missing_values=self.allow_missing_values,
-            allow_extra_values=self.allow_extra_values,
+            allow_missing_values=_is_allowed_for(self.allow_missing_values, parameter_name),
+            allow_extra_values=_is_allowed_for(self.allow_extra_values, parameter_name),
         )
 
 
@@ -274,10 +292,12 @@ class ExcelParameterReader(ParameterReader):
             Defaults to None.
         allow_missing_values: Whether to allow missing values in the DataFrame.
             This includes both missing rows, and NaN values in the value column.
-            Defaults to False.
+            If a list of parameter names is given, missing values are only allowed for these
+            parameters. Defaults to False.
         allow_extra_values: Whether to allow extra rows in the DataFrame,
             i.e. rows with index items not present in the FlodymArray dimension items.
-            Defaults to False.
+            If a list of parameter names is given, extra rows are only allowed for these
+            parameters. Defaults to False.
         read_excel_kwargs: Additional keyword arguments passed to pandas.read_excel.
             Not encouraged to use, since it may not lead to the intended DataFrame format.
             Sticking to recommended excel file format is preferred
@@ -287,8 +307,8 @@ class ExcelParameterReader(ParameterReader):
         self,
         parameter_files: dict[str, str | PathLike[str]],
         parameter_sheets: dict[str, str] | None = None,
-        allow_missing_values: bool = False,
-        allow_extra_values: bool = False,
+        allow_missing_values: bool | list[str] = False,
+        allow_extra_values: bool | list[str] = False,
         **read_excel_kwargs: Any,
     ) -> None:
         self.parameter_files = parameter_files
@@ -309,8 +329,8 @@ class ExcelParameterReader(ParameterReader):
             dims=dims,
             name=parameter_name,
             df=data,
-            allow_missing_values=self.allow_missing_values,
-            allow_extra_values=self.allow_extra_values,
+            allow_missing_values=_is_allowed_for(self.allow_missing_values, parameter_name),
+            allow_extra_values=_is_allowed_for(self.allow_extra_values, parameter_name),
         )
 
 
