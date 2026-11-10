@@ -48,7 +48,7 @@ docs = [
 ]
 
 [dependency-groups]
-dev = ["flodym[examples,tests,docs]", "ruff"]
+dev = ["flodym[examples,tests,docs]", "ruff", "ty==0.0.100"]
 
 [build-system]
 requires = ["uv_build>=0.11.28,<0.12"]
@@ -103,11 +103,11 @@ max-doc-length = 100
 
 [tool.ty.rules]
 invalid-argument-type = "ignore"
-unresolved-attribute = "ignore"
+missing-attribute = "ignore"
 unsupported-operator = "ignore"
 not-subscriptable = "ignore"
 invalid-assignment = "ignore"
-invalid-method-override = "ignore"
+incompatible-method-override = "ignore"
 invalid-return-type = "ignore"
 pydantic-discarded-extra-argument = "ignore"
 invalid-parameter-default = "ignore"

@@ -1050,7 +1050,7 @@ class FlodymArray(FlodymBaseModel):
             return 0 if self._degree == 0 else None
         if self._degree is None or not isinstance(power, Real):
             return None
-        product = self._degree * float(power)
+        product = float(self._degree * power)
         return int(product) if product.is_integer() else None
 
     def __add__(self, other: Union["FlodymArray", SupportsFloat]) -> "FlodymArray":
