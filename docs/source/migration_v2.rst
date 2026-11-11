@@ -42,10 +42,20 @@ objects instead.
 - **Subclasses of** ``DataReader`` must implement both ``read_dimension()`` and
   ``read_parameter_values()``, since ``DataReader`` is now an abstract base class. Otherwise,
   creating an instance raises a ``TypeError``.
-- **Unknown arguments** of flodym classes raise a ``ValidationError``. In v1, most classes
+- **Unknown arguments** of flodym classes raise a ``FlodymValidationError``. In v1, most classes
   ignored them, so that a misspelled argument with a default value went unnoticed, e.g.
   ``FlowDefinition(..., name_overide="x")``. This also applies to definitions loaded from
   dictionaries or configuration files.
+- **Invalid arguments** of flodym classes, and invalid values assigned to options of
+  ``flodym.config`` or to lifetime models, raise ``flodym.FlodymValidationError`` instead of
+  ``pydantic.ValidationError``. Its message lists each problem on one line and suggests the
+  closest valid name for a misspelled argument. ``FlodymValidationError`` is a subclass of
+  ``ValueError``.
+
+  *Action:* Replace ``except pydantic.ValidationError`` by
+  ``except flodym.FlodymValidationError`` or ``except ValueError``. The original pydantic error
+  is available as the attribute ``pydantic_error``, and ``errors()`` returns the details of each
+  problem as ``pydantic.ValidationError.errors()`` does.
 - **Attributes of** ``MFASystem`` **subclasses** must be declared as fields, e.g.
   ``cfg: MyConfig`` in the class body. In v1, ``MFASystem`` accepted undeclared keyword
   arguments and attributes. The same applies to the array and process graph plotters.

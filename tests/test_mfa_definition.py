@@ -1,12 +1,16 @@
 import pytest
-from pydantic_core import ValidationError
 
-from flodym import DimensionDefinition, MFADefinition, SimpleFlowDrivenStock
+from flodym import (
+    DimensionDefinition,
+    FlodymValidationError,
+    MFADefinition,
+    SimpleFlowDrivenStock,
+)
 
 
 def test_validate_dimension_definition():
     # example that raises a validation error
-    with pytest.raises(ValidationError) as error_msg:
+    with pytest.raises(FlodymValidationError) as error_msg:
         DimensionDefinition(name="something", letter="too_long", dtype=str)
     assert "letter" in str(error_msg.value)
 
@@ -16,7 +20,7 @@ def test_validate_dimension_definition():
 
 def test_validate_mfa_definition():
     # example with no dimensions defined
-    with pytest.raises(ValidationError) as error_msg:
+    with pytest.raises(FlodymValidationError) as error_msg:
         MFADefinition(
             dimensions=[],
             processes=[],
@@ -34,7 +38,7 @@ def test_validate_mfa_definition():
     ]
 
     # example with mismatching dimensions between attributes
-    with pytest.raises(ValidationError) as error_msg:
+    with pytest.raises(FlodymValidationError) as error_msg:
         MFADefinition(
             dimensions=dimensions,
             processes=[],

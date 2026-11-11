@@ -28,3 +28,13 @@ The configuration controls
 .. autoclass:: flodym::ErrorBehavior
    :members:
    :undoc-members:
+
+Validation errors
+------------------------------
+
+Invalid arguments of flodym classes, e.g. a misspelled argument name or a value of the wrong
+type, raise a :py:class:`flodym.FlodymValidationError`. The same applies to invalid values
+assigned to configuration options.
+
+.. autoexception:: flodym.FlodymValidationError
+   :members:
