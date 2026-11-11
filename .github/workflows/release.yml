@@ -2,7 +2,6 @@ on:
   push:
     branches:
       - main
-      - v2
 name: Release
 permissions:
   contents: write
@@ -20,7 +19,6 @@ jobs:
         id: release
         with:
           token: ${{ secrets.RELEASE_PR_TOKEN }}
-          target-branch: ${{ github.ref_name }}
 
   publish-to-pypi:
     name: Publish to PyPI
