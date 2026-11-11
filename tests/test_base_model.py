@@ -7,7 +7,7 @@ import pytest
 
 import flodym
 from flodym import Dimension, FlowDefinition, StockDefinition
-from flodym._base_model import FlodymBaseModel, _describe_value
+from flodym._base_model import FlodymBaseModel, ValidatedAssignmentModel, _describe_value
 from flodym.example_objects import ExampleMFA, get_example_array, get_example_mfa
 from flodym.export.array_plotter import PlotlyArrayPlotter
 from flodym.stocks import SimpleFlowDrivenStock
@@ -111,14 +111,14 @@ def test_unknown_argument_message_suggests_closest_argument():
     assert "Valid arguments: dims, values, name, extensive." in str(error.value)
 
 
-def test_unknown_argument_message_includes_aliases():
+def test_unknown_argument_message_suggests_field_name_for_aliased_field():
     with pytest.raises(flodym.FlodymValidationError) as error:
         FlowDefinition(
             from_proces="sysenv",  # ty: ignore[unknown-argument]
             to_process_name="process",
             dim_letters=("t",),
         )
-    assert "Did you mean 'from_process'?" in str(error.value)
+    assert "Did you mean 'from_process_name'?" in str(error.value)
 
 
 def test_missing_argument_message():
@@ -155,15 +155,19 @@ def test_union_errors_other_than_type_mismatch_are_kept():
         "- mean: must be a FlodymArray, a numpy array or a number (type SupportsFloat). "
         "Given: dict with keys 'dims', 'values'."
     )
-    assert lines[2].startswith("  - as FlodymArray: Values passed to FlodymArray must have")
-    assert lines[3].startswith("    ")
+    assert lines[2] == "  - Invalid arguments for FlodymArray:"
+    assert lines[3].startswith("    - Values passed to FlodymArray must have the same shape")
+    assert lines[4].startswith("      ")
     with pytest.raises(flodym.FlodymValidationError) as error:
         flodym.FixedLifetime(dims=dims, mean={"values": np.ones(3)})
     lines = str(error.value).splitlines()
-    assert lines[2] == "  - as FlodymArray: Missing required argument 'dims'."
+    assert lines[2:] == [
+        "  - Invalid arguments for FlodymArray:",
+        "    - Missing required argument 'dims'.",
+    ]
 
 
-def test_nested_errors_refer_to_nested_model():
+def test_nested_models_format_their_own_errors():
     with pytest.raises(flodym.FlodymValidationError) as error:
         flodym.MFADefinition(
             dimensions=[{"name": "time", "letter": "t"}],
@@ -179,18 +183,38 @@ def test_nested_errors_refer_to_nested_model():
             stocks=[],
             parameters=[],
         )
-    message = str(error.value)
-    assert "- dimensions[0] (DimensionDefinition): Missing required argument 'dtype'." in message
-    assert (
-        "- 'name_overide' is not a valid argument of flows[0] (FlowDefinition). "
-        "Did you mean 'name_override'?"
-    ) in message
-    assert message.count("Invalid arguments for") == 1
+    assert str(error.value).splitlines() == [
+        "Invalid arguments for MFADefinition:",
+        "- dimensions[0]: Invalid arguments for DimensionDefinition:",
+        "  - Missing required argument 'dtype'.",
+        "- flows[0]: Invalid arguments for FlowDefinition:",
+        "  - 'name_overide' is not a valid argument. Did you mean 'name_override'?",
+        (
+            "    Valid arguments: dim_letters, from_process_name, to_process_name, name_override, "
+            "prescribed."
+        ),
+    ]
+
+
+def test_error_of_other_model_created_in_validator_keeps_outer_model():
+    class Outer(FlodymBaseModel):
+        @pydantic.model_validator(mode="after")
+        def _create_dimension(self):
+            Dimension(name="t", letter="t", items=[1])
+            return self
+
+    with pytest.raises(flodym.FlodymValidationError) as error:
+        Outer()
+    lines = str(error.value).splitlines()
+    assert lines[:2] == ["Invalid arguments for Outer:", "- Invalid arguments for Dimension:"]
+    assert isinstance(error.value.__cause__, flodym.FlodymValidationError)
 
 
 def test_model_validate_raises_readable_error():
-    with pytest.raises(flodym.FlodymValidationError, match="Invalid arguments for Dimension"):
+    with pytest.raises(flodym.FlodymValidationError) as error:
         Dimension.model_validate({"name": "t", "letter": "t", "items": [1]})
+    assert str(error.value).startswith("Invalid arguments for Dimension:\n- name: ")
+    assert str(error.value).count("Invalid arguments for") == 1
 
 
 def test_assignment_errors_are_readable():
@@ -212,19 +236,10 @@ def test_config_override_raises_readable_error():
     assert flodym.config.error_behaviors.unset_array_used != "loud"
 
 
-def test_pydantic_does_not_call_init_for_nested_models():
-    # pydantic calls a custom __init__ also to validate nested models given as dictionaries,
-    # which would nest the error messages; see FlodymBaseModel.__init__
-    assert not FlodymBaseModel.__pydantic_custom_init__
-    assert not flodym.FlodymArray.__pydantic_custom_init__
-
-
 @pytest.mark.parametrize("model", _flodym_pydantic_models(), ids=lambda model: model.__qualname__)
 def test_assignment_validation_uses_readable_errors(model: type[pydantic.BaseModel]):
-    if model.model_config.get("validate_assignment"):
-        assert getattr(model.__setattr__, "_readable_errors", False)
-    else:
-        assert not getattr(model.__setattr__, "_readable_errors", False)
+    validates_assignment = bool(model.model_config.get("validate_assignment"))
+    assert validates_assignment == issubclass(model, ValidatedAssignmentModel)
 
 
 def test_pydantic_message_is_used_if_formatting_fails(monkeypatch: pytest.MonkeyPatch):
@@ -297,10 +312,9 @@ def test_exception_type_of_failed_check_is_named_unless_value_error():
     [
         (np.ones((2, 3)), "numpy.ndarray with shape (2, 3) and dtype float64"),
         (
-            flodym.FlodymArray(dims=_time_dims(), name="demand"),
-            "flodym.FlodymArray 'demand' with dims (t) and shape (3,)",
+            flodym.FlodymArray(dims=_time_dims()),
+            "flodym.flodym_arrays.FlodymArray with shape (3,)",
         ),
-        (_time_dims(), "flodym.DimensionSet with dims (t)"),
         ({"a": 1, "b": 2}, "dict with keys 'a', 'b'"),
         ({}, "empty dict"),
         ("a", "'a' (type str)"),
@@ -316,4 +330,7 @@ def test_describe_value(value, description):
 
 def test_describe_value_of_other_array_like_gives_shape_in_one_line():
     pandas = pytest.importorskip("pandas")
-    assert _describe_value(pandas.DataFrame({"a": [1, 2]})) == "pandas.DataFrame with shape (2, 1)"
+    description = _describe_value(pandas.DataFrame({"a": [1, 2]}))
+    # the module of DataFrame is "pandas" in newer pandas versions, else "pandas.core.frame"
+    assert description.startswith("pandas.")
+    assert description.endswith("DataFrame with shape (2, 1)")
