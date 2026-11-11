@@ -1,12 +1,11 @@
 """The classes and methods defined here are building blocks for creating MFA systems.
 
-This includes the base `FlodymArray` class and its helper the `_SubArrayHandler`,
-as well as applications of the `FlodymArray` for specific model components.
+This includes the base `FlodymArray` class, as well as applications of the `FlodymArray` for
+specific model components.
 """
 
-from collections import defaultdict
-from collections.abc import Callable, Hashable, Iterable
-from copy import copy, deepcopy
+from collections.abc import Callable, Hashable
+from copy import copy
 from numbers import Number, Real
 from typing import Any, Literal, Optional, SupportsFloat, TypeVar, Union, overload
 
@@ -22,29 +21,20 @@ from pydantic import (
 )
 from typing_extensions import Self
 
+from ._aggregation_weights import _group_sums, _normalized_weights
 from ._base_model import FlodymBaseModel
 from ._config import config, handle_error
 from ._df_to_flodym_array import DataFrameToFlodymDataConverter
+from ._sub_array_handler import _SubArrayHandler
 from .dimensions import Dimension, DimensionSet
 from .processes import Process
 
 T = TypeVar("T", bound="FlodymArray")
 
 
-def _is_iterable(arg: object) -> bool:
-    """Whether ``arg`` is an iterable of items, i.e. not a string or a :py:class:`Dimension`."""
-    return isinstance(arg, Iterable) and not isinstance(arg, (str, Dimension))
-
-
 def _has_sub_dims(dims: DimensionSet) -> bool:
     """Whether any of the dimensions has a parent, i.e. related dimensions may need handling."""
     return any(dim.parent is not None for dim in dims)
-
-
-def _group_sums(values: np.ndarray, indices: np.ndarray, n_groups: int, axis: int) -> np.ndarray:
-    """Sum values along an axis within groups, given the group index of each entry on the axis."""
-    groups = [np.flatnonzero(indices == group) for group in range(n_groups)]
-    return np.stack([values.take(group, axis=axis).sum(axis=axis) for group in groups], axis=axis)
 
 
 class FlodymArray(FlodymBaseModel):
@@ -1658,245 +1648,6 @@ def _array_label(array: FlodymArray, degree: int | None) -> str:
     return f"{array.__class__.__name__} '{array.name}' ({_degree_description(degree)})"
 
 
-class _SubArrayHandler:
-    """Handler for subsets of the 'values' numpy array of a FlodymArray object.
-
-    The subsets are created by slicing along one or several dimensions. This class specifies the
-    behavior of `foo[definition] = bar` and `foo = bar[definition]`, where `foo` and `bar` are
-    FlodymArray objects. This is done via the `__getitem__` and `__setitem__` methods of the
-    FlodymArray class.
-
-    It returns either
-
-    - a new FlodymArray object (via the `to_flodym_array()` function), or
-    - a pointer to a subset of the values array of the parent FlodymArray object, via the
-      `values_pointer` attribute.
-
-    The allowed syntaxes for the definition of the subset are described in the docstring of
-    :py:class:`FlodymArray`. Several comma-separated item names appear in `__getitem__` and
-    `__setitem__` as a tuple.
-
-    Note that does not inherit from FlodymArray, so it is not a FlodymArray object itself.
-    However, one can use it to create a FlodymArray object with the `to_flodym_array()` method.
-
-    A split item of the parent of a dimension created by :py:meth:`flodym.Dimension.split` is
-    resolved to its sub-items, and the dimension is replaced by the one the item is split into.
-    Other items of ancestors are resolved to the items belonging to them only if
-    ``allow_ancestor_items`` is True, i.e. when setting values, as no dimension is created
-    implicitly for the result of slicing.
-    """
-
-    def __init__(
-        self,
-        flodym_array: FlodymArray,
-        definition: dict[str, Any] | Hashable,
-        allow_ancestor_items: bool = False,
-    ) -> None:
-        self.flodym_array = flodym_array
-        self._get_def_dict(definition)
-        self._sub_dims_out: dict[str, Dimension] = {}
-        self._resolve_ancestor_items(allow_ancestor_items)
-        self.invalid_flodym_array = any(
-            _is_iterable(v) for k, v in self.def_dict.items() if k not in self._sub_dims_out
-        )
-        self._init_dims_out()
-        self._init_ids()
-
-    @property
-    def ids(self) -> tuple[slice | int | list[int] | np.ndarray, ...]:
-        """Indices used for slicing the values array."""
-        return tuple(self._ids_all_dims)
-
-    @property
-    def values_pointer(self) -> np.ndarray:
-        """Pointer to the subset of the values array of the parent FlodymArray object."""
-        return self.flodym_array.values[self.ids]
-
-    @property
-    def dim_letters(self) -> tuple[str, ...]:
-        """Updated dimension letters.
-
-        Sliced dimensions with only one item along that direction are removed.
-        """
-        return self.dims_out.letters
-
-    def to_flodym_array(self) -> "FlodymArray":
-        """Return a FlodymArray object that is a slice of the original FlodymArray object.
-
-        Attention: This creates a new FlodymArray object, which is not linked to the original one.
-        """
-        if self.invalid_flodym_array:
-            raise ValueError(
-                "Cannot convert to FlodymArray if there are dimension slices with several items."
-                "Use a new dimension object with the subset as values instead"
-            )
-
-        return FlodymArray(
-            dims=self.dims_out, values=self.values_pointer, name=self.flodym_array.name
-        )._with_degree(self.flodym_array._degree)
-
-    def _get_def_dict(self, definition: dict[str, Any] | Hashable) -> None:
-        self.def_dict: dict[str, Any]
-        if isinstance(definition, type(Ellipsis)):
-            self.def_dict = {}
-        elif isinstance(definition, dict):
-            self.def_dict = definition
-        elif isinstance(definition, tuple):
-            self.def_dict = self._to_dict_tuple(definition)
-        else:
-            self.def_dict = {self._get_key_single_item(definition): definition}
-
-    def _get_key_single_item(self, item: Hashable) -> str:
-        if isinstance(item, slice):
-            raise TypeError(
-                "Numpy indexing of FlodymArrays is not supported. Details are given in the FlodymArray class "
-                "docstring."
-            )
-        key = None
-        for d in self.flodym_array.dims:
-            if item in d.items or d._items_below(item) is not None:
-                if key is not None:
-                    raise ValueError(
-                        f"Ambiguous slicing: Item '{item}' is found in multiple dimensions. Please specify the "
-                        "dimension by using a slicing dict instead."
-                    )
-                key = d.letter
-        if key is None:
-            raise ValueError(f"Slicing item '{item}' not found in any dimension.")
-        return key
-
-    def _resolve_ancestor_items(self, allowed: bool) -> None:
-        """Replace items of ancestors in the slicing definition by the items belonging to them.
-
-        A single split item of the parent is replaced by its sub-items, and the dimension it is
-        split into is stored to replace the sliced dimension.
-
-        Raises:
-            ValueError: If an ancestor item is found, but ancestor items are not allowed.
-        """
-        self.def_dict = dict(self.def_dict)
-        for letter, value in list(self.def_dict.items()):
-            if isinstance(value, Dimension):
-                continue
-            dim = self.flodym_array.dims[letter]
-            if not _is_iterable(value) and value not in dim.items:
-                sub_dim = (dim.sub_dims or {}).get(value)
-                if sub_dim is not None and sub_dim.letter not in self.flodym_array.dims:
-                    self._sub_dims_out[letter] = sub_dim
-                    self.def_dict[letter] = dim._items_below(value)
-                    continue
-            values = value if _is_iterable(value) else [value]
-            resolved: list = []
-            found_ancestor_item = False
-            for item in values:
-                items_below = None if item in dim.items else dim._items_below(item)
-                if items_below is None:
-                    resolved.append(item)
-                    continue
-                if not allowed:
-                    raise ValueError(
-                        f"'{item}' is an item of an ancestor of dimension '{dim.name}'. Except for "
-                        "single split items of the parent, such items can only be used to set "
-                        "values. Use aggregate_to() or the items of the dimension instead."
-                    )
-                found_ancestor_item = True
-                resolved.extend(items_below)
-            if found_ancestor_item:
-                self.def_dict[letter] = resolved
-
-    def _to_dict_tuple(self, slice_def: tuple[Hashable, ...]) -> dict[str, Any]:
-        dict_out: defaultdict[str, list[Hashable]] = defaultdict(list)
-        for item in slice_def:
-            key = self._get_key_single_item(item)
-            dict_out[key].append(item)
-        # if there is only one item along a dimension, convert list to single item
-        return {k: v if len(v) > 1 else v[0] for k, v in dict_out.items()}
-
-    def _init_dims_out(self) -> None:
-        self.dims_out = deepcopy(self.flodym_array.dims)
-        for letter, value in self.def_dict.items():
-            if isinstance(value, Dimension):
-                self.dims_out.replace(letter, value, inplace=True)
-            elif not _is_iterable(value):
-                self.dims_out.drop(letter, inplace=True)
-        for letter, sub_dim in self._sub_dims_out.items():
-            self.dims_out.replace(letter, sub_dim, inplace=True)
-
-    def _init_ids(self) -> None:
-        """Initialize the internal list of indices used for slicing the values array.
-
-        - Init the internal list of index slices to slice(None) (i.e. no slicing, keep all items
-          along that dimension)
-        - For each dimension that is sliced, get the corresponding item index (or list of several
-          indexes along one dimension) and replace the slice(None) with it.
-        - convert lists of indexes to meshgrid arrays, if there are several dimensions with lists
-        """
-        self._ids_all_dims: list[slice | int | list[int] | np.ndarray] = [
-            slice(None) for _ in self.flodym_array.dims.letters
-        ]
-        for dim_letter, item_or_items in self.def_dict.items():
-            self._set_ids_single_dim(dim_letter, item_or_items)
-        self._convert_lists_to_meshgrid()
-
-    def _convert_lists_to_meshgrid(self) -> None:
-        """Convert index lists along several dimensions to broadcastable numpy arrays.
-
-        If there are several dimensions with lists as indexes, numpy will try to broadcast the
-        lists together.
-        To avoid this, the lists are converted to numpy arrays which can be broadcast together:
-        Size-one dimensions are prepended and appended to their shape for each of the other
-        dimensions of the resulting sub-array. Example:
-
-        original array shape: (3,4,5,6)
-        _id_list: [[0,2], slice(None), [1,3,4], 2]
-        resulting sub-array shape: (2,4,3)
-
-        conversion:
-        - [0,2] -> np.array with shape (2,1,1) and entries 0 and 2
-        - slice(None) -> np.array with shape (1,4,1)
-        - [1,3,4] -> np.array with shape (1,1,3) and entries 1, 3, 4
-        - 2 -> no conversion
-        """
-        requires_conversion = sum(isinstance(ids, list) for ids in self._ids_all_dims) > 1
-        if not requires_conversion:
-            return
-        # convert slices to lists of all ids to include them in the meshgrid
-        for i_axis, ids in enumerate(self._ids_all_dims):
-            if isinstance(ids, slice):
-                dim_len = self.flodym_array.dims[i_axis].len
-                self._ids_all_dims[i_axis] = list(range(dim_len))
-        axes_with_id_list = [i for i, ids in enumerate(self._ids_all_dims) if isinstance(ids, list)]
-        id_lists = [ids for ids in self._ids_all_dims if isinstance(ids, list)]
-        mesh_of_ids = np.ix_(*id_lists)
-        for i_axis, ids_mesh in zip(axes_with_id_list, mesh_of_ids):
-            self._ids_all_dims[i_axis] = ids_mesh
-
-    def _set_ids_single_dim(self, dim_letter: str, item_or_items: Any) -> None:
-        """Set the item IDs along dimension 'dim_letter' for one or several item names.
-
-        Given either a single item name or a list of item names, the corresponding item IDs along
-        dimension 'dim_letter' are stored in the internal list of indices.
-        """
-        items_ids: int | list[int]
-        if isinstance(item_or_items, Dimension):
-            if item_or_items.is_subset(self.flodym_array.dims[dim_letter]):
-                items_ids = [
-                    self._get_single_item_id(dim_letter, item) for item in item_or_items.items
-                ]
-            else:
-                raise ValueError(
-                    "Dimension item given in array index must be a subset of the dimension it replaces"
-                )
-        elif _is_iterable(item_or_items):
-            items_ids = [self._get_single_item_id(dim_letter, item) for item in item_or_items]
-        else:
-            items_ids = self._get_single_item_id(dim_letter, item_or_items)  # single item
-        self._ids_all_dims[self.flodym_array.dims.index(dim_letter)] = items_ids
-
-    def _get_single_item_id(self, dim_letter: str, item_name: Hashable) -> int:
-        return self.flodym_array.dims[dim_letter].items.index(item_name)
-
-
 class _PrescribableArray(FlodymArray):
     """Base class of arrays whose values can be prescribed by another array.
 
@@ -2046,92 +1797,3 @@ class Parameter(FlodymArray):
     :py:meth:`flodym.MFASystem.link_parameters` for parameters used as shares, dimension
     splitters or prescribed arrays.
     """
-
-
-def _normalized_weights(
-    weights: FlodymArray | dict[Any, FlodymArray], fine_dim: Dimension, coarse_dim: Dimension
-) -> FlodymArray:
-    """Normalize weights over fine_dim such that they sum to one within each coarse_dim item.
-
-    If the weights within a coarse item sum to zero, all its sub-items get the same weight.
-
-    Args:
-        weights: Array containing fine_dim, or dictionary of arrays, see
-            :py:meth:`FlodymArray.aggregate_to`.
-        fine_dim: The finer dimension.
-        coarse_dim: The ancestor of fine_dim within whose items the weights are normalized.
-
-    Returns:
-        The normalized weights, with the dimensions of the given weights.
-
-    Raises:
-        ValueError: If the weights do not contain fine_dim.
-    """
-    if isinstance(weights, dict):
-        weights = _weights_from_dict(weights, fine_dim)
-    if fine_dim.letter not in weights.dims:
-        raise ValueError(
-            f"Weights '{weights.name}' must have the dimension '{fine_dim.name}' to be weighted."
-        )
-    weights._check_is_set("weighting")
-    axis = weights.dims.index(fine_dim.letter)
-    indices = fine_dim._indices_in_ancestor(coarse_dim)
-    totals = _group_sums(weights.values, indices, coarse_dim.len, axis).take(indices, axis=axis)
-    group_sizes = np.bincount(indices, minlength=coarse_dim.len)[indices]
-    group_sizes = group_sizes.reshape([-1 if i == axis else 1 for i in range(weights.dims.ndim)])
-    with np.errstate(divide="ignore", invalid="ignore"):
-        shares = np.where(totals != 0, weights.values / totals, 1.0 / group_sizes)
-    return FlodymArray(dims=weights.dims, values=shares, name="weights", extensive=False)
-
-
-def _weights_from_dict(weights: dict[Any, FlodymArray], split_dim: Dimension) -> FlodymArray:
-    """Combine weights given per split parent item into one array over the split dimension.
-
-    Items which are not split get the weight one.
-
-    Args:
-        weights: For each split parent item, an array over the dimension it is split into
-            (see :py:attr:`flodym.Dimension.sub_dims`), possibly with further dimensions.
-        split_dim: Dimension created by :py:meth:`flodym.Dimension.split`.
-
-    Returns:
-        Array over split_dim and all further dimensions of the given weights.
-
-    Raises:
-        ValueError: If split_dim was not created by splitting, or if weights are missing for a
-            split item or lack the dimension it is split into.
-    """
-    if split_dim.sub_dims is None or split_dim.parent is None or split_dim.parent_items is None:
-        raise ValueError(
-            f"Weights can only be given as a dictionary for dimensions created by "
-            f"Dimension.split(), not for '{split_dim.name}'."
-        )
-    split_items = {k: v for k, v in split_dim.sub_dims.items() if k in split_dim.parent.items}
-    if set(weights) != set(split_items):
-        raise ValueError(
-            f"Keys of the weights dictionary must be the split items of '{split_dim.name}' "
-            f"{sorted(map(str, split_items))}, but are {sorted(map(str, weights))}."
-        )
-    extra_dims = DimensionSet.empty()
-    for parent_item, item_weights in weights.items():
-        sub_dim = split_items[parent_item]
-        if sub_dim.letter not in item_weights.dims:
-            raise ValueError(
-                f"Weights for '{parent_item}' must have the dimension '{sub_dim.name}'."
-            )
-        extra_dims = extra_dims | item_weights.dims.drop(sub_dim.letter)
-    combined = FlodymArray(
-        dims=split_dim.as_dimset() + extra_dims,
-        values=np.ones(split_dim.as_dimset().shape + extra_dims.shape),
-        name="weights",
-    )
-    positions_in_group: dict[Any, int] = defaultdict(int)
-    for item, parent_item in zip(split_dim.items, split_dim.parent_items):
-        if parent_item not in weights:
-            continue
-        sub_dim = split_items[parent_item]
-        sub_item = sub_dim.items[positions_in_group[parent_item]]
-        positions_in_group[parent_item] += 1
-        item_weights = weights[parent_item][{sub_dim.letter: sub_item}]
-        combined.values[split_dim.index(item)] = item_weights.cast_values_to(extra_dims)
-    return combined
