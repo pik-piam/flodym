@@ -3,7 +3,7 @@ Configuration
 
 The global configuration object is available as ``flodym.config``.
 Options can be changed by assignment, e.g.
-``flodym.config.error_behaviors.unset_array_used = "warn"``,
+``flodym.config.error_behaviors.unset_array_used = "error"``,
 or temporarily within a ``with flodym.config.override(...):`` block.
 
 The configuration controls

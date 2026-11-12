@@ -74,8 +74,16 @@ class TestIsSetInference:
 
 
 class TestUnsetArrayUsed:
-    def test_default_ignore(self, caplog):
+    def test_default_warn(self, caplog):
         with caplog.at_level(logging.WARNING):
+            2 * FlodymArray(dims=DIMS, name="foo")
+        assert "'foo'" in caplog.text
+
+    def test_ignore(self, caplog):
+        with (
+            config.override(error_behaviors={"unset_array_used": "ignore"}),
+            caplog.at_level(logging.WARNING),
+        ):
             2 * FlodymArray(dims=DIMS)
         assert not caplog.records
 
@@ -122,7 +130,7 @@ class TestUnsetArrayUsed:
     def test_override_restores_config(self):
         with config.override(error_behaviors={"unset_array_used": "error"}):
             assert config.error_behaviors.unset_array_used == "error"
-        assert config.error_behaviors.unset_array_used == "ignore"
+        assert config.error_behaviors.unset_array_used == "warn"
 
     def test_override_validates(self):
         with (
@@ -130,7 +138,7 @@ class TestUnsetArrayUsed:
             config.override(error_behaviors={"unset_array_used": "nonsense"}),
         ):
             pass
-        assert config.error_behaviors.unset_array_used == "ignore"
+        assert config.error_behaviors.unset_array_used == "warn"
 
 
 class TestStocks:
