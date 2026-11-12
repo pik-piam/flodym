@@ -52,6 +52,13 @@ class DimensionDefinition(FlodymBaseModel):
     :py:meth:`flodym.Dimension.combine_splits`). The parent is the first of them, so
     :py:attr:`parent` and :py:attr:`splitting` are not given. Such a dimension is not read, but
     created from the other dimensions."""
+    items: list | None = None
+    """The items of the dimension, if they are given here instead of being read, e.g. years
+    which follow from the model configuration. Not given together with :py:attr:`splitting` or
+    :py:attr:`combine_splits`. See :py:meth:`flodym.MFASystem.from_definition`."""
+    parent_items: list | None = None
+    """For a dimension with :py:attr:`items` and :py:attr:`parent`: The item of the parent each
+    item belongs to (see :py:attr:`flodym.Dimension.parent_items`)."""
 
     @model_validator(mode="after")
     def _check_parent(self) -> Self:
@@ -76,6 +83,41 @@ class DimensionDefinition(FlodymBaseModel):
         ]
         if self.letter in referenced_letters:
             raise ValueError(f"Dimension definition '{self.name}' refers to its own letter.")
+        return self
+
+    @model_validator(mode="after")
+    def _check_items(self) -> Self:
+        """Check the consistency of items and parent items with the other fields.
+
+        The parent items can only be checked against the items of the parent when the dimension
+        is created.
+        """
+        if self.items is None:
+            if self.parent_items is not None:
+                raise ValueError(
+                    f"Dimension definition '{self.name}' has parent_items, but no items."
+                )
+            return self
+        if self.splitting is not None or self.combine_splits is not None:
+            raise ValueError(
+                f"Dimension definition '{self.name}' must not give items together with "
+                "splitting or combine_splits, as these create the items."
+            )
+        if any(not isinstance(item, self.dtype) for item in self.items):
+            raise ValueError(
+                f"All items of dimension definition '{self.name}' must have the datatype "
+                f"{self.dtype.__name__} given in dtype."
+            )
+        if (self.parent is None) != (self.parent_items is None):
+            raise ValueError(
+                f"Dimension definition '{self.name}' with items must give parent_items if and "
+                "only if it has a parent."
+            )
+        if self.parent_items is not None and len(self.parent_items) != len(self.items):
+            raise ValueError(
+                f"parent_items of dimension definition '{self.name}' must have the same length "
+                "as its items."
+            )
         return self
 
 

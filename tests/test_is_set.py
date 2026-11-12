@@ -168,3 +168,18 @@ class TestStocks:
         stock.compute()
         assert stock.stock.is_set
         np.testing.assert_allclose(stock.stock.values, 2 * np.cumsum(VALUES, axis=0))
+
+
+def test_unset_parameter_raises_by_default():
+    parameter = Parameter(dims=DIMS, name="unset parameter")
+    with pytest.raises(ValueError, match="unset parameter.*set_parameter_values"):
+        parameter * 2.0
+    array = FlodymArray(dims=DIMS)
+    array * 2.0  # other arrays follow unset_array_used, which ignores by default
+
+
+def test_unset_parameter_behavior_configurable():
+    parameter = Parameter(dims=DIMS, name="unset parameter")
+    with config.override(error_behaviors={"unset_parameter": "ignore"}):
+        result = parameter * 2.0
+    assert np.all(result.values == 0.0)
