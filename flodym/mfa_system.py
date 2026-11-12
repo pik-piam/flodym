@@ -5,15 +5,19 @@ Specific MFA models can be built that inherit from this class.
 
 import logging
 import warnings
+from collections.abc import Callable, Mapping
 from os import PathLike
 from typing import Any, SupportsFloat
 
 import numpy as np
+import numpy.typing as npt
+import pandas as pd
 from pydantic import model_validator
 from typing_extensions import Self
 
 from ._attribute_dict import AttributeDict
 from ._base_model import FlodymBaseModel
+from ._build_dimensions import build_dimensions, dimension_reader_from_items
 from ._checks import config_hint, report_balance_failures
 from ._config import ErrorBehavior, config, handle_error
 from .data_reader import (
@@ -24,10 +28,10 @@ from .data_reader import (
     ExcelDimensionReader,
     ExcelParameterReader,
 )
-from .dimensions import DimensionSet
+from .dimensions import Dimension, DimensionSet
 from .flodym_arrays import FlodymArray, Flow, Parameter
 from .flow_helper import _make_unique_name, make_empty_flows
-from .mfa_definition import MFADefinition
+from .mfa_definition import DimensionDefinition, MFADefinition
 from .processes import Process, compute_processes, make_processes
 from .stock_helper import make_empty_stocks
 from .stocks import Stock
@@ -99,7 +103,8 @@ class MFASystem(FlodymBaseModel):
     ) -> Self:
         """Define and set up the MFA system and load all required data.
 
-        Initialises stocks and flows with all zero values.
+        Initialises stocks and flows with all zero values. To set up the system without a
+        reader, see :py:meth:`from_definition`.
 
         Parameters used in the definitions (shares and dimension splitters of processes,
         prescribed flows and stock arrays) are linked by :py:meth:`link_parameters`, unless
@@ -118,20 +123,84 @@ class MFASystem(FlodymBaseModel):
         """
         dims = data_reader.read_dimensions(definition.dimensions)
         parameters = data_reader.read_parameters(definition.parameters, dims=dims)
-        processes = make_processes(definition.processes)
-        flows = make_empty_flows(processes=processes, flow_definitions=definition.flows, dims=dims)
-        stocks = make_empty_stocks(
-            processes=processes, stock_definitions=definition.stocks, dims=dims
-        )
-        mfa = cls(
-            dims=dims,
-            parameters=parameters,
-            processes=processes,
-            flows=flows,
-            stocks=stocks,
-        )
+        mfa = cls._from_dims_and_parameters(definition, dims, parameters)
         if link:
             mfa.link_parameters()
+        return mfa
+
+    @classmethod
+    def from_definition(
+        cls,
+        definition: MFADefinition,
+        dimension_items: Mapping[str, list | dict]
+        | Callable[[DimensionDefinition], Dimension]
+        | None = None,
+    ) -> Self:
+        """Define and set up the MFA system from its definition, without a data reader.
+
+        The items of each dimension are taken from its definition (see
+        :py:attr:`flodym.DimensionDefinition.items`), from ``dimension_items``, or, for
+        dimensions created by splitting or combining splits, from the other dimensions.
+
+        Initialises parameters, stocks and flows with all zero values. The parameters are not set
+        (see :py:attr:`flodym.FlodymArray.is_set`); give their values with
+        :py:meth:`set_parameter_values`. Using a parameter which is not set is handled according
+        to ``flodym.config.error_behaviors.unset_parameter``. The parameters are linked (see
+        :py:meth:`link_parameters`), so values set later are used by processes, flows and stocks.
+
+        **Example**
+
+            >>> import flodym as fd
+            >>> definition = fd.MFADefinition(
+            ...     dimensions=[
+            ...         fd.DimensionDefinition(
+            ...             name="Time", letter="t", dtype=int, items=[2020, 2030]
+            ...         ),
+            ...         fd.DimensionDefinition(name="Region", letter="r", dtype=str),
+            ...     ],
+            ...     processes=["sysenv", "use"],
+            ...     flows=[
+            ...         fd.FlowDefinition(
+            ...             from_process_name="sysenv",
+            ...             to_process_name="use",
+            ...             dim_letters=("t", "r"),
+            ...             prescribed="demand",
+            ...         )
+            ...     ],
+            ...     parameters=[fd.ParameterDefinition(name="demand", dim_letters=("t", "r"))],
+            ... )
+            >>> mfa = fd.MFASystem.from_definition(definition, {"r": ["EUR", "USA"]})
+            >>> mfa.set_parameter_values({"demand": [[1.0, 2.0], [3.0, 4.0]]})
+
+        Args:
+            definition: The MFA definition object.
+            dimension_items: Items of the dimensions which have none in their definition and are
+                not created from other dimensions. Keys are dimension letters or names (keys of
+                one character are letters). Values are lists of items, or, for dimensions with a
+                parent, mappings from each item to its parent item. Alternatively, a function
+                creating a dimension from its definition, e.g.
+                :py:meth:`flodym.DataReader.read_dimension`. None if all items are given in the
+                definitions.
+
+        Returns:
+            The MFA system.
+
+        Raises:
+            ValueError: If the dimension items do not fit the definitions. All problems are
+                listed at once.
+        """
+        read_dimension = dimension_reader_from_items(definition.dimensions, dimension_items)
+        dims = build_dimensions(definition.dimensions, read_dimension)
+        parameters = {
+            parameter_definition.name: Parameter(
+                name=parameter_definition.name,
+                dims=dims.get_subset(parameter_definition.dim_letters),
+                extensive=parameter_definition.extensive,
+            )
+            for parameter_definition in definition.parameters
+        }
+        mfa = cls._from_dims_and_parameters(definition, dims, parameters)
+        mfa.link_parameters()
         return mfa
 
     @classmethod
@@ -578,6 +647,51 @@ class MFASystem(FlodymBaseModel):
         for process in self.processes.values():
             process._link_parameters(self.parameters)
 
+    def set_parameter_values(
+        self,
+        values: Mapping[str, FlodymArray | pd.DataFrame | npt.ArrayLike]
+        | Callable[[str, DimensionSet], FlodymArray],
+    ) -> None:
+        """Set the values of parameters, e.g. of a system created by :py:meth:`from_definition`.
+
+        The values are written into the existing parameters, which are marked as set (see
+        :py:attr:`flodym.FlodymArray.is_set`). So links to processes, flows and stocks (see
+        :py:meth:`link_parameters`) stay valid. Parameters used as shares or dimension splitters
+        are checked to be between zero and one, as when they are linked.
+
+        Args:
+            values: Values keyed by parameter name. A value can be a FlodymArray (assigned as in
+                ``parameter[...] = value``), a DataFrame (see
+                :py:meth:`flodym.FlodymArray.set_values_from_df`), or a numpy array of the shape
+                of the parameter or a scalar. Alternatively, a function returning the parameter
+                for a parameter name and its dimensions, e.g.
+                :py:meth:`flodym.DataReader.read_parameter_values`. It is called for all
+                parameters which are not set.
+
+        Raises:
+            ValueError: If values are given for names which are not in :py:attr:`parameters`.
+                All such names are listed.
+        """
+        if callable(values):
+            new_values = {
+                name: values(name, parameter.dims)
+                for name, parameter in self.parameters.items()
+                if not parameter.is_set
+            }
+        else:
+            unknown = [name for name in values if name not in self.parameters]
+            if unknown:
+                raise ValueError(f"Values are given for unknown parameters: {unknown}.")
+            new_values = dict(values)
+        for name, value in new_values.items():
+            parameter = self.parameters[name]
+            if isinstance(value, pd.DataFrame):
+                parameter.set_values_from_df(value)
+            else:
+                parameter[...] = value
+            for process in self.processes.values():
+                process._check_share_values(parameter)
+
     def set_arrays_from_prescribed(self) -> None:
         """Copy the values of the prescribing parameters into the prescribed arrays.
 
@@ -615,6 +729,24 @@ class MFASystem(FlodymBaseModel):
                 f"compute_all_possible(): Could not compute processes {', '.join(not_computed)}."
             )
         return not_computed
+
+    @classmethod
+    def _from_dims_and_parameters(
+        cls, definition: MFADefinition, dims: DimensionSet, parameters: dict[str, Parameter]
+    ) -> Self:
+        """Create the MFA system with empty processes, flows and stocks, without linking."""
+        processes = make_processes(definition.processes)
+        flows = make_empty_flows(processes=processes, flow_definitions=definition.flows, dims=dims)
+        stocks = make_empty_stocks(
+            processes=processes, stock_definitions=definition.stocks, dims=dims
+        )
+        return cls(
+            dims=dims,
+            parameters=parameters,
+            processes=processes,
+            flows=flows,
+            stocks=stocks,
+        )
 
     def _prescribable_arrays(self) -> list[tuple[str, FlodymArray]]:
         """Flows and stock arrays, as tuples of a label for messages and the array."""

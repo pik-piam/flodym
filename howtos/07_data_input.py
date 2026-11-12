@@ -15,6 +15,7 @@
 # You can create your own data read-in to a csv file, and use this method.
 
 # %%
+import numpy as np
 import pandas as pd
 
 import flodym as fd
@@ -141,6 +142,77 @@ parameters = reader.read_parameters(parameter_definitions=parameter_definitions,
 #
 # It's a very clean, easy and quick way, but not very customizable.
 # This method is used in example 2 and therefore not repeated here.
+
+# %% [markdown]
+# ## MFASystem `from_definition()`: without a data reader
+#
+# Some dimension items follow from the model configuration rather than from data, e.g. the
+# years of the time dimension. They can be given in the dimension definition with `items`.
+# Items which may change between model runs can instead be given in a dictionary to
+# `MFASystem.from_definition()`, keyed by dimension letter or name.
+# For a dimension with a parent, the dictionary maps each item to its parent item.
+
+# %%
+definition = fd.MFADefinition(
+    dimensions=[
+        fd.DimensionDefinition(name="Time", letter="t", dtype=int, items=[2020, 2030]),
+        fd.DimensionDefinition(name="World region", letter="w", dtype=str),
+        fd.DimensionDefinition(name="Country", letter="c", dtype=str, parent="w"),
+    ],
+    processes=[
+        "sysenv",
+        fd.ProcessDefinition(name="use", outflow_shares={"waste": "waste share"}),
+        "waste",
+    ],
+    flows=[
+        fd.FlowDefinition(
+            from_process_name="sysenv",
+            to_process_name="use",
+            dim_letters=("t", "c"),
+            prescribed="demand",
+        ),
+        fd.FlowDefinition(from_process_name="use", to_process_name="waste", dim_letters=("t", "c")),
+        fd.FlowDefinition(
+            from_process_name="use", to_process_name="sysenv", dim_letters=("t", "c")
+        ),
+        fd.FlowDefinition(
+            from_process_name="waste", to_process_name="sysenv", dim_letters=("t", "c")
+        ),
+    ],
+    parameters=[
+        fd.ParameterDefinition(name="demand", dim_letters=("t", "c")),
+        fd.ParameterDefinition(name="waste share", dim_letters=("t",)),
+    ],
+)
+mfa = fd.MFASystem.from_definition(
+    definition,
+    dimension_items={"w": ["EUR", "USA"], "Country": {"DEU": "EUR", "FRA": "EUR", "USA": "USA"}},
+)
+
+# %% [markdown]
+# The parameters are created with zero values and are not set yet (`is_set` is False).
+# Using a parameter which is not set raises an error (see
+# `flodym.config.error_behaviors.unset_parameter`).
+# Their values are given with `set_parameter_values()`, as numpy arrays, `FlodymArray`s or
+# DataFrames. The values are written into the existing parameters, so they are used by the
+# processes and flows right away.
+
+# %%
+mfa.set_parameter_values(
+    {
+        "demand": np.array([[1.0, 2.0, 3.0], [2.0, 3.0, 4.0]]),
+        "waste share": np.array([0.2, 0.3]),
+    }
+)
+mfa.compute_all_possible()
+mfa.flows["use => waste"].to_df()
+
+# %% [markdown]
+# Instead of dictionaries, both methods also take a function, with the signature of
+# `read_dimension()` or `read_parameter_values()` of the readers described below. So the
+# methods of a reader can be passed directly, e.g.
+# `mfa.set_parameter_values(reader.read_parameter_values)`. The function is called for all
+# parameters which are not set yet.
 
 # %% [markdown]
 #

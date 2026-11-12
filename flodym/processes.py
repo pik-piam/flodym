@@ -450,6 +450,8 @@ class Process(FlodymBaseModel):
 
         Share keys given as process names are resolved to flow names, so the process must be
         linked to its flows (see :py:meth:`flodym.MFASystem.relink`). Linked entries are kept.
+        The values of parameters which are not set yet are not checked here, but by
+        :py:meth:`_check_share_values` when they are set.
         """
         for side in ("in", "out"):
             shares = ProcessSide(self, side).shares
@@ -458,7 +460,8 @@ class Process(FlodymBaseModel):
                 if isinstance(share, str):
                     key = self._resolve_flow_name(side, key)
                     share = parameters[share]
-                    check_share_values(self, share, f"Share of flow '{key}'")
+                    if share.is_set:
+                        check_share_values(self, share, f"Share of flow '{key}'")
                 if key in linked:
                     raise ValueError(
                         f"In process '{self.name}': Several shares are given for {side}flow "
@@ -470,8 +473,22 @@ class Process(FlodymBaseModel):
         for direction, splitter in self._dimension_splitters.items():
             if isinstance(splitter, str):
                 splitter = parameters[splitter]
-                check_share_values(self, splitter, f"The {direction} dimension splitter")
+                if splitter.is_set:
+                    check_share_values(self, splitter, f"The {direction} dimension splitter")
                 self._dimension_splitters[direction] = splitter
+
+    def _check_share_values(self, parameter: "FlodymArray") -> None:
+        """Check the values of a parameter if it is linked as a share or dimension splitter.
+
+        See :py:func:`check_share_values`. Used when the values of a linked parameter are set.
+        """
+        for side in ("in", "out"):
+            for key, share in ProcessSide(self, side).shares.items():
+                if share is parameter:
+                    check_share_values(self, share, f"Share of flow '{key}'")
+        for direction, splitter in self._dimension_splitters.items():
+            if splitter is parameter:
+                check_share_values(self, splitter, f"The {direction} dimension splitter")
 
     def _check_parameters_linked(self) -> None:
         """Raise an error if shares or dimension splitters are not linked to parameters yet."""
