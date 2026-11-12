@@ -127,8 +127,10 @@ processes = fd.make_processes(["sysenv", "use_phase"])
 
 stocks = fd.make_empty_stocks(stock_definitions=stock_defs, processes=processes, dims=dims)
 
-# still zero and not set, as not yet computed
+# still zero and not set, as not yet computed.
+# Slicing the unset stock for printing logs a warning (see `unset_array_used`).
 print("Stock is set:", stocks["in-use"].stock.is_set)
+print("Stock values for Vehicles:", stocks["in-use"].stock["Vehicles"].values)
 
 
 # %% [markdown]
