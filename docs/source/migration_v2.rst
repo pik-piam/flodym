@@ -183,10 +183,11 @@ or assigned with ``set_values()``, ``set_values_from_df()`` or ``array[...] = ..
 - Writing to ``.values`` directly, e.g. ``array.values[0, ...] = 1``, does **not** mark the array
   as set.
 
-With the default ``flodym.config.error_behaviors.unset_array_used = "ignore"``, this changes
-nothing. It matters if you enable this check, or if you use the automatic process computation,
-which treats unset flows as unknown. Use ``array.mark_set()``, or assign with ``array[...] = ...``,
-to mark values written directly to ``.values``.
+By default (``flodym.config.error_behaviors.unset_array_used = "warn"``), using an unset array in
+an operation logs a warning; the result is the same as in v1. The automatic process computation
+treats unset flows as unknown. Use ``array.mark_set()``, or assign with ``array[...] = ...``, to
+mark values written directly to ``.values``. To restore the v1 behavior, set
+``unset_array_used = "ignore"``.
 
 
 Arrays: extensive and intensive
