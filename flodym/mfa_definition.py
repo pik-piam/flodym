@@ -156,7 +156,9 @@ class StockDefinition(_DefinitionWithDimLetters):
     cohort_letter: str | None = None
     """Letter of the cohort dimension of a dynamic stock model (see
     :py:attr:`flodym.DynamicStockModel.cohort_dim`). It must be a defined dimension with the same
-    items as the time dimension, but not one of ``dim_letters``."""
+    items as the time dimension, but not the time dimension. If it is one of ``dim_letters``, that
+    dimension is the cohort dimension and not a dimension of stock, inflow and outflow. It must be
+    given if a dimension in ``dim_letters`` is named "cohort"."""
     prescribed_stock: str | None = None
     """Optional name of a parameter whose values the stock is set to."""
     prescribed_inflow: str | None = None
@@ -172,14 +174,19 @@ class StockDefinition(_DefinitionWithDimLetters):
         """Check the consistency of cohort and prescribed array settings.
 
         Checks that ``cohort_letter`` and ``prescribed_inflow_by_cohort`` are only given for
-        dynamic stock models, and that at most one of the arrays which determine the computation
-        mode of a dynamic stock model is prescribed.
+        dynamic stock models, that ``cohort_letter`` is not ``time_letter``, and that at most one
+        of the arrays which determine the computation mode of a dynamic stock model is prescribed.
         """
         is_dynamic = "cohort_dim" in self.subclass.model_fields
         if self.cohort_letter is not None and not is_dynamic:
             raise ValueError(
                 f"Stock '{self.name}': cohort_letter is given, but subclass {self.subclass} has "
                 "no cohort dimension."
+            )
+        if self.cohort_letter == self.time_letter:
+            raise ValueError(
+                f"Stock '{self.name}': cohort_letter '{self.cohort_letter}' is the time_letter. "
+                "Use the letter of another dimension with the items of the time dimension."
             )
         if self.prescribed_inflow_by_cohort is not None and self.cohort_letter is None:
             raise ValueError(

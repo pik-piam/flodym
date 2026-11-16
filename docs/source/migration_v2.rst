@@ -156,10 +156,14 @@ Removed or changed interface:
   and the letter ``c``; if ``c`` is a stock dimension, ``C``, else the next free letter
   (``d``, ``D``, ...). Therefore, ``get_stock_by_cohort()`` and ``get_outflow_by_cohort()`` always
   return ``StockArray`` objects, no longer numpy arrays, and ``inflow_by_cohort`` always exists.
+  If a stock dimension is named ``cohort``, the stock raises an error instead.
 
   *Action:* Use ``.values`` on the results of ``get_stock_by_cohort()`` and
   ``get_outflow_by_cohort()`` where numpy arrays are needed. Pass ``cohort_dim`` to avoid the
-  warning.
+  warning. To keep a stock dimension named ``cohort``, pass a ``cohort_dim`` with the items of the
+  time dimension and another letter and name (or set ``cohort_letter`` to the letter of such a
+  dimension). If it is meant as the cohort dimension, pass its letter as ``cohort_dim`` (or
+  ``cohort_letter``); it is then removed from the stock dimensions.
 - ``DynamicStockModel`` is no longer abstract. Its ``compute()`` chooses the compute mode from the
   given arrays. ``InflowDrivenDSM`` and ``StockDrivenDSM`` are used as before.
 

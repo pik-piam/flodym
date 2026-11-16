@@ -1,4 +1,5 @@
 import logging
+import re
 
 import numpy as np
 import pytest
@@ -1116,3 +1117,174 @@ def test_no_warning_if_cohort_dim_given(caplog):
         dsm = DynamicStockModel(dims=DIMS, cohort_dim=cohort_dim, lifetime_model=FixedLifetime)
     assert "No cohort_dim given" not in caplog.text
     assert dsm.cohort_dim is cohort_dim
+
+
+@pytest.mark.parametrize("driven_by", ["inflow", "stock", "inflow_by_cohort"])
+def test_cohort_dim_given_as_letter(driven_by):
+    """A letter of dims as cohort_dim gives the same stock as that dimension as cohort_dim."""
+    by_dimension = _dsm_for_cohort_tests(
+        DynamicStockModel, **{driven_by: _driving_array_for_cohort_tests(driven_by)}
+    )
+    by_letter = DynamicStockModel(
+        dims=DIMS_WITH_COHORT_TESTS,
+        cohort_dim="c",
+        lifetime_model=LogNormalLifetime,
+        **{driven_by: _driving_array_for_cohort_tests(driven_by)},
+    )
+    by_letter.lifetime_model.mean = 8
+    by_letter.lifetime_model.std = 3
+    assert by_letter.dims.letters == ("t", "p")
+    assert by_letter.cohort_dim is COHORT_DIM_TESTS
+    assert by_letter.lifetime_model.dims.letters == ("t", "p")
+    by_dimension.compute()
+    by_letter.compute()
+    for array_name in ["stock", "inflow", "outflow"]:
+        np.testing.assert_array_equal(
+            getattr(by_letter, array_name).values, getattr(by_dimension, array_name).values
+        )
+    for by_cohort in ["get_stock_by_cohort", "get_outflow_by_cohort"]:
+        array = getattr(by_letter, by_cohort)()
+        assert array.dims.letters == ("t", "c", "p")
+        np.testing.assert_array_equal(array.values, getattr(by_dimension, by_cohort)().values)
+    for converted in [by_letter.copy(), by_letter.to_stock_type(InflowDrivenDSM)]:
+        assert converted.dims.letters == ("t", "p")
+        assert converted.cohort_dim is COHORT_DIM_TESTS
+
+
+# as many items as the time dimension, with the same first and last item
+SHIFTED_COHORT_DIM = Dimension(
+    name="production year", letter="y", items=[2000, 2030] + TIME_ITEMS_COHORT_TESTS[2:]
+)
+
+
+@pytest.mark.parametrize(
+    "kwargs, match",
+    [
+        (
+            {"cohort_dim": "x"},
+            r"cohort_dim 'x' of stock 's' is not a letter of its dims \('t', 'c', 'p'\)",
+        ),
+        ({"cohort_dim": "t"}, "cohort_dim 't' of stock 's' is the letter of the time dimension"),
+        (
+            {"cohort_dim": "p"},
+            r"time dimension, 21 items \[2000, \.\.\., 2020\], but has items \['A', 'B'\]\. Pass",
+        ),
+        (
+            {"cohort_dim": SHIFTED_COHORT_DIM},
+            "must have the items of the time dimension, but has 2030 instead of 2001 at index 1",
+        ),
+        (
+            {"cohort_dim": "c", "lifetime_model": FixedLifetime(dims=DIMS_WITH_COHORT_TESTS)},
+            r"\('t', 'p'\) of stock 's'\. Create the lifetime model without the cohort dimension 'c'",
+        ),
+        (
+            {"cohort_dim": "c", "lifetime_model": FixedLifetime(dims=DIMS_COHORT_TESTS[("t",)])},
+            r"Lifetime model dimensions \('t',\) .* Create the lifetime model with the stock dim",
+        ),
+        (
+            {"cohort_dim": "c", "inflow": StockArray(dims=DIMS_WITH_COHORT_TESTS)},
+            r"Inflow dimensions \('t', 'c', 'p'\) do not match prescribed dims \('t', 'p'\)",
+        ),
+        (
+            {"cohort_dim": COHORT_DIM_TESTS},
+            r"\(letter 'c', name 'cohort'\) of stock 's' has the letter or name of one of its",
+        ),
+        (
+            {"cohort_dim": Dimension(name="age cohort", letter="c", items=TIME_ITEMS_COHORT_TESTS)},
+            r"\(letter 'c', name 'age cohort'\) of stock 's' has the letter or name of one of its",
+        ),
+        (
+            {"cohort_dim": Dimension(name="time", letter="y", items=TIME_ITEMS_COHORT_TESTS)},
+            r"\(letter 'y', name 'time'\) of stock 's' must differ .* \(letter 't', name 'time'\)",
+        ),
+    ],
+)
+def test_invalid_cohort_dim(kwargs, match):
+    kwargs = {"lifetime_model": FixedLifetime, **kwargs}
+    with pytest.raises(ValueError, match=match):
+        DynamicStockModel(name="s", dims=DIMS_WITH_COHORT_TESTS, **kwargs)
+
+
+@pytest.mark.parametrize(
+    "items, remedy",
+    [
+        (
+            TIME_ITEMS_COHORT_TESTS,
+            (
+                "Pass cohort_dim='c' if it is the cohort dimension, otherwise a cohort_dim with "
+                "another letter and name."
+            ),
+        ),
+        (
+            ["old", "new"],
+            "Pass a cohort_dim with the items of the time dimension and another letter and name.",
+        ),
+    ],
+)
+def test_dimension_named_cohort_requires_cohort_dim(items, remedy):
+    named_cohort = Dimension(name="cohort", letter="c", items=items)
+    dims = DimensionSet(dim_list=[DIMS_COHORT_TESTS["t"], named_cohort, DIMS_COHORT_TESTS["p"]])
+    message = (
+        "Stock 's' has a dimension named 'cohort' (letter 'c'), the name of the cohort dimension "
+        f"created if no cohort_dim is given. {remedy}"
+    )
+    with pytest.raises(ValueError, match=re.escape(message)):
+        DynamicStockModel(name="s", dims=dims, lifetime_model=FixedLifetime)
+    # if the dimension named cohort is not the cohort dimension
+    production_year = Dimension(name="production year", letter="y", items=TIME_ITEMS_COHORT_TESTS)
+    dsm = DynamicStockModel(dims=dims, cohort_dim=production_year, lifetime_model=FixedLifetime)
+    assert dsm.dims_cohort.letters == ("t", "y", "c", "p")
+
+
+def test_make_empty_stocks_with_cohort_letter_in_dim_letters():
+    """A cohort letter in dim_letters gives the same stock as one not in dim_letters."""
+    stocks = make_empty_stocks(
+        [
+            StockDefinition(
+                name=name,
+                dim_letters=dim_letters,
+                subclass=InflowDrivenDSM,
+                lifetime_model_class=LogNormalLifetime,
+                cohort_letter="c",
+            )
+            for name, dim_letters in [("without", ("t", "p")), ("with", ("t", "c", "p"))]
+        ],
+        processes={},
+        dims=DIMS_WITH_COHORT_TESTS,
+    )
+    for stock in stocks.values():
+        assert stock.dims.letters == ("t", "p")
+        assert stock.cohort_dim is COHORT_DIM_TESTS
+        assert stock.lifetime_model.dims.letters == ("t", "p")
+        stock.lifetime_model.mean = 8
+        stock.lifetime_model.std = 3
+        stock.inflow[...] = _driving_array_for_cohort_tests("inflow")
+        stock.compute()
+    np.testing.assert_array_equal(stocks["with"].stock.values, stocks["without"].stock.values)
+    np.testing.assert_array_equal(
+        stocks["with"].get_outflow_by_cohort().values,
+        stocks["without"].get_outflow_by_cohort().values,
+    )
+
+
+def test_make_empty_stocks_keeps_cohort_letter_in_dims_of_other_stock_types():
+    class CohortFlowStock(SimpleFlowDrivenStock):
+        cohort_dim: Dimension | None = None
+
+    stock_definition = StockDefinition(
+        name="s", dim_letters=("t", "c", "p"), subclass=CohortFlowStock, cohort_letter="c"
+    )
+    stock = make_empty_stocks([stock_definition], processes={}, dims=DIMS_WITH_COHORT_TESTS)["s"]
+    assert stock.dims.letters == ("t", "c", "p")
+    assert stock.cohort_dim is COHORT_DIM_TESTS
+
+
+def test_make_empty_stocks_with_dimension_named_cohort():
+    stock_definition = StockDefinition(
+        name="s",
+        dim_letters=("t", "c", "p"),
+        subclass=InflowDrivenDSM,
+        lifetime_model_class=FixedLifetime,
+    )
+    with pytest.raises(ValueError, match=r"has a dimension named 'cohort' \(letter 'c'\)"):
+        make_empty_stocks([stock_definition], processes={}, dims=DIMS_WITH_COHORT_TESTS)

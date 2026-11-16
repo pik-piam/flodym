@@ -6,7 +6,7 @@ from ._attribute_dict import AttributeDict
 from .dimensions import DimensionSet
 from .mfa_definition import StockDefinition
 from .processes import Process
-from .stocks import Stock
+from .stocks import DynamicStockModel, Stock
 
 
 @overload
@@ -52,6 +52,12 @@ def make_empty_stocks(
     empty_stocks = {}
     for stock_definition in stock_definitions:
         dim_subset = dims.get_subset(stock_definition.dim_letters)
+        cohort_letter = stock_definition.cohort_letter
+        if issubclass(stock_definition.subclass, DynamicStockModel) and (
+            cohort_letter in dim_subset.letters
+        ):
+            # as for cohort_dim given as a letter of the stock dims
+            dim_subset = dim_subset.drop(cohort_letter)
         if stock_definition.process_name is None:
             process = None
         else:

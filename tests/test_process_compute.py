@@ -690,6 +690,7 @@ def test_inflow_by_cohort_from_parameter():
         ({"prescribed_stock": "p", "prescribed_inflow": "p"}, "at most one"),
         ({"prescribed_inflow_by_cohort": "p"}, "requires cohort_letter"),
         ({"subclass": SimpleFlowDrivenStock, "cohort_letter": "c"}, "no cohort dimension"),
+        ({"cohort_letter": "t"}, "cohort_letter 't' is the time_letter"),
     ],
 )
 def test_invalid_prescribed_stocks(kwargs, match):
