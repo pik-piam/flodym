@@ -18,6 +18,12 @@ def test_make_processes_from_names():
     assert {name: p.id for name, p in processes.items()} == {"sysenv": 0, "a": 1, "b": 2}
 
 
+def test_make_processes_from_iterator():
+    """The definitions can be given as an iterator, which can be read only once."""
+    processes = make_processes(name for name in ["sysenv", "a", "b"])
+    assert {name: p.id for name, p in processes.items()} == {"sysenv": 0, "a": 1, "b": 2}
+
+
 def test_make_processes_non_contiguous_ids():
     processes = make_processes(
         [ProcessDefinition(id=0, name="sysenv"), ProcessDefinition(id=10, name="a"), "b", "c"]
