@@ -1,3 +1,5 @@
+import copy
+
 import pytest
 
 from flodym import (
@@ -66,7 +68,7 @@ def test_new_flow_does_not_replace_link():
 
 
 def _two_flow_mfa(second_stock: bool = False) -> MFASystem:
-    dims = DimensionSet(dim_list=[Dimension(name="time", letter="t", items=[2000, 2001])])
+    dims = DimensionSet(dim_list=[Dimension(name="time", letter="t", items=[2000, 2001, 2002])])
     processes = make_processes(["sysenv", "a"])
     flows = {
         name: Flow(
@@ -104,22 +106,6 @@ def test_flow_with_foreign_process_raises():
         )
 
 
-def test_remove_links():
-    mfa = _two_flow_mfa()
-    a = mfa.processes["a"]
-    a.remove_inflow("f1")
-    assert list(a.inflows) == ["f2"]
-    with pytest.raises(ValueError, match="No inflow"):
-        a.remove_inflow("f1")
-    sysenv = mfa.processes["sysenv"]
-    sysenv.remove_outflow("f1")
-    assert list(sysenv.outflows) == ["f2"]
-    with pytest.raises(ValueError, match="No outflow"):
-        sysenv.remove_outflow("f1")
-    a.remove_stock()
-    assert a.stock is None
-
-
 def test_process_repr_and_dump():
     mfa = _two_flow_mfa()
     a = mfa.processes["a"]
@@ -129,27 +115,148 @@ def test_process_repr_and_dump():
     repr(mfa.stocks["s0"])
 
 
-def test_relink():
+def test_links_follow_changes_of_flows():
     mfa = _two_flow_mfa()
     a = mfa.processes["a"]
     del mfa.flows["f1"]
-    mfa.flows["f3"] = Flow(
-        from_process=mfa.processes["sysenv"], to_process=a, dims=mfa.dims, name="f3"
-    )
-    assert list(a.inflows) == ["f1", "f2"]
-    mfa.relink()
+    mfa.flows["f3"] = Flow(from_process=mfa.processes["sysenv"], to_process=a, dims=mfa.dims)
+    mfa.check_mass_balance(error_behavior="ignore")
     assert list(a.inflows) == ["f2", "f3"]
     assert list(mfa.processes["sysenv"].outflows) == ["f2", "f3"]
+    assert a.inflows["f3"] is mfa.flows["f3"]
 
 
-def test_failed_relink_keeps_links():
+def test_links_follow_changes_of_stocks():
+    mfa = _two_flow_mfa()
+    a = mfa.processes["a"]
+    old_stock = mfa.stocks["s0"]
+    mfa.stocks["s0"] = SimpleFlowDrivenStock(dims=mfa.dims, process=a, name="s0")
+    mfa.compute_all_possible()
+    assert a.stock is mfa.stocks["s0"] and a.stock is not old_stock
+    del mfa.stocks["s0"]
+    mfa.check_mass_balance(error_behavior="ignore")
+    assert a.stock is None
+
+
+def test_links_follow_changed_processes_of_a_flow():
+    mfa = _named_flows_mfa()
+    mfa.flows["sysenv => a"].to_process = mfa.processes["b"]
+    mfa.check_mass_balance(error_behavior="ignore")
+    assert list(mfa.flows) == ["sysenv => a", "custom", "b => sysenv"]
+    assert list(mfa.processes["b"].inflows) == ["sysenv => a", "custom"]
+    assert list(mfa.processes["a"].inflows) == []
+
+
+def test_link_parameters_follows_changes_of_flows():
+    mfa = _two_flow_mfa()
+    a = mfa.processes["a"]
+    mfa.flows["f3"] = Flow(from_process=mfa.processes["sysenv"], to_process=a, dims=mfa.dims)
+    mfa.link_parameters()
+    assert list(a.inflows) == ["f1", "f2", "f3"]
+
+
+def test_process_under_a_second_key_keeps_its_links():
+    mfa = _two_flow_mfa()
+    a = mfa.processes["a"]
+    mfa.processes["alias of a"] = a
+    mfa.flows["f1"][...] = 1.0
+    assert mfa.check_mass_balance(error_behavior="ignore") is False
+    assert list(a.inflows) == ["f1", "f2"]
+    assert a.stock is mfa.stocks["s0"]
+
+
+def test_failed_linking_keeps_links():
     mfa = _two_flow_mfa()
     mfa.flows["f3"] = Flow(
         from_process=mfa.processes["sysenv"], to_process=Process(name="a", id=1), dims=mfa.dims
     )
     with pytest.raises(ValueError, match="not a process of the MFA system"):
-        mfa.relink()
+        mfa.check_mass_balance()
     assert list(mfa.processes["a"].inflows) == ["f1", "f2"]
+
+
+def test_flow_replaced_by_plain_array_raises():
+    mfa = _two_flow_mfa()
+    mfa.flows["f1"] = mfa.flows["f1"] * 3
+    with pytest.raises(TypeError, match=r"Entry 'f1' .* is a FlodymArray, not a Flow"):
+        mfa.check_mass_balance()
+    assert list(mfa.processes["a"].inflows) == ["f1", "f2"]
+
+
+def test_links_use_keys_of_flows():
+    """Flows are linked under their key in the MFA system, also if they have no or equal names."""
+    dims = DimensionSet(dim_list=[Dimension(name="time", letter="t", items=[2000, 2001])])
+    processes = make_processes(["sysenv", "a"])
+    flows = {
+        key: Flow(from_process=processes["sysenv"], to_process=processes["a"], dims=dims)
+        for key in ("f1", "f2")
+    }
+    mfa = MFASystem(dims=dims, parameters={}, processes=processes, flows=flows)
+    assert [flow.name for flow in mfa.flows.values()] == ["unnamed", "unnamed"]
+    assert list(mfa.processes["a"].inflows) == ["f1", "f2"]
+    assert list(mfa.processes["sysenv"].outflows) == ["f1", "f2"]
+
+
+def test_processes_shared_by_two_systems():
+    """Each MFA system uses the links to its own flows, also if another one was set up later."""
+    dims = DimensionSet(dim_list=[Dimension(name="time", letter="t", items=[2000, 2001])])
+    processes = make_processes(["sysenv", "a"])
+
+    def system(outflow_value: float) -> MFASystem:
+        flows = {
+            "in": Flow(from_process=processes["sysenv"], to_process=processes["a"], dims=dims),
+            "out": Flow(from_process=processes["a"], to_process=processes["sysenv"], dims=dims),
+        }
+        flows["in"][...] = 1.0
+        flows["out"][...] = outflow_value
+        return MFASystem(dims=dims, parameters={}, processes=processes, flows=flows)
+
+    unbalanced = system(outflow_value=0.5)
+    balanced = system(outflow_value=1.0)
+    assert unbalanced.check_mass_balance(error_behavior="ignore") is False
+    assert processes["a"].outflows["out"] is unbalanced.flows["out"]
+    assert balanced.check_mass_balance() is True
+    assert processes["a"].outflows["out"] is balanced.flows["out"]
+
+
+def test_stock_of_sysenv_raises():
+    dims = DimensionSet(dim_list=[Dimension(name="time", letter="t", items=[2000, 2001, 2002])])
+    processes = make_processes(["sysenv", "a"])
+    stocks = {"sink": SimpleFlowDrivenStock(dims=dims, process=processes["sysenv"], name="sink")}
+    with pytest.raises(ValueError, match="Stock 'sink' is connected to the process 'sysenv'"):
+        MFASystem(dims=dims, parameters={}, processes=processes, flows={}, stocks=stocks)
+    stocks["sink"].process = None
+    mfa = MFASystem(dims=dims, parameters={}, processes=processes, flows={}, stocks=stocks)
+    # also if the stock is connected to 'sysenv' after the setup
+    stocks["sink"].process = processes["sysenv"]
+    with pytest.raises(ValueError, match="Stock 'sink' is connected to the process 'sysenv'"):
+        mfa.check_mass_balance()
+
+
+def test_stock_replaced_by_stock_array_raises():
+    mfa = _two_flow_mfa()
+    mfa.stocks["s0"] = mfa.stocks["s0"].stock
+    with pytest.raises(TypeError, match=r"Entry 's0' .* is a StockArray, not a Stock"):
+        mfa.check_mass_balance()
+
+
+@pytest.mark.parametrize("deep_copy", [copy.deepcopy, lambda mfa: mfa.model_copy(deep=True)])
+def test_deep_copy_keeps_objects_connected(deep_copy):
+    mfa = get_example_mfa()
+    mfa.compute()
+    mfa_copy = deep_copy(mfa)
+    copied_processes = {id(process) for process in mfa_copy.processes.values()}
+    assert copied_processes.isdisjoint({id(process) for process in mfa.processes.values()})
+    for flow in mfa_copy.flows.values():
+        assert id(flow.from_process) in copied_processes
+        assert id(flow.to_process) in copied_processes
+    for process in mfa_copy.processes.values():
+        for name, flow in process.inflows.items():
+            assert mfa_copy.flows[name] is flow
+    assert mfa_copy.check_mass_balance() is True
+    mfa_copy.flows["sysenv => shredder"].values[...] *= 2
+    assert mfa_copy.check_mass_balance(error_behavior="ignore") is False
+    assert mfa.check_mass_balance() is True
 
 
 def _named_flows_mfa() -> MFASystem:
@@ -182,69 +289,3 @@ def test_setup_keeps_flow_names():
         flows = make_empty_flows(processes, flow_definitions, dims)
     mfa = MFASystem(dims=dims, parameters={}, processes=processes, flows=flows)
     assert list(mfa.flows) == ["F0_1"]
-
-
-def test_relink_updates_names_of_flows_named_after_processes():
-    mfa = _named_flows_mfa()
-    flows_dict = mfa.flows
-    flow = mfa.flows["sysenv => a"]
-    flow.to_process = mfa.processes["b"]
-    mfa.relink()
-    assert list(mfa.flows) == ["sysenv => b", "custom", "b => sysenv"]
-    assert mfa.flows is flows_dict
-    assert mfa.flows["sysenv => b"] is flow
-    assert flow.name == "sysenv => b"
-    assert list(mfa.processes["b"].inflows) == ["sysenv => b", "custom"]
-    assert list(mfa.processes["a"].inflows) == []
-
-
-def test_relink_keeps_custom_names_and_avoids_duplicates(caplog):
-    mfa = _named_flows_mfa()
-    custom = mfa.flows["custom"]
-    custom.from_process = mfa.processes["sysenv"]
-    # the third flow now connects the same processes as the first one
-    mfa.flows["b => sysenv"].from_process = mfa.processes["sysenv"]
-    mfa.flows["b => sysenv"].to_process = mfa.processes["a"]
-    mfa.relink()
-    assert list(mfa.flows) == ["sysenv => a", "custom", "sysenv => a__2"]
-    assert custom.name == "custom"
-    assert "already exists" in caplog.text
-
-
-def test_relink_with_config_naming():
-    import flodym
-    from flodym.flow_naming import process_ids
-
-    mfa = _named_flows_mfa()
-    with flodym.config.override(flow_naming=process_ids):
-        mfa.relink()
-    assert list(mfa.flows) == ["F0_1", "custom", "F2_0"]
-
-
-def test_relink_without_updating_names():
-    mfa = _named_flows_mfa()
-    mfa.flows["sysenv => a"].to_process = mfa.processes["b"]
-    mfa.relink(update_names=False)
-    assert list(mfa.flows) == ["sysenv => a", "custom", "b => sysenv"]
-    assert list(mfa.processes["b"].inflows) == ["sysenv => a", "custom"]
-
-
-def test_relink_renames_share_keys():
-    import numpy as np
-
-    from flodym import Parameter
-
-    mfa = _named_flows_mfa()
-    a, b = mfa.processes["a"], mfa.processes["b"]
-    share = Parameter(dims=mfa.dims, values=np.full(mfa.dims.shape, 0.5), name="share")
-    b.set_outflow_share("b => sysenv", share)
-    a.set_outflow_share("custom", share)
-    flow = mfa.flows["b => sysenv"]
-    flow.from_process = mfa.processes["sysenv"]
-    flow.to_process = b
-    mfa.relink()
-    assert list(mfa.flows) == ["sysenv => a", "custom", "sysenv => b"]
-    # the share stays with the process it was set for, under the new flow name
-    assert list(b.outflow_shares) == ["sysenv => b"]
-    assert b.outflow_shares["sysenv => b"] is share
-    assert list(a.outflow_shares) == ["custom"]

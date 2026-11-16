@@ -7,12 +7,17 @@ from flodym import (
     Dimension,
     DimensionSet,
     ErrorBehavior,
+    Flow,
     InflowDrivenDSM,
+    MFASystem,
     NormalLifetime,
+    Process,
     SimpleFlowDrivenStock,
     StockArray,
     config,
+    make_processes,
 )
+from flodym._checks import summed_float_precision
 from flodym._config import handle_error
 from flodym.example_objects import get_example_mfa
 
@@ -134,6 +139,29 @@ def test_stock_mass_balance_failure():
         assert stock.check_mass_balance() is True
     with config.override(error_behaviors={"mass_balance": "warn"}):
         assert stock.check_mass_balance() is False
+
+
+@pytest.mark.parametrize(
+    "time_items",
+    [
+        [2020],
+        [2020, 2021],
+        ["2020", "2021", "2022"],
+        [2022, 2021, 2020],
+        [2020, 2022, 2021],
+        [2020, 2021, 2021],
+        list(np.array([2022, 2021, 2020], dtype=np.uint16)),
+        [(1, 2, 3), (4, 5, 6), (7, 8, 9)],
+    ],
+)
+def test_stock_mass_balance_needs_time_steps(time_items):
+    """Time items from which no time steps can be derived give a clear error."""
+    dims = DimensionSet(dim_list=[Dimension(letter="t", name="Time", items=time_items)])
+    stock = SimpleFlowDrivenStock(dims=dims, name="my_stock")
+    with pytest.raises(ValueError, match="time steps cannot be derived .* 'Time'"):
+        stock.get_mass_balance()
+    with pytest.raises(ValueError, match="at least three items"):
+        stock.check_mass_balance(error_behavior="ignore")
 
 
 def test_stock_tolerance():
@@ -267,12 +295,97 @@ def test_process_mass_balance_sysenv():
 
 def test_process_without_flows():
     mfa = _computed_example_mfa()
-    process = mfa.processes["shredder"]
-    process.clear_links()
+    process = Process(name="idle", id=len(mfa.processes))
+    mfa.processes["idle"] = process
+    assert mfa.check_mass_balance() is True
     assert process.get_sum_inflows() == 0.0
     assert process.get_sum_outflows() == 0.0
     assert process.tolerance == 0.0
     assert process.check_mass_balance() is True
+
+
+def _market_mfa(n_items: int, seed: int = 0) -> MFASystem:
+    """Balanced MFA system whose process "market" sums many in- and outflow values.
+
+    The inflow is given by origin, the outflow by destination, as total times share.
+    """
+    dims = DimensionSet(
+        dim_list=[
+            Dimension(letter="t", name="Time", dtype=int, items=[2000, 2001, 2002]),
+            Dimension(letter="o", name="Origin", items=[f"o{i}" for i in range(n_items)]),
+            Dimension(letter="d", name="Destination", items=[f"d{i}" for i in range(n_items)]),
+        ]
+    )
+    processes = make_processes(["sysenv", "market"])
+    flows = {
+        "in": Flow(
+            from_process=processes["sysenv"], to_process=processes["market"], dims=dims["t", "o"]
+        ),
+        "out": Flow(
+            from_process=processes["market"], to_process=processes["sysenv"], dims=dims["t", "d"]
+        ),
+    }
+    rng = np.random.default_rng(seed)
+    shares = rng.lognormal(0, 0.25, size=(3, n_items))
+    shares /= shares.sum(axis=1, keepdims=True)
+    flows["in"][...] = StockArray(dims=dims["t", "o"], values=rng.lognormal(0, 0.25, (3, n_items)))
+    flows["out"][...] = flows["in"].sum_over("o") * StockArray(dims=dims["t", "d"], values=shares)
+    return MFASystem(dims=dims, parameters={}, processes=processes, flows=flows)
+
+
+def test_process_tolerance_grows_with_summed_values():
+    """A balanced process passes the check, however many values its mass balance sums."""
+    n_items = 300
+    for seed in range(10):
+        assert _market_mfa(n_items, seed).check_mass_balance() is True
+
+    mfa = _market_mfa(n_items)
+    market = mfa.processes["market"]
+    # each entry of the balance sums the inflows from all origins and the outflows to all
+    # destinations
+    summed_inflows = np.abs(mfa.flows["in"].values).sum(axis=1)
+    summed_outflows = np.abs(mfa.flows["out"].values).sum(axis=1)
+    largest_sum = (summed_inflows + summed_outflows).max()
+    expected = config.relative_tolerance * np.finfo(np.float64).eps * largest_sum
+    assert market.tolerance == pytest.approx(expected, rel=1e-9, abs=0)
+
+    # an error of the size of a single small flow is still found
+    mfa.flows["out"].values[0, 0] += 1e-9
+    assert 1e-9 > market.tolerance
+    assert market.check_mass_balance(error_behavior="ignore") is False
+    assert mfa.check_mass_balance(error_behavior="ignore") is False
+
+
+def test_process_tolerance_is_not_raised_by_many_small_values():
+    """The tolerance follows the sum of the values, not their number."""
+    mfa = _market_mfa(300)
+    for flow in mfa.flows.values():
+        flow.values[...] = 1e-6
+        flow.values[:, 0] = 1.0
+    expected = config.relative_tolerance * np.finfo(np.float64).eps * 2 * (1.0 + 299 * 1e-6)
+    assert mfa.processes["market"].tolerance == pytest.approx(expected, rel=1e-9, abs=0)
+
+
+def test_summed_float_precision():
+    dims = _dims()
+    eps = np.finfo(np.float64).eps
+    by_element = StockArray(dims=dims, values=np.arange(20.0).reshape(dims.shape) - 5.0)
+    total = StockArray(dims=dims["t",], values=np.full(10, 3.0))
+    assert summed_float_precision([]) == 0.0
+
+    def approx(expected: float):
+        return pytest.approx(expected, rel=1e-9, abs=0)
+
+    # a single array: its largest absolute value
+    assert summed_float_precision([by_element]) == approx(eps * 14.0)
+    # several arrays: the largest sum of absolute values in an entry of their common dimensions
+    assert summed_float_precision([by_element, total]) == approx(eps * (13.0 + 14.0 + 3.0))
+    by_element.values[0, 0] = np.nan
+    assert summed_float_precision([by_element, total]) == approx(eps * (13.0 + 14.0 + 3.0))
+    # each array counts with the machine epsilon of its own data type
+    single = StockArray(dims=dims["t",], values=np.full(10, 3.0, dtype=np.float32))
+    eps_single = np.finfo(np.float32).eps
+    assert summed_float_precision([by_element, single]) == approx(eps * 27.0 + eps_single * 3.0)
 
 
 # --- MFA system ---------------------------------------------------------------------------------
@@ -379,10 +492,11 @@ def test_mfa_system_deprecated_raise_error():
 def test_mfa_system_without_stocks_tolerance():
     mfa = _computed_example_mfa()
     mfa.stocks = {}
-    for process in mfa.processes.values():
-        process.remove_stock()
     assert mfa.tolerance > 0.0
     assert mfa.total_stock_change == 0.0
+    # the processes which had a stock now lack it in their mass balance
+    assert mfa.check_mass_balance(error_behavior="ignore") is False
+    assert all(process.stock is None for process in mfa.processes.values())
 
 
 def test_mass_balance_nan_fails():
