@@ -12,6 +12,7 @@ from flodym._config import config as config
 from flodym._process_compute import (
     UnderdeterminedError as UnderdeterminedError,
 )
+from flodym._process_system import compute_processes as compute_processes
 from flodym.data_reader import (
     CompoundDataReader as CompoundDataReader,
 )
@@ -115,9 +116,6 @@ from flodym.mfa_definition import (
 from flodym.mfa_system import MFASystem as MFASystem
 from flodym.processes import (
     Process as Process,
-)
-from flodym.processes import (
-    compute_processes as compute_processes,
 )
 from flodym.processes import (
     make_processes as make_processes,

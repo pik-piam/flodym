@@ -256,6 +256,7 @@ except fd.UnderdeterminedError as error:
 # %% [markdown]
 # `compute_all_possible()` instead skips underdetermined processes, and returns the names of the processes it could not compute.
 # It tries all processes, and tries the neighbors of each computed process again, until no further process can be computed.
+# Processes that depend on each other are computed together, see "Loops" below.
 
 # %%
 print("Not computed:", my_mfa_system.compute_all_possible())
@@ -268,7 +269,7 @@ print("Not computed:", my_mfa_system.compute_all_possible())
 # If a computation raises an error, the process is restored to its state before.
 #
 # Problems are reported according to `flodym.config.error_behaviors`:
-# - `process_underdetermined`: not enough values given (only in `Process.compute()`; `compute_all_possible()` skips such processes)
+# - `process_underdetermined`: not enough values given (only in `Process.compute()`; `compute_all_possible()` skips such processes, and has its own argument `on_underdetermined`, see below)
 # - `process_shares`: shares outside [0, 1] or summing to more than one, dimension splitters not summing to one
 # - `process_overdetermined`: shares not fulfilled, or set stock arrays changed by the computation
 # - `mass_balance`: mass balance violated
@@ -287,6 +288,117 @@ print("Not computed:", my_mfa_system.compute_all_possible())
 # For parameters that are not part of the definition, such as `"c"`, set `check_parameter_names=False` in the `MFADefinition`.
 #
 # The values of prescribing parameters are copied into the flows and stock arrays by `MFASystem.set_arrays_from_prescribed()`, which `compute_all_possible()` calls first. Example 2 shows the use of definitions.
+
+# %% [markdown]
+# ## Loops: processes that depend on each other
+#
+# Processes can depend on each other, for example in a recycling loop within a time step: production, use, end of life and recycling each have an unknown inflow which only another process of the loop provides.
+# None of them can be computed on its own, although the loop as a whole is determined.
+#
+# `compute_all_possible()` therefore computes such processes simultaneously: It writes the rules above (shares, remainders, sums and dimension splitters) for all of them as one linear equation system, and solves it.
+# This is done for the processes which are left after computing one process at a time, and only processes which are determined completely are computed.
+# Afterwards, the computation one process at a time continues with the new flows.
+#
+# In this loop, the primary input into production is prescribed, end of life sends the share "collection rate" to recycling and the rest to `sysenv`, and recycling sends the share "recycling yield" back to production:
+
+# %%
+loop_dims = fd.DimensionSet(
+    dim_list=[fd.Dimension(name="Time", letter="t", items=[2020, 2021, 2022])]
+)
+loop_processes = fd.make_processes(
+    [
+        "sysenv",
+        "production",
+        "use",
+        fd.ProcessDefinition(name="end_of_life", outflow_shares={"recycling": "collection rate"}),
+        fd.ProcessDefinition(name="recycling", outflow_shares={"production": "recycling yield"}),
+    ]
+)
+loop_links = [
+    ("production", "use"),
+    ("use", "end_of_life"),
+    ("end_of_life", "recycling"),
+    ("end_of_life", "sysenv"),
+    ("recycling", "production"),
+    ("recycling", "sysenv"),
+]
+loop_flow_definitions = [
+    fd.FlowDefinition(
+        from_process_name="sysenv",
+        to_process_name="production",
+        dim_letters=("t",),
+        prescribed="primary input",
+    )
+] + [
+    fd.FlowDefinition(from_process_name=a, to_process_name=b, dim_letters=("t",))
+    for a, b in loop_links
+]
+loop_flows = fd.make_empty_flows(
+    processes=loop_processes, flow_definitions=loop_flow_definitions, dims=loop_dims
+)
+primary_input = np.array([10.0, 20.0, 30.0])
+loop_parameters = {
+    "primary input": fd.Parameter(name="primary input", dims=loop_dims, values=primary_input),
+    "collection rate": fd.Parameter(
+        name="collection rate", dims=loop_dims[()], values=np.array(0.8)
+    ),
+    "recycling yield": fd.Parameter(
+        name="recycling yield", dims=loop_dims[()], values=np.array(0.5)
+    ),
+}
+loop_mfa = fd.MFASystem(
+    dims=loop_dims, processes=loop_processes, flows=loop_flows, parameters=loop_parameters
+)
+loop_mfa.link_parameters()
+
+print("Not computed:", loop_mfa.compute_all_possible())
+print(loop_mfa.flows["production => use"].values)
+print(loop_mfa.flows["recycling => production"].values)
+
+# %% [markdown]
+# The throughput of production is the primary input plus what returns from recycling, `T = primary + collection rate * recycling yield * T`, so `T = primary / (1 - collection rate * recycling yield)`:
+
+# %%
+assert np.allclose(loop_mfa.flows["production => use"].values, primary_input / (1 - 0.8 * 0.5))
+loop_mfa.check_mass_balance()
+loop_mfa.check_flows()
+
+# %% [markdown]
+# With `simultaneous=False`, processes are only computed one at a time, and the loop stays uncomputed.
+# The reasons are logged at info level, which is shown here since logging is configured above; `on_underdetermined="ignore"` suppresses them:
+
+# %%
+loop_mfa.mark_all_unset()
+print(
+    "Not computed:",
+    loop_mfa.compute_all_possible(simultaneous=False, on_underdetermined="ignore"),
+)
+
+# %% [markdown]
+# If the collection rate and the recycling yield are both one, nothing leaves the loop, while the primary input keeps entering it: its equations have no solution.
+# The loop stays uncomputed.
+# By default, `compute_all_possible()` logs the reasons for processes it cannot compute at info level, and a loop without exit as a warning.
+# With `on_underdetermined="error"`, it raises an `UnderdeterminedError` with all reasons instead, which names the processes and flows concerned:
+
+# %%
+loop_mfa.parameters["collection rate"][...] = 1.0
+loop_mfa.parameters["recycling yield"][...] = 1.0
+loop_mfa.mark_all_unset()
+try:
+    loop_mfa.compute_all_possible(on_underdetermined="error")
+except fd.UnderdeterminedError as error:
+    print(error)
+    print("Processes:", error.process_names)
+    print("Flows:", error.flow_names)
+
+# %% [markdown]
+# The simultaneous computation covers flows of any dimensionality, dimension splitters, and processes with stocks: stocks which are already computed, `SimpleFlowDrivenStock`, and dynamic stock models which can be computed on their own first (stock-driven, or with a known inflow).
+# The checks after the computation are the same as for one process at a time.
+# Computed flows are not checked for negative values, which inconsistent inputs of a loop can cause; `check_flows()` does that, as above.
+#
+# Not covered yet are inflow-driven stocks whose inflow depends on the loop: make the stock stock-driven, prescribe its inflow, or compute the loop by hand.
+# Also processes which need both dimension splitters, and processes with related dimensions (see the dimensions HOWTO), are not covered. Such processes are left out, but may still be computed once their neighbors are.
+# If the flows of one side of a process have different dimensions, the result with a dimension splitter can differ from the computation one process at a time. The documentation of `flodym.compute_processes()` describes the details.
 
 # %% [markdown]
 # ## Generate attributes from Definition objects
