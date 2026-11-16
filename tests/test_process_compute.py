@@ -5,19 +5,26 @@ import logging
 
 import numpy as np
 import pytest
+from process_helpers import (
+    DIM_DEFINITIONS,
+    REGIONS,
+    TIME,
+    DictReader,
+    flow,
+    make_mfa,
+    split_mfa,
+    splitter_mfa,
+    stock_mfa,
+)
 
 from flodym import (
-    DataReader,
     Dimension,
     DimensionDefinition,
-    DimensionSet,
     DynamicStockModel,
     FixedLifetime,
-    FlowDefinition,
     InflowDrivenDSM,
     MFADefinition,
     MFASystem,
-    Parameter,
     ParameterDefinition,
     ProcessDefinition,
     SimpleFlowDrivenStock,
@@ -28,84 +35,8 @@ from flodym import (
     config,
 )
 
-TIME = [2000, 2001, 2002, 2003]
-REGIONS = ["north", "south"]
-DIM_ITEMS = {"Time": TIME, "Region": REGIONS, "Cohort": TIME}
-DIM_DEFINITIONS = [
-    DimensionDefinition(name="Time", letter="t", dtype=int),
-    DimensionDefinition(name="Region", letter="r", dtype=str),
-]
 
-
-class DictReader(DataReader):
-    """Reads dimension items and parameter values from dictionaries."""
-
-    def __init__(self, parameter_values: dict[str, np.ndarray]):
-        self.parameter_values = parameter_values
-
-    def read_dimension(self, definition: DimensionDefinition) -> Dimension:
-        return Dimension(
-            name=definition.name, letter=definition.letter, items=DIM_ITEMS[definition.name]
-        )
-
-    def read_parameter_values(self, parameter_name: str, dims: DimensionSet) -> Parameter:
-        values = np.broadcast_to(self.parameter_values[parameter_name], dims.shape).copy()
-        return Parameter(dims=dims, values=values, name=parameter_name)
-
-
-def make_mfa(
-    processes: list,
-    flows: list[FlowDefinition],
-    parameter_values: dict[str, np.ndarray],
-    parameter_dims: dict[str, tuple[str, ...]],
-    stocks: list[StockDefinition] | None = None,
-    dimensions: list[DimensionDefinition] = DIM_DEFINITIONS,
-) -> MFASystem:
-    definition = MFADefinition(
-        dimensions=dimensions,
-        processes=processes,
-        flows=flows,
-        stocks=stocks or [],
-        parameters=[
-            ParameterDefinition(name=name, dim_letters=dims)
-            for name, dims in parameter_dims.items()
-        ],
-    )
-    mfa = MFASystem.from_data_reader(definition, DictReader(parameter_values))
-    # fill prescribed flows, so that single processes can be computed without
-    # compute_all_possible()
-    mfa.set_arrays_from_prescribed()
-    return mfa
-
-
-def flow(from_process: str, to_process: str, dims=("t",), **kwargs) -> FlowDefinition:
-    return FlowDefinition(
-        from_process_name=from_process, to_process_name=to_process, dim_letters=dims, **kwargs
-    )
-
-
-def split_mfa(**process_kwargs) -> MFASystem:
-    """sysenv -> a -> (b, c), b -> sysenv, c -> sysenv, with a share of a -> b of 0.3."""
-    return make_mfa(
-        processes=[
-            "sysenv",
-            ProcessDefinition(name="a", outflow_shares={"b": "share b"}, **process_kwargs),
-            "b",
-            "c",
-        ],
-        flows=[
-            flow("sysenv", "a", prescribed="input"),
-            flow("a", "b"),
-            flow("a", "c"),
-            flow("b", "sysenv"),
-            flow("c", "sysenv"),
-        ],
-        parameter_values={"input": np.array([1.0, 2.0, 3.0, 4.0]), "share b": 0.3},
-        parameter_dims={"input": ("t",), "share b": ()},
-    )
-
-
-def test_forward_computation():
+def test_forward_computation(engine):
     mfa = split_mfa()
     assert mfa.flows["sysenv => a"].is_set
     assert mfa.processes["a"].compute()
@@ -114,14 +45,14 @@ def test_forward_computation():
     assert mfa.processes["a"].is_computed
 
 
-def test_compute_all_possible():
+def test_compute_all_possible(engine):
     mfa = split_mfa()
     assert mfa.compute_all_possible() == []
     np.testing.assert_allclose(mfa.flows["c => sysenv"].values, [0.7, 1.4, 2.1, 2.8])
     assert mfa.check_mass_balance()
 
 
-def test_backward_computation_and_total_from_remainder():
+def test_backward_computation_and_total_from_remainder(engine):
     mfa = split_mfa()
     mfa.flows["sysenv => a"].mark_unset()
     mfa.flows["a => c"][...] = 7.0
@@ -130,7 +61,7 @@ def test_backward_computation_and_total_from_remainder():
     np.testing.assert_allclose(mfa.flows["a => b"].values, 3.0)
 
 
-def test_total_from_known_flow_with_share():
+def test_total_from_known_flow_with_share(engine):
     mfa = split_mfa()
     mfa.flows["sysenv => a"].mark_unset()
     mfa.flows["a => b"][...] = 3.0
@@ -155,7 +86,7 @@ def test_underdetermined():
     assert mfa.compute_all_possible() == ["a", "b", "c"]
 
 
-def test_backwards_compatible_definition_with_names():
+def test_backwards_compatible_definition_with_names(engine):
     mfa = make_mfa(
         processes=["sysenv", "a"],
         flows=[flow("sysenv", "a"), flow("a", "sysenv")],
@@ -177,7 +108,7 @@ def test_undefined_parameter_in_definition():
         )
 
 
-def test_share_keys_and_parallel_flows():
+def test_share_keys_and_parallel_flows(engine):
     processes = ["sysenv", "a", "b"]
     flows = [
         flow("sysenv", "a"),
@@ -196,7 +127,7 @@ def test_share_keys_and_parallel_flows():
     np.testing.assert_allclose(mfa.flows["second"].values, 3.0)
 
 
-def test_share_parameter_changes_are_used():
+def test_share_parameter_changes_are_used(engine):
     mfa = split_mfa()
     mfa.parameters["share b"][...] = 0.5
     mfa.compute_all_possible()
@@ -244,21 +175,7 @@ def test_overdetermined_inconsistent_raises():
         mfa.processes["a"].compute()
 
 
-def splitter_mfa(split_values, **process_kwargs) -> MFASystem:
-    """sysenv -> a -> b -> sysenv, with the outflow of a by region and the inflow not."""
-    return make_mfa(
-        processes=["sysenv", ProcessDefinition(name="a", **process_kwargs), "b"],
-        flows=[
-            flow("sysenv", "a", prescribed="input"),
-            flow("a", "b", dims=("t", "r")),
-            flow("b", "sysenv", dims=("t", "r")),
-        ],
-        parameter_values={"input": np.array([1.0, 2.0, 3.0, 4.0]), "split": split_values},
-        parameter_dims={"input": ("t",), "split": ("r",)},
-    )
-
-
-def test_forward_dimension_splitter():
+def test_forward_dimension_splitter(engine):
     mfa = splitter_mfa(np.array([0.2, 0.8]), forward_dimension_splitter="split")
     assert mfa.processes["a"].forward_dimension_splitter is mfa.parameters["split"]
     mfa.processes["a"].compute()
@@ -289,7 +206,7 @@ def test_unused_dimension_splitter():
         mfa.processes["a"].compute()
 
 
-def test_forward_and_backward_dimension_splitters():
+def test_forward_and_backward_dimension_splitters(engine):
     """Inflows by region, outflows by good: each direction needs its own splitter."""
     dims = {"Time": TIME, "Region": REGIONS, "Good": ["cars", "houses", "tools"]}
     region_by_good = np.array([[1.0, 2.0, 3.0], [3.0, 2.0, 1.0]])
@@ -346,7 +263,7 @@ def test_missing_dimension_splitter():
         mfa.processes["a"].set_dimension_splitter("sideways", mfa.parameters["split"])
 
 
-def test_prescribed_flows_refilled_after_mark_all_unset():
+def test_prescribed_flows_refilled_after_mark_all_unset(engine):
     mfa = split_mfa()
     mfa.compute_all_possible()
     mfa.parameters["input"][...] = 10.0
@@ -355,39 +272,7 @@ def test_prescribed_flows_refilled_after_mark_all_unset():
     np.testing.assert_allclose(mfa.flows["a => b"].values, 3.0)
 
 
-def stock_mfa(
-    subclass: type,
-    lifetime: bool = True,
-    parameter_values: dict | None = None,
-    parameter_dims: dict | None = None,
-    **stock_kwargs,
-) -> MFASystem:
-    """sysenv -> use (with stock) -> (eol, sysenv), with a share of use -> eol of 0.6."""
-    if lifetime:
-        stock_kwargs["lifetime_model_class"] = FixedLifetime
-    mfa = make_mfa(
-        processes=["sysenv", ProcessDefinition(name="use", outflow_shares={"eol": "share"}), "eol"],
-        flows=[
-            flow("sysenv", "use"),
-            flow("use", "eol"),
-            flow("use", "sysenv"),
-            flow("eol", "sysenv"),
-        ],
-        parameter_values={"share": 0.6, **(parameter_values or {})},
-        parameter_dims={"share": (), **(parameter_dims or {})},
-        dimensions=DIM_DEFINITIONS + [DimensionDefinition(name="Cohort", letter="c", dtype=int)],
-        stocks=[
-            StockDefinition(
-                name="use", process="use", dim_letters=("t",), subclass=subclass, **stock_kwargs
-            )
-        ],
-    )
-    if lifetime:
-        mfa.stocks["use"].lifetime_model.mean = 1
-    return mfa
-
-
-def test_simple_stock_process():
+def test_simple_stock_process(engine):
     mfa = stock_mfa(SimpleFlowDrivenStock, lifetime=False)
     mfa.flows["sysenv => use"][...] = 2.0
     mfa.flows["use => sysenv"][...] = 0.4
@@ -410,7 +295,7 @@ def test_inflow_driven_stock_process(subclass):
 
 
 @pytest.mark.parametrize("subclass", [StockDrivenDSM, DynamicStockModel])
-def test_stock_driven_stock_process(subclass):
+def test_stock_driven_stock_process(subclass, engine):
     mfa = stock_mfa(subclass)
     mfa.stocks["use"].stock[...] = 1.0
     assert mfa.compute_all_possible() == []
@@ -452,7 +337,7 @@ def test_long_chain_without_recursion_limit():
     np.testing.assert_allclose(mfa.flows["p2999 => sysenv"].values, 1.0)
 
 
-def test_compute_neighbors():
+def test_compute_neighbors(engine):
     mfa = chain_mfa(3)
     mfa.flows["sysenv => p0"][...] = 1.0
     assert mfa.processes["p0"].compute()
@@ -464,7 +349,7 @@ def test_compute_neighbors():
 # Regression tests for reviewed edge cases
 
 
-def test_total_falls_back_to_other_side_if_shares_are_zero():
+def test_total_falls_back_to_other_side_if_shares_are_zero(engine):
     mfa = make_mfa(
         processes=[
             "sysenv",
@@ -532,7 +417,7 @@ def test_failed_stock_computation_changes_nothing():
     np.testing.assert_allclose(mfa.flows["use => eol"].values, [0.0, 3.0, 3.0, 3.0])
 
 
-def test_computed_stock_is_distributed_to_flows():
+def test_computed_stock_is_distributed_to_flows(engine):
     mfa = stock_mfa(DynamicStockModel)
     stock = mfa.stocks["use"]
     stock.inflow[...] = 1.0
@@ -568,7 +453,7 @@ def test_shares_of_all_flows_are_not_overdetermined():
     assert not mfa.processes["a"].is_overdetermined
 
 
-def test_side_without_flows_has_zero_total():
+def test_side_without_flows_has_zero_total(engine):
     mfa = make_mfa(
         processes=["sysenv", "landfill"],
         flows=[flow("sysenv", "landfill")],
@@ -640,7 +525,7 @@ def test_prescribed_flow_without_flow_dims():
         )
 
 
-def test_stock_inflow_from_parameter():
+def test_stock_inflow_from_parameter(engine):
     mfa = stock_mfa(
         InflowDrivenDSM,
         parameter_values={"inflow": 2.0},
@@ -658,7 +543,7 @@ def test_stock_inflow_from_parameter():
     np.testing.assert_allclose(mfa.flows["sysenv => use"].values, 1.0)
 
 
-def test_stock_from_parameter():
+def test_stock_from_parameter(engine):
     mfa = stock_mfa(
         DynamicStockModel,
         parameter_values={"stock": 1.0},
@@ -670,7 +555,7 @@ def test_stock_from_parameter():
     assert mfa.check_mass_balance()
 
 
-def test_inflow_by_cohort_from_parameter():
+def test_inflow_by_cohort_from_parameter(engine):
     inflow_by_cohort = np.diag([1.0, 2.0, 3.0, 4.0])
     mfa = stock_mfa(
         DynamicStockModel,
@@ -736,7 +621,7 @@ def linked_split_definition(prescribed: str = "input", **kwargs) -> MFADefinitio
 SPLIT_VALUES = {"input": np.array([1.0, 2.0, 3.0, 4.0]), "share b": 0.3}
 
 
-def test_prescribed_parameter_added_before_linking():
+def test_prescribed_parameter_added_before_linking(engine):
     definition = linked_split_definition(prescribed="input sum", check_parameter_names=False)
     mfa = MFASystem.from_data_reader(definition, DictReader(SPLIT_VALUES), link=False)
     parameters = mfa.parameters
@@ -796,7 +681,7 @@ def test_set_arrays_from_prescribed_overwrites_and_uses_parameter_changes():
     assert flow.is_set
 
 
-def test_prescribed_flow_is_kept_when_relink_renames_it():
+def test_prescribed_flow_is_kept_when_relink_renames_it(engine):
     from flodym.flow_naming import process_ids
 
     mfa = split_mfa()

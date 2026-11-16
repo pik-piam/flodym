@@ -11,16 +11,23 @@ The computation is split into these parts:
   (``Stock._compute_process``), using the methods of :py:class:`ProcessComputation`.
 - :py:class:`Snapshot` stores the arrays a computation may change, so that they are restored
   if the computation fails.
-- :py:func:`compute_process` runs one computation with the checks before and after it, and
-  :py:func:`compute_processes` computes as many processes as possible.
+- :py:func:`compute_process` runs one computation with the checks before and after it.
+
+The functions which check a process after its computation, and the rules shared with the
+simultaneous computation of processes (``flodym._process_equations``), such as the use of
+dimension splitters and the remaining share, are defined here as well.
+:py:func:`flodym.compute_processes` (in ``flodym._process_system``) computes as many processes as
+possible.
 """
 
 import logging
-from collections import deque
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Optional
 
 import numpy as np
+from scipy import sparse
+from scipy.sparse.csgraph import connected_components
 
 from ._checks import config_hint, max_abs, report_balance_failures
 from ._config import ErrorBehavior, config, handle_error
@@ -37,6 +44,8 @@ Side = Literal["in", "out"]
 """Side of a process: ``"in"`` for its inflows, ``"out"`` for its outflows."""
 SIDES: tuple[Side, Side] = ("in", "out")
 """Both sides of a process."""
+OTHER_SIDE: dict[Side, Side] = {"in": "out", "out": "in"}
+"""The opposite of each side."""
 
 Direction = Literal["forward", "backward"]
 """Direction of a dimension splitter: ``"forward"`` splitters are used to compute outflows,
@@ -53,23 +62,76 @@ TOTAL_METHODS: tuple[TotalMethod, ...] = ("sum", "share", "remainder")
 
 
 class UnderdeterminedError(Exception):
-    """Raised by :py:meth:`flodym.Process.compute` if the process cannot be computed.
+    """Raised if processes cannot be computed from the given values.
 
-    This is the case if the process cannot be computed from the given flows, shares and stock
-    values, or if its stock type does not support the automatic computation.
+    :py:meth:`flodym.Process.compute` raises it for a single process, if the process cannot be
+    computed from the given flows, shares and stock values, or if its stock type does not support
+    the automatic computation. :py:meth:`flodym.MFASystem.compute_all_possible` raises it with
+    ``on_underdetermined="error"`` for all processes it could not compute, including processes
+    which depend on each other and were solved together (see
+    :py:func:`flodym.compute_processes`).
+
+    Args:
+        process: The process which cannot be computed. If the error concerns several processes,
+            the first of them.
+        message: Explanation why the process or processes cannot be computed.
+        process_names: Names of all processes concerned, if the error concerns several processes
+            or is raised by :py:meth:`flodym.MFASystem.compute_all_possible`.
+        flow_names: Names of the flows which are not determined, if known.
+        concerns_flows: Whether the process is underdetermined since its flows, shares and
+            dimension splitters do not determine it, rather than because of its stock.
     """
 
-    def __init__(self, process: "Process", message: str) -> None:
+    def __init__(
+        self,
+        process: "Process",
+        message: str,
+        *,
+        process_names: Sequence[str] | None = None,
+        flow_names: Sequence[str] | None = None,
+        concerns_flows: bool = False,
+    ) -> None:
         self.process_name = process.name
-        """Name of the process."""
+        """Name of the process. If the error concerns several processes, the first of
+        :py:attr:`process_names`."""
+        self.process_names = [process.name] if process_names is None else list(process_names)
+        """Names of all processes concerned."""
+        self.flow_names = [] if flow_names is None else list(flow_names)
+        """Names of the flows which are not determined by the given values. Empty if not
+        known."""
         self.reason = message
         """Explanation why the process cannot be computed."""
-        self.short_message = f"Process '{process.name}' is underdetermined. Skip computation."
-        """One-line message, used when underdetermined processes are skipped."""
-        super().__init__(
-            f"Cannot compute process '{process.name}' (ID {process.id}), as it is "
-            f"underdetermined.\n{message}" + config_hint("process_underdetermined")
+        self._concerns_flows = concerns_flows
+        names = quoted(self.process_names)
+        several = len(self.process_names) > 1
+        self.short_message = (
+            f"Process{'es' if several else ''} {names} {'are' if several else 'is'} "
+            "underdetermined. Skip computation."
         )
+        """One-line message, used when underdetermined processes are skipped."""
+        if process_names is None:
+            header = f"Cannot compute process {names} (ID {process.id}), as it is underdetermined."
+            hint = config_hint("process_underdetermined")
+        else:
+            header = (
+                f"Cannot compute process{'es' if several else ''} {names}, as "
+                f"{'they are' if several else 'it is'} underdetermined."
+            )
+            hint = ""
+        super().__init__(f"{header}\n{message.rstrip()}{hint}")
+
+
+DEPENDING_PROCESSES_HINT = (
+    "Processes which depend on each other, e.g. in a recycling loop, can only be computed "
+    "together, with MFASystem.compute_all_possible()."
+)
+"""Added to the message of :py:meth:`flodym.Process.compute` if the process lies on a cycle of
+unknown flows."""
+
+
+def quoted(names: Iterable[str]) -> str:
+    """Names in quotes, separated by commas, for messages."""
+    return ", ".join(f"'{name}'" for name in names)
 
 
 def share_tolerance(n_summed: int = 1) -> float:
@@ -107,10 +169,125 @@ def union_of_dims(arrays: Iterable["FlodymArray"]) -> DimensionSet:
     return dims
 
 
+def common_dims(arrays: Iterable["FlodymArray"]) -> DimensionSet | None:
+    """Dimensions which all given arrays have, None if there are no arrays."""
+    dims = None
+    for array in arrays:
+        dims = array.dims if dims is None else dims & array.dims
+    return dims
+
+
 def sum_arrays(arrays: Iterable["FlodymArray"]) -> "FlodymArray":
     """Sum of a non-empty collection of arrays, with the dimensions common to all."""
     arrays = list(arrays)
     return sum(arrays[1:], arrays[0])
+
+
+def sum_of_shares(shares: Iterable["FlodymArray"]) -> "FlodymArray":
+    """Sum of a non-empty collection of shares, with the union of their dimensions."""
+    shares = list(shares)
+    dims = union_of_dims(shares)
+    # shares are cast to common dimensions first, since + would sum them over others
+    return sum_arrays(share.cast_to(dims) for share in shares)
+
+
+def remaining_share(shares: Iterable["FlodymArray"]) -> "FlodymArray":
+    """One minus the sum of a non-empty collection of shares.
+
+    Values within the tolerance of zero (see :py:func:`share_tolerance`) are set to exactly zero:
+    there, the shares sum to one, so that a total cannot be computed from the flows which
+    receive the remaining share.
+    """
+    shares = list(shares)
+    remaining = 1.0 - sum_of_shares(shares)
+    remaining.values[np.abs(remaining.values) <= share_tolerance(len(shares))] = 0.0
+    return remaining
+
+
+def unique_flows(process: "Process") -> list["Flow"]:
+    """In- and outflows of a process, each once, also a flow from the process to itself."""
+    flows = [*process.inflows.values(), *process.outflows.values()]
+    return list({id(flow): flow for flow in flows}.values())
+
+
+def processes_on_cycles(flows: Iterable["Flow"]) -> set[int]:
+    """IDs of the processes (other than 'sysenv') on a directed cycle of the given flows."""
+    edges = [
+        (flow.from_process.id, flow.to_process.id)
+        for flow in flows
+        if flow.from_process.id != 0 and flow.to_process.id != 0
+    ]
+    if not edges:
+        return set()
+    ids = sorted({process_id for edge in edges for process_id in edge})
+    index = {process_id: position for position, process_id in enumerate(ids)}
+    sources = np.array([index[source] for source, _ in edges])
+    targets = np.array([index[target] for _, target in edges])
+    graph = sparse.csr_matrix((np.ones(len(edges)), (sources, targets)), shape=(len(ids),) * 2)
+    _, components = connected_components(graph, directed=True, connection="strong")
+    sizes = np.bincount(components)
+    self_loops = {source for source, target in zip(sources, targets) if source == target}
+    return {
+        process_id
+        for position, process_id in enumerate(ids)
+        if sizes[components[position]] > 1 or position in self_loops
+    }
+
+
+def on_cycle_of_unknown_flows(process: "Process") -> bool:
+    """Whether the process lies on a directed cycle of flows which are not set.
+
+    The system boundary ('sysenv') does not close cycles.
+    """
+    unknown_flows: dict[int, Flow] = {}
+    seen = {process.id}
+    stack = [process]
+    while stack:
+        for flow in unique_flows(stack.pop()):
+            if flow.is_set or id(flow) in unknown_flows:
+                continue
+            unknown_flows[id(flow)] = flow
+            for other in (flow.from_process, flow.to_process):
+                if other.id != 0 and other.id not in seen:
+                    seen.add(other.id)
+                    stack.append(other)
+    return process.id in processes_on_cycles(unknown_flows.values())
+
+
+@dataclass
+class SplitterUse:
+    """How the dimension splitter of a side is used, see :py:meth:`ProcessSide.splitter_use`."""
+
+    splitter: Optional["FlodymArray"] = None
+    """The splitter, if it is needed and given."""
+    unused: bool = False
+    """Whether the splitter is set, but not needed, although the side has unknown flows."""
+    missing_message: str | None = None
+    """Explanation, if a splitter is needed, but not given."""
+
+
+def check_splitter_sum(
+    process: "Process", splitter: "FlodymArray", total_dims: DimensionSet, direction: Direction
+) -> None:
+    """Check that a dimension splitter sums to one over the dimensions it adds to a total.
+
+    Failures are handled according to ``config.error_behaviors.process_shares``.
+    """
+    if config.error_behaviors.process_shares == ErrorBehavior.IGNORE:
+        return
+    added_dims = splitter.dims - total_dims
+    splitter_sum = splitter.sum_to((splitter.dims & total_dims).letters, check_extensivity=False)
+    tolerance = share_tolerance(n_summed=int(np.prod(added_dims.shape)))
+    max_error = max_abs(splitter_sum - 1.0)
+    if not max_error <= tolerance:
+        handle_error(
+            behavior=config.error_behaviors.process_shares,
+            message=(
+                f"In process '{process.name}': The {direction} dimension splitter does "
+                f"not sum to one over the dimensions it adds ({', '.join(added_dims.names)}), "
+                f"with a maximum error of {max_error}." + config_hint("process_shares")
+            ),
+        )
 
 
 class ProcessSide:
@@ -135,6 +312,11 @@ class ProcessSide:
     def label(self) -> str:
         """``"inflow"`` or ``"outflow"``, for messages."""
         return f"{self.side}flow"
+
+    @property
+    def direction(self) -> Direction:
+        """Direction of the dimension splitter used for the flows of this side."""
+        return SPLITTER_DIRECTIONS[self.side]
 
     @property
     def known(self) -> dict[str, "Flow"]:
@@ -220,10 +402,11 @@ class ProcessSide:
                 self.process,
                 f"From the {self.label}s {', '.join(self.both_known)} and their shares, the total "
                 "is not determined for some items, since the shares are zero there.\n",
+                concerns_flows=True,
             )
         if method == "remainder":
             return self._total_from_remainder()
-        raise UnderdeterminedError(self.process, self.total_failure_message())
+        raise UnderdeterminedError(self.process, self.total_failure_message(), concerns_flows=True)
 
     def _total_from_share(self) -> Optional["FlodymArray"]:
         """Total as a known flow divided by its share.
@@ -259,16 +442,15 @@ class ProcessSide:
                 f"{', '.join(share_names)}, since these shares have the dimensions "
                 f"{excess_dims.names}, which not all known flows have."
             )
-        # shares are cast to common dimensions first, since + would sum them over others
-        sum_shares = sum_arrays(s.cast_to(dims_unknown) for s in shares_unknown.values())
-        remaining_share = 1.0 - sum_shares
-        if np.any(np.abs(remaining_share.values) <= share_tolerance(len(shares_unknown))):
+        remaining = remaining_share(shares_unknown.values())
+        if np.any(remaining.values == 0.0):
             raise UnderdeterminedError(
                 self.process,
                 f"From the known {self.label}s {', '.join(known)}, the total is not determined "
                 "for some items, since the shares of the unknown flows sum to one there.\n",
+                concerns_flows=True,
             )
-        return sum_known / remaining_share
+        return sum_known / remaining
 
     def total_failure_message(self) -> str:
         """Explanation why the total cannot be computed from this side."""
@@ -298,11 +480,9 @@ class ProcessSide:
             "value for all but one of them.\n"
         )
 
-    def check_flow_dims(self, total_dims: DimensionSet) -> None:
-        """Check that the unknown flows can be computed from a total with the given dimensions."""
-        for name in self.unknown:
-            if name not in self.shares:
-                continue
+    def check_share_dims(self, total_dims: DimensionSet, names: Iterable[str]) -> None:
+        """Check that the shares of the given flows have no dimensions which the total lacks."""
+        for name in names:
             excess_dims = self.shares[name].dims - total_dims
             if excess_dims:
                 raise ValueError(
@@ -311,6 +491,45 @@ class ProcessSide:
                     "not have. To add these dimensions to the flow, use a dimension splitter, or "
                     "insert a separate process with a dimension splitter."
                 )
+
+    def splitter_use(self, available_dims: DimensionSet | None, lacking: str) -> SplitterUse:
+        """How the dimension splitter of this side is used to compute its unknown flows.
+
+        The splitter is needed if unknown flows have dimensions which are not available
+        otherwise.
+
+        Args:
+            available_dims: Dimensions available without splitter, e.g. those of the total.
+                None if no splitter can be applied, since there is no total to apply it to.
+            lacking: Who lacks the dimensions which are not available, for messages, e.g.
+                ``"their total does not have"``.
+
+        Raises:
+            ValueError: If the splitter is needed, but does not have all missing dimensions.
+        """
+        splitter = self.process._linked_dimension_splitter(self.direction)
+        unknown = list(self.unknown.values())
+        if available_dims is None or not union_of_dims(unknown) - available_dims:
+            return SplitterUse(unused=splitter is not None and bool(unknown))
+        missing_dims = union_of_dims(unknown) - available_dims
+        if splitter is None:
+            return SplitterUse(
+                missing_message=(
+                    f"Unknown {self.label}s have the dimensions {missing_dims.names}, which "
+                    f"{lacking}. Set a {self.direction} dimension splitter to add them."
+                )
+            )
+        if missing_dims - splitter.dims:
+            raise ValueError(
+                f"In process '{self.process.name}': The {self.direction} dimension splitter does "
+                f"not have the dimensions {(missing_dims - splitter.dims).names}, which unknown "
+                f"{self.label}s have, but {lacking}."
+            )
+        return SplitterUse(splitter=splitter)
+
+    def check_flow_dims(self, total_dims: DimensionSet) -> None:
+        """Check that the unknown flows can be computed from a total with the given dimensions."""
+        self.check_share_dims(total_dims, [name for name in self.unknown if name in self.shares])
         remaining = [name for name in self.unknown if name not in self.shares]
         if not remaining:
             return
@@ -356,8 +575,7 @@ class ProcessSide:
             return
         for name, share in self.shares.items():
             check_share_values(self.process, share, f"Share of flow '{name}'")
-        dims = union_of_dims(self.shares.values())
-        share_sum = sum_arrays(s.cast_to(dims) for s in self.shares.values()).values
+        share_sum = sum_of_shares(self.shares.values()).values
         tolerance = share_tolerance(n_summed=len(self.shares))
         if len(self.shares) == len(self.flows):
             failed = not np.all(np.abs(share_sum - 1.0) <= tolerance)
@@ -436,7 +654,7 @@ class ProcessComputation:
         if not candidates:
             message = "Cannot compute the total of the process.\n"
             message += "".join(self.sides[side].total_failure_message() for side in sides)
-            raise UnderdeterminedError(self.process, message)
+            raise UnderdeterminedError(self.process, message, concerns_flows=True)
         return [side for _, side in sorted(candidates)]
 
     def require_flows(self, sides: Sequence[Side] = SIDES) -> None:
@@ -447,7 +665,7 @@ class ProcessComputation:
         failed = [self.sides[side] for side in sides if not self.sides[side].can_compute_flows()]
         if failed:
             message = "".join(side.flows_failure_message() for side in failed)
-            raise UnderdeterminedError(self.process, message)
+            raise UnderdeterminedError(self.process, message, concerns_flows=True)
 
     # Computation --------------------------------------------------------------------------------
 
@@ -477,7 +695,7 @@ class ProcessComputation:
                 return self.sides[side].compute_total()
             except UnderdeterminedError as error:
                 errors.append(error.reason)
-        raise UnderdeterminedError(self.process, "".join(errors))
+        raise UnderdeterminedError(self.process, "".join(errors), concerns_flows=True)
 
     def compute_side(self, total: "FlodymArray", side: Side) -> None:
         """Compute the unknown flows of one side from the total of this side.
@@ -496,106 +714,91 @@ class ProcessComputation:
         inflows. It is needed if unknown flows of the side have dimensions which the total does not
         have. Otherwise, the total is returned unchanged.
         """
-        direction = SPLITTER_DIRECTIONS[side]
-        splitter = self.process._linked_dimension_splitter(direction)
-        unknown_flows = self.sides[side].unknown.values()
-        missing_dims = union_of_dims(unknown_flows) - total.dims
-        if not missing_dims:
-            if splitter is not None and unknown_flows:
-                self.unused_splitters.append(direction)
+        process_side = self.sides[side]
+        use = process_side.splitter_use(total.dims, "their total does not have")
+        if use.missing_message is not None:
+            raise ValueError(f"In process '{self.process.name}': {use.missing_message}")
+        if use.unused:
+            self.unused_splitters.append(process_side.direction)
+        if use.splitter is None:
             return total
-
-        name = self.process.name
-        label = self.sides[side].label
-        if splitter is None:
-            raise ValueError(
-                f"In process '{name}': Unknown {label}s have the dimensions "
-                f"{missing_dims.names}, which their total does not have. Set a {direction} "
-                "dimension splitter to add them."
-            )
-        if missing_dims - splitter.dims:
-            raise ValueError(
-                f"In process '{name}': The {direction} dimension splitter does not have the "
-                f"dimensions {(missing_dims - splitter.dims).names}, which unknown {label}s "
-                "have, but their total does not have."
-            )
-        self._check_splitter_sum(splitter, total.dims, direction)
-        return total * splitter
-
-    def _check_splitter_sum(
-        self, splitter: "FlodymArray", total_dims: DimensionSet, direction: Direction
-    ) -> None:
-        """Check that the dimension splitter sums to one over the dimensions it adds."""
-        if config.error_behaviors.process_shares == ErrorBehavior.IGNORE:
-            return
-        added_dims = splitter.dims - total_dims
-        splitter_sum = splitter.sum_to(
-            (splitter.dims & total_dims).letters, check_extensivity=False
-        )
-        tolerance = share_tolerance(n_summed=int(np.prod(added_dims.shape)))
-        max_error = max_abs(splitter_sum - 1.0)
-        if not max_error <= tolerance:
-            handle_error(
-                behavior=config.error_behaviors.process_shares,
-                message=(
-                    f"In process '{self.process.name}': The {direction} dimension splitter does "
-                    f"not sum to one over the dimensions it adds ({', '.join(added_dims.names)}), "
-                    f"with a maximum error of {max_error}." + config_hint("process_shares")
-                ),
-            )
+        check_splitter_sum(self.process, use.splitter, total.dims, process_side.direction)
+        return total * use.splitter
 
     # Checks after the computation ---------------------------------------------------------------
 
     def check_result(self, was_overdetermined: bool, snapshot: "Snapshot") -> None:
-        """Checks after a successful computation."""
-        process = self.process
-        if not process.is_computed:
-            raise RuntimeError(
-                f"After computation of process '{process.name}', there are still unknown flows or "
-                "stock arrays. This indicates an internal flodym error."
-            )
-        for side in self.sides.values():
-            side.check_share_sums()
-        for direction in self.unused_splitters:
-            label = self.sides[SPLITTER_SIDES[direction]].label
-            handle_error(
-                behavior=config.error_behaviors.unused_dimension_splitter,
-                message=(
-                    f"In process '{process.name}': The {direction} dimension splitter is set, but "
-                    f"was not used to compute the {label}s, since no dimensions had to be added. "
-                    "The split it gives may not be fulfilled."
-                    + config_hint("unused_dimension_splitter")
-                ),
-            )
-        self._check_given_stock_arrays_kept(snapshot)
-        if was_overdetermined or config.checks.mass_balance_after_compute:
-            check_process_mass_balance(process, overdetermined=was_overdetermined)
+        """Checks after a successful computation, see :py:func:`check_after_computation`."""
+        check_after_computation(self.process, snapshot, was_overdetermined, self.unused_splitters)
 
-    def _check_given_stock_arrays_kept(self, snapshot: "Snapshot") -> None:
-        """Check that stock arrays which were set before the computation kept their values.
 
-        The stock computation overwrites them if the process is overdetermined.
-        """
-        stock = self.process.stock
-        if stock is None or config.error_behaviors.process_overdetermined == ErrorBehavior.IGNORE:
-            return
-        tolerance = stock.tolerance
-        changed = [
-            array.name
-            for array, values in snapshot.given_stock_arrays
-            if not max_abs(array.values - values) <= tolerance
-        ]
-        if changed:
-            handle_error(
-                behavior=config.error_behaviors.process_overdetermined,
-                message=(
-                    f"In process '{self.process.name}': The computation changed the values of the "
-                    f"stock arrays {', '.join(changed)}, which were set before. This happens if "
-                    "the process is overdetermined, i.e. more values are given than needed, and "
-                    "these are inconsistent."
-                    + config_hint("process_overdetermined", tolerance=True)
-                ),
-            )
+def check_after_computation(
+    process: "Process",
+    snapshot: "Snapshot",
+    was_overdetermined: bool,
+    unused_splitters: Sequence[Direction],
+) -> None:
+    """Checks after a successful computation of a process, on its own or with others.
+
+    The process must be computed. Its shares must sum to one (or at most one), unused dimension
+    splitters are reported, stock arrays which were set before must keep their values, and the
+    mass balance is checked if the process was overdetermined or
+    ``config.checks.mass_balance_after_compute`` is set.
+
+    Args:
+        process: The process.
+        snapshot: The state of the process before the computation.
+        was_overdetermined: Whether more values were given than needed.
+        unused_splitters: Directions of dimension splitters which are set, but were not needed.
+    """
+    if not process.is_computed:
+        raise RuntimeError(
+            f"After computation of process '{process.name}', there are still unknown flows or "
+            "stock arrays. This indicates an internal flodym error."
+        )
+    sides = {side: ProcessSide(process, side) for side in SIDES}
+    for process_side in sides.values():
+        process_side.check_share_sums()
+    for direction in unused_splitters:
+        label = sides[SPLITTER_SIDES[direction]].label
+        handle_error(
+            behavior=config.error_behaviors.unused_dimension_splitter,
+            message=(
+                f"In process '{process.name}': The {direction} dimension splitter is set, but "
+                f"was not used to compute the {label}s, since no dimensions had to be added. "
+                "The split it gives may not be fulfilled."
+                + config_hint("unused_dimension_splitter")
+            ),
+        )
+    check_given_stock_arrays_kept(process, snapshot)
+    if was_overdetermined or config.checks.mass_balance_after_compute:
+        check_process_mass_balance(process, overdetermined=was_overdetermined)
+
+
+def check_given_stock_arrays_kept(process: "Process", snapshot: "Snapshot") -> None:
+    """Check that stock arrays which were set before the computation kept their values.
+
+    The stock computation overwrites them if the process is overdetermined.
+    """
+    stock = process.stock
+    if stock is None or config.error_behaviors.process_overdetermined == ErrorBehavior.IGNORE:
+        return
+    tolerance = stock.tolerance
+    changed = [
+        array.name
+        for array, values in snapshot.given_stock_arrays
+        if not max_abs(array.values - values) <= tolerance
+    ]
+    if changed:
+        handle_error(
+            behavior=config.error_behaviors.process_overdetermined,
+            message=(
+                f"In process '{process.name}': The computation changed the values of the "
+                f"stock arrays {', '.join(changed)}, which were set before. This happens if "
+                "the process is overdetermined, i.e. more values are given than needed, and "
+                "these are inconsistent." + config_hint("process_overdetermined", tolerance=True)
+            ),
+        )
 
 
 def check_process_mass_balance(process: "Process", overdetermined: bool = False) -> None:
@@ -710,7 +913,9 @@ def compute_process(
         process: The process.
         on_underdetermined: What to do if the process is underdetermined. If None,
             ``config.error_behaviors.process_underdetermined`` is used.
-        short_message: Whether to report underdetermination in one line.
+        short_message: Whether to report underdetermination in one line. Otherwise, the
+            message explains why, and points to the simultaneous computation of processes if
+            the flows are underdetermined and the process lies on a cycle of unknown flows.
 
     Returns:
         Whether the process is computed afterwards.
@@ -736,10 +941,20 @@ def compute_process(
         computation.check_result(was_overdetermined, snapshot)
     except UnderdeterminedError as error:
         snapshot.restore()
+        if short_message or not (error._concerns_flows and on_cycle_of_unknown_flows(process)):
+            reported = error
+        else:
+            reported = UnderdeterminedError(
+                process, f"{error.reason.rstrip()}\n{DEPENDING_PROCESSES_HINT}", concerns_flows=True
+            )
         if on_underdetermined == ErrorBehavior.ERROR:
-            raise
-        message = error.short_message if short_message else str(error)
-        handle_error(behavior=on_underdetermined, message=message)
+            if reported is error:
+                raise
+            raise reported from error
+        handle_error(
+            behavior=on_underdetermined,
+            message=reported.short_message if short_message else str(reported),
+        )
         return False
     except BaseException:
         snapshot.restore()
@@ -749,29 +964,3 @@ def compute_process(
         if neighbor.is_computed:
             check_completed_process(neighbor)
     return True
-
-
-def compute_processes(processes: Iterable["Process"]) -> None:
-    """Compute the given processes, and all processes which become computable as a consequence.
-
-    This continues until no further process can be computed (see
-    :py:meth:`flodym.Process.compute`). Underdetermined processes are skipped with an info log
-    message.
-
-    The processes to try are kept in a queue, which initially contains the given processes. When
-    a process is computed, its neighbors which are not computed yet are added to the queue, since
-    their flows have changed. As each process can be computed only once, this terminates.
-    """
-    queue = deque(processes)
-    queued = {id(p) for p in queue}
-    while queue:
-        process = queue.popleft()
-        queued.discard(id(process))
-        if process.id == 0 or process.is_computed:
-            continue
-        if not compute_process(process, on_underdetermined=ErrorBehavior.INFO, short_message=True):
-            continue
-        for neighbor in process._neighbors():
-            if neighbor.id != 0 and not neighbor.is_computed and id(neighbor) not in queued:
-                queue.append(neighbor)
-                queued.add(id(neighbor))

@@ -25,6 +25,12 @@ class ErrorBehavior(str, Enum):
     INFO = "info"
     IGNORE = "ignore"
 
+    @classmethod
+    def _missing_(cls, value: object) -> None:
+        """Raise an error which names the valid values, for an invalid value."""
+        valid = ", ".join(f"'{behavior.value}'" for behavior in cls)
+        raise ValueError(f"{value!r} is not a valid ErrorBehavior. Valid values are {valid}.")
+
 
 def handle_error(
     behavior: ErrorBehavior | str, message: str | None = None, error: Exception | None = None
@@ -84,7 +90,9 @@ class ErrorBehaviors(FlodymBaseModel, validate_assignment=True):
     """What to do if a mass balance check fails
     (see :py:meth:`flodym.MFASystem.check_mass_balance`,
     :py:meth:`flodym.Process.check_mass_balance`, :py:meth:`flodym.Stock.check_mass_balance`, and
-    :py:attr:`Checks.mass_balance_after_compute`).
+    :py:attr:`Checks.mass_balance_after_compute`). Also applies to the checks after the automatic
+    computation of processes, one at a time or simultaneously (see
+    :py:func:`flodym.compute_processes`).
     """
     check_flows: ErrorBehavior = ErrorBehavior.WARN
     """What to do if a flow has negative or NaN values.
@@ -95,20 +103,24 @@ class ErrorBehaviors(FlodymBaseModel, validate_assignment=True):
     """What to do if :py:meth:`flodym.Process.compute` is called on a process which cannot be
     computed from the given values. Not used for the neighbors computed with
     ``compute_neighbors=True``, by :py:func:`flodym.compute_processes` and by
-    :py:meth:`flodym.MFASystem.compute_all_possible`, where underdetermined processes are skipped.
+    :py:meth:`flodym.MFASystem.compute_all_possible`, where underdetermined processes are skipped
+    and reported according to the argument ``on_underdetermined``.
     """
     process_shares: ErrorBehavior = ErrorBehavior.WARN
     """What to do if the shares or the dimension splitters of a process are invalid in
     :py:meth:`flodym.Process.compute`: If shares are not between zero and one, or sum to more
     than one (or not to exactly one, if all flows of a side have shares), or if a dimension
-    splitter does not sum to one over the dimensions it adds.
+    splitter does not sum to one over the dimensions it adds. Also applies to processes computed
+    simultaneously with others (see :py:func:`flodym.compute_processes`).
     If ``"ignore"``, the checks are skipped."""
     process_overdetermined: ErrorBehavior = ErrorBehavior.ERROR
     """What to do if more values are given for a process than needed by
     :py:meth:`flodym.Process.compute` (see :py:attr:`flodym.Process.is_overdetermined`), and they
     are inconsistent: If shares are not fulfilled after the computation, or if stock arrays which
     were set are changed by the computation. Also applies to processes whose flows were all set
-    by the computation of neighboring processes. Inconsistent mass balances are handled by
+    by the computation of neighboring processes, and to processes computed simultaneously with
+    others (see :py:func:`flodym.compute_processes`), where also the equations which were not
+    needed for the solution are checked. Inconsistent mass balances are handled by
     :py:attr:`mass_balance`. If ``"ignore"``, the checks are skipped."""
     extensivity: ErrorBehavior = ErrorBehavior.WARN
     """What to do if an operation is inconsistent with the extensivity of arrays (see
@@ -120,7 +132,8 @@ class ErrorBehaviors(FlodymBaseModel, validate_assignment=True):
     unused_dimension_splitter: ErrorBehavior = ErrorBehavior.WARN
     """What to do if a process has a dimension splitter, but it is not used when computing the
     flows of its side in :py:meth:`flodym.Process.compute`, since no dimensions have to be
-    added."""
+    added. Also applies to processes computed simultaneously with others (see
+    :py:func:`flodym.compute_processes`)."""
 
 
 class Config(FlodymBaseModel, validate_assignment=True):

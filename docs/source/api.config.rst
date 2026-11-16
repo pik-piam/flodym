@@ -15,7 +15,9 @@ The configuration controls
   automatic computation of processes (:py:meth:`flodym.Process.compute`): underdetermined
   processes, invalid shares or dimension splitters, inconsistent values of overdetermined
   processes, and unused dimension splitters, as well as operations which are inconsistent with
-  the extensivity of arrays (see :py:attr:`flodym.FlodymArray.extensive`),
+  the extensivity of arrays (see :py:attr:`flodym.FlodymArray.extensive`). The checks of the
+  automatic computation also apply to processes which depend on each other and are computed
+  simultaneously (see :py:func:`flodym.compute_processes`),
 - the tolerance of mass balance and other checks (``relative_tolerance`` and
   ``absolute_tolerance`` of :py:class:`flodym.Config`).
 

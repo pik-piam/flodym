@@ -24,7 +24,7 @@ from typing_extensions import Self
 from ._base_model import FlodymBaseModel
 from ._checks import balance_failure, config_hint, report_balance_failures
 from ._config import ErrorBehavior, config, handle_error
-from ._process_compute import UnderdeterminedError
+from ._process_compute import Side, UnderdeterminedError
 from .dimensions import Dimension, DimensionSet
 from .flodym_arrays import FlodymArray, StockArray
 from .lifetime_models import LifetimeModel, _UnevenTimeDim
@@ -131,6 +131,9 @@ class Stock(FlodymBaseModel):
     _n_equations: ClassVar[int] = 1
     """Number of equations relating inflow, outflow and stock. Used to detect overdetermined
     processes in :py:attr:`flodym.Process.is_overdetermined`."""
+    _block_methods: ClassVar[tuple[str, ...]] = ("_compute_process",)
+    """Methods whose behavior the simultaneous computation of processes relies on, see
+    :py:meth:`_check_block_computation_supported`."""
 
     @field_validator("stock", "inflow", "outflow", mode="wrap")
     @classmethod
@@ -404,9 +407,64 @@ class Stock(FlodymBaseModel):
             "automatic computation of its process.",
         )
 
-    def _set_from_total(self, array: StockArray, total: FlodymArray, label: str) -> None:
-        """Set the stock inflow or outflow to the total of the in- or outflows of the process."""
-        missing_dims = array.dims - total.dims
+    def _check_block_computation_supported(self) -> None:
+        """Raise an UnderdeterminedError if the simultaneous computation may not fit the stock.
+
+        This is the case if a subclass overrides one of the methods in :py:attr:`_block_methods`
+        (such as :py:meth:`_compute_process`), but not :py:meth:`_prepare_block_computation`:
+        the stock may then compute something else than the equations of the simultaneous
+        computation of processes assume.
+        """
+        stock_class = type(self)
+        preparing_class = _defining_class(stock_class, "_prepare_block_computation")
+        overridden = [
+            name
+            for name in self._block_methods
+            if not issubclass(preparing_class, _defining_class(stock_class, name))
+        ]
+        if overridden:
+            raise UnderdeterminedError(
+                self._attached_process,
+                f"Stock type {stock_class.__name__} of stock '{self.name}' overrides "
+                f"{', '.join(overridden)}, so it is not known which equations its process "
+                "fulfils. Set the flows of the process by hand, or also override "
+                "_prepare_block_computation.",
+            )
+
+    def _prepare_block_computation(self) -> None:
+        """Prepare the stock for computing its process simultaneously with others.
+
+        This is part of :py:func:`flodym.compute_processes`. Afterwards, either the stock is
+        computed, so that its inflow and outflow are known, or its inflow and outflow are
+        independent of each other, and the stock follows from them after the solution
+        (see :py:meth:`_finish_block_computation`).
+
+        Implemented by the subclasses which support this. They raise an error if the stock or its
+        state is not supported; the process is then left out of the simultaneous computation.
+        """
+        raise UnderdeterminedError(
+            self._attached_process,
+            f"Stock type {self.__class__.__name__} of stock '{self.name}' does not support the "
+            "simultaneous computation of its process with others. Set the flows of the process "
+            "by hand.",
+        )
+
+    def _finish_block_computation(self, totals: dict[Side, FlodymArray]) -> None:
+        """Compute the stock after its process was computed simultaneously with others.
+
+        Args:
+            totals: Totals of the inflows (key ``"in"``) and of the outflows (key ``"out"``) of
+                the process, for the sides which have flows.
+        """
+
+    def _check_total_dims(self, total_dims: DimensionSet, label: str) -> None:
+        """Raise an error if the stock has dimensions which the total of a process side lacks.
+
+        Args:
+            total_dims: Dimensions of the total of the in- or outflows of the process.
+            label: ``"inflow"`` or ``"outflow"``.
+        """
+        missing_dims = self.dims - total_dims
         if missing_dims:
             raise ValueError(
                 f"In process '{self._attached_process.name}': The stock {label} has the dimensions "
@@ -414,6 +472,10 @@ class Stock(FlodymBaseModel):
                 "have. Use fewer dimensions for the stock, or a neighboring process with a "
                 "dimension splitter."
             )
+
+    def _set_from_total(self, array: StockArray, total: FlodymArray, label: str) -> None:
+        """Set the stock inflow or outflow to the total of the in- or outflows of the process."""
+        self._check_total_dims(total.dims, label)
         array[...] = total
 
     def _check_array_known(self, array: StockArray, label: str, consequence: str) -> None:
@@ -444,6 +506,8 @@ class Stock(FlodymBaseModel):
 
 class SimpleFlowDrivenStock(Stock):
     """Stock calculated from given inflows and outflows, without a lifetime model or cohorts."""
+
+    _block_methods: ClassVar[tuple[str, ...]] = ("_compute_process", "compute")
 
     def _check_needed_arrays(self) -> None:
         if (
@@ -478,20 +542,57 @@ class SimpleFlowDrivenStock(Stock):
         outflow. Finally, the unknown flows of each side are computed from its total.
         """
         computation.require_flows()
-        stock_arrays = {"in": self.inflow, "out": self.outflow}
-        totals = dict(stock_arrays)
+        stock_arrays: dict[Side, StockArray] = {"in": self.inflow, "out": self.outflow}
+        totals: dict[Side, FlodymArray] = dict(stock_arrays)
         if not self.is_computed:
-            for side, array in stock_arrays.items():
-                process_side = computation.sides[side]
-                if not process_side.flows:
-                    array[...] = 0.0
-                elif process_side.total_method() is not None or not array.is_set:
-                    # keep the total, which may have more dimensions than the stock array
-                    totals[side] = computation.compute_total((side,))
-                    self._set_from_total(array, totals[side], f"{side}flow")
-            self.compute()
+            # the totals may have more dimensions than the stock arrays
+            computed_totals = {
+                side: computation.compute_total((side,))
+                for side, array in stock_arrays.items()
+                if computation.sides[side].flows
+                and (computation.sides[side].total_method() is not None or not array.is_set)
+            }
+            self._compute_from_totals(computed_totals)
+            totals.update(computed_totals)
         for side, total in totals.items():
             computation.compute_side(total, side)
+
+    def _prepare_block_computation(self) -> None:
+        """Nothing to prepare for the simultaneous computation of the process.
+
+        If the stock is not computed, its inflow and outflow are unknowns independent of each
+        other.
+        """
+
+    def _finish_block_computation(self, totals: dict[Side, FlodymArray]) -> None:
+        """Compute the stock from the totals of the in- and outflows of its process.
+
+        As in :py:meth:`_compute_process`, inflow and outflow which are not set are the totals.
+        """
+        if self.is_computed:
+            return
+        arrays = {"in": self.inflow, "out": self.outflow}
+        self._compute_from_totals(
+            {side: total for side, total in totals.items() if not arrays[side].is_set}
+        )
+
+    def _compute_from_totals(self, totals: dict[Side, FlodymArray]) -> None:
+        """Compute the stock, with inflow and outflow set from the totals of the process sides.
+
+        A side of the process without flows has a total of zero. Inflow or outflow without total
+        keep their values.
+        """
+        process = self._attached_process
+        sides: dict[Side, tuple[StockArray, dict]] = {
+            "in": (self.inflow, process.inflows),
+            "out": (self.outflow, process.outflows),
+        }
+        for side, (array, flows) in sides.items():
+            if not flows:
+                array[...] = 0.0
+            elif side in totals:
+                self._set_from_total(array, totals[side], f"{side}flow")
+        self.compute()
 
 
 class DynamicStockModel(Stock):
@@ -758,13 +859,7 @@ class DynamicStockModel(Stock):
         explicit methods :py:meth:`compute_inflow_driven`, :py:meth:`compute_stock_driven` and
         :py:meth:`compute_inflow_by_cohort_driven`.
         """
-        driving_array = self._choose_driving_array()
-        if driving_array == "stock":
-            self.compute_stock_driven()
-        elif driving_array == "inflow":
-            self.compute_inflow_driven()
-        else:
-            self.compute_inflow_by_cohort_driven()
+        self._compute_in_mode(self._choose_driving_array())
 
     def _process_compute_mode(self) -> str:
         """Computation mode used by :py:meth:`_compute_process`.
@@ -796,14 +891,41 @@ class DynamicStockModel(Stock):
                 # keep the total, which may have more dimensions than the stock inflow
                 inflow_total = computation.compute_total(("in",))
                 self._set_from_total(self.inflow, inflow_total, "inflow")
-            if mode == "stock":
-                self.compute_stock_driven()
-            elif mode == "inflow":
-                self.compute_inflow_driven()
-            else:
-                self.compute_inflow_by_cohort_driven()
+            self._compute_in_mode(mode)
         computation.compute_side(inflow_total, "in")
         computation.compute_side(self.outflow, "out")
+
+    def _prepare_block_computation(self) -> None:
+        """Compute the stock on its own, before its process is computed with others.
+
+        This is possible if the stock is driven by its stock or ``inflow_by_cohort``, or by a set
+        inflow, with the mode chosen as in :py:meth:`_compute_process`. An inflow-driven stock
+        whose inflow is not set is not supported, since its inflow and outflow depend on each
+        other through the lifetime model.
+        """
+        if self.is_computed:
+            return
+        mode = self._process_compute_mode()
+        if mode == "inflow" and not self.inflow.is_set:
+            raise UnderdeterminedError(
+                self._attached_process,
+                f"The inflow of the inflow-driven stock '{self.name}' is not known (is_set=False) "
+                "and depends on other processes, which is not supported yet. Make the stock "
+                "stock-driven, prescribe its inflow, or set the flows of the loop by hand.",
+            )
+        self._compute_in_mode(mode)
+
+    def _compute_in_mode(self, mode: str) -> None:
+        """Compute the stock in a mode chosen as in :py:meth:`compute`.
+
+        The mode is ``"stock"``, ``"inflow"`` or ``"inflow_by_cohort"``.
+        """
+        if mode == "stock":
+            self.compute_stock_driven()
+        elif mode == "inflow":
+            self.compute_inflow_driven()
+        else:
+            self.compute_inflow_by_cohort_driven()
 
     def _driving_array_candidates(self) -> dict[str, StockArray]:
         candidates = {"stock": self.stock, "inflow": self.inflow}
@@ -1133,3 +1255,8 @@ class StockDrivenDSM(DynamicStockModel):
                 f"The stock of the stock-driven stock '{self.name}' is not set (is_set=False).",
             )
         return "stock"
+
+
+def _defining_class(cls: type, name: str) -> type:
+    """The class in the method resolution order of ``cls`` which defines the attribute."""
+    return next(base for base in cls.__mro__ if name in base.__dict__)

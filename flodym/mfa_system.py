@@ -16,6 +16,7 @@ from ._attribute_dict import AttributeDict
 from ._base_model import FlodymBaseModel
 from ._checks import config_hint, report_balance_failures
 from ._config import ErrorBehavior, config, handle_error
+from ._process_system import run_computation
 from .data_reader import (
     CompoundDataReader,
     CSVDimensionReader,
@@ -28,7 +29,7 @@ from .dimensions import DimensionSet
 from .flodym_arrays import FlodymArray, Flow, Parameter
 from .flow_helper import _make_unique_name, make_empty_flows
 from .mfa_definition import MFADefinition
-from .processes import Process, compute_processes, make_processes
+from .processes import Process, make_processes
 from .stock_helper import make_empty_stocks
 from .stocks import Stock
 
@@ -592,7 +593,9 @@ class MFASystem(FlodymBaseModel):
         for _, array in self._prescribable_arrays():
             array._set_arrays_from_prescribed()
 
-    def compute_all_possible(self) -> list[str]:
+    def compute_all_possible(
+        self, *, simultaneous: bool = True, on_underdetermined: ErrorBehavior | str = "info"
+    ) -> list[str]:
         """Compute all processes which can be computed from the known values.
 
         Known values are the known flows, shares and stock values, see
@@ -601,20 +604,41 @@ class MFASystem(FlodymBaseModel):
         Prescribed flows and stock arrays are set to the values of their parameters first (see
         :py:meth:`set_arrays_from_prescribed`), overwriting their values. Then, all processes are
         tried, and each computed process triggers a new try of its neighbors, until no further
-        process can be computed (see :py:func:`flodym.compute_processes`).
-        Underdetermined processes are skipped.
+        process can be computed. Processes which depend on each other, e.g. in a recycling loop,
+        are computed together, by solving their equations as one system. See
+        :py:func:`flodym.compute_processes` for details.
+
+        Args:
+            simultaneous: Whether processes which depend on each other are computed together.
+                If False, processes are only computed one at a time.
+            on_underdetermined: What to do if processes remain uncomputed: ``"info"`` and
+                ``"warn"`` log the reasons once, ``"ignore"`` does nothing, and ``"error"``
+                raises an :py:class:`flodym.UnderdeterminedError` with all reasons. With
+                ``"info"``, processes which form a loop without exit are reported as a warning.
+                The computed processes stay computed. Unlike in
+                :py:meth:`flodym.Process.compute`, the default does not come from
+                ``flodym.config.error_behaviors.process_underdetermined``.
 
         Returns:
             The names of the processes (except 'sysenv') which could not be computed.
+
+        Raises:
+            UnderdeterminedError: If processes could not be computed and ``on_underdetermined``
+                is ``"error"``.
+            ValueError: If the given values of processes are inconsistent, by default (see
+                ``flodym.config.error_behaviors.process_overdetermined`` and ``mass_balance``),
+                or if ``on_underdetermined`` is not valid.
         """
+        on_underdetermined = ErrorBehavior(on_underdetermined)
         self.set_arrays_from_prescribed()
-        compute_processes(self.processes.values())
-        not_computed = [p.name for p in self.processes.values() if p.id != 0 and not p.is_computed]
-        if not_computed:
-            logger.info(
-                f"compute_all_possible(): Could not compute processes {', '.join(not_computed)}."
-            )
-        return not_computed
+        report = run_computation(self.processes.values(), simultaneous=simultaneous)
+        not_computed = [
+            process
+            for process in self.processes.values()
+            if process.id != 0 and not process.is_computed
+        ]
+        report.report(on_underdetermined, not_computed)
+        return [process.name for process in not_computed]
 
     def _prescribable_arrays(self) -> list[tuple[str, FlodymArray]]:
         """Flows and stock arrays, as tuples of a label for messages and the array."""
