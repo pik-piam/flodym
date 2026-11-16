@@ -3,6 +3,7 @@ import logging
 import numpy as np
 import pytest
 from numpy.testing import assert_almost_equal
+from pydantic import ValidationError
 
 from flodym import (
     Dimension,
@@ -1065,6 +1066,123 @@ def test_process_id_and_to_stock_type():
     assert np.array_equal(dsm.inflow.values, stock.inflow.values)
     dsm.compute()
     assert_almost_equal(dsm.stock.values[:5], [1.0, 2.0, 3.0, 3.0, 3.0])
+
+
+@pytest.mark.parametrize(
+    "dsm_cls, driven_by",
+    [(InflowDrivenDSM, "inflow"), (StockDrivenDSM, "stock"), (DynamicStockModel, "stock")],
+)
+def test_dynamic_stock_to_simple_stock_and_back(dsm_cls, driven_by):
+    """Fields the new stock type does not have, like the lifetime model, are dropped. The others
+    are shared with the original stock."""
+    process = make_processes(["sysenv", "a"])["a"]
+    driving_array = {driven_by: _driving_array_for_cohort_tests(driven_by)}
+    dsm = _dsm_for_cohort_tests(dsm_cls, name="s", process=process, **driving_array)
+    dsm.compute()
+    computed = {attr: getattr(dsm, attr).values.copy() for attr in ("stock", "inflow", "outflow")}
+
+    simple = dsm.to_stock_type(SimpleFlowDrivenStock)
+    assert type(simple) is SimpleFlowDrivenStock
+    assert simple.name == "s"
+    assert simple.process is process
+    assert simple.time_letter == "t"
+    assert simple.dims is dsm.dims
+    for attr in ("stock", "inflow", "outflow"):
+        assert getattr(simple, attr) is getattr(dsm, attr)
+    simple.compute()
+    np.testing.assert_allclose(simple.stock.values, computed["stock"])
+
+    back = simple.to_stock_type(
+        dsm_cls, lifetime_model=dsm.lifetime_model, cohort_dim=dsm.cohort_dim
+    )
+    assert type(back) is dsm_cls
+    getattr(back, _EXPLICIT_COMPUTE_METHODS[driven_by])()
+    for attr, values in computed.items():
+        np.testing.assert_allclose(getattr(back, attr).values, values)
+
+
+def test_to_stock_type_keeps_set_status():
+    dsm = _dsm_for_cohort_tests(InflowDrivenDSM, inflow=_driving_array_for_cohort_tests("inflow"))
+    simple = dsm.to_stock_type(SimpleFlowDrivenStock)
+    assert simple.inflow.is_set
+    assert not simple.stock.is_set
+    assert not simple.outflow.is_set
+
+    back = simple.to_stock_type(
+        StockDrivenDSM, lifetime_model=dsm.lifetime_model, cohort_dim=COHORT_DIM_TESTS
+    )
+    assert back.inflow.is_set
+    assert not back.stock.is_set
+    assert not back.inflow_by_cohort.is_set
+
+
+def test_stock_subclass_with_extra_field_to_built_in_stock_type():
+    class StockWithUnit(SimpleFlowDrivenStock):
+        unit: str = "t"
+
+    stock = StockWithUnit(
+        dims=DIMS_COHORT_TESTS, inflow=_driving_array_for_cohort_tests("inflow"), unit="kt"
+    )
+    simple = stock.to_stock_type(SimpleFlowDrivenStock)
+    assert type(simple) is SimpleFlowDrivenStock
+    assert not hasattr(simple, "unit")
+    assert simple.inflow is stock.inflow
+
+    dsm = stock.to_stock_type(
+        InflowDrivenDSM,
+        lifetime_model=LogNormalLifetime(dims=DIMS_COHORT_TESTS, mean=8, std=3),
+        cohort_dim=COHORT_DIM_TESTS,
+    )
+    assert dsm.inflow is stock.inflow
+    assert dsm.to_stock_type(StockWithUnit).unit == "t"
+    assert dsm.to_stock_type(StockWithUnit, unit="Mt").unit == "Mt"
+
+
+def test_to_stock_type_raises_for_kwargs_the_stock_already_has():
+    dsm = _dsm_for_cohort_tests(InflowDrivenDSM, name="s")
+    with pytest.raises(TypeError, match="multiple values for keyword argument 'name'"):
+        dsm.to_stock_type(DynamicStockModel, name="new")
+
+
+def test_to_stock_type_raises_for_kwargs_the_new_stock_type_does_not_have():
+    dsm = _dsm_for_cohort_tests(InflowDrivenDSM)
+    with pytest.raises(ValidationError, match="lifetime_model"):
+        dsm.to_stock_type(SimpleFlowDrivenStock, lifetime_model=dsm.lifetime_model)
+    with pytest.raises(ValidationError, match="nmae"):
+        dsm.to_stock_type(StockDrivenDSM, nmae="s")
+
+
+@pytest.mark.parametrize("included_in_inflow", [True, False])
+def test_to_stock_type_keeps_initial_stock(included_in_inflow):
+    """A dynamic stock model converted to another one computes the same results, also with an
+    initial stock."""
+    dsm = _dsm_for_cohort_tests(StockDrivenDSM)
+    dsm.set_initial_stock(
+        _initial_stock_for_cohort_tests(), INITIAL_YEAR_TESTS, included_in_inflow=included_in_inflow
+    )
+    iiy = INITIAL_YEAR_INDEX_TESTS
+    n_after = len(TIME_ITEMS_COHORT_TESTS) - iiy - 1
+    dsm.stock.values[iiy + 1 :, :] = 80.0 + 2.0 * np.arange(n_after)[:, np.newaxis]
+    dsm.stock.mark_set()
+    dsm.compute()
+    stock_driven_stock = dsm.stock.values.copy()
+
+    # the arrays of the computed stock contain the initial stock
+    simple = dsm.copy().to_stock_type(SimpleFlowDrivenStock)
+    simple.compute()
+    np.testing.assert_allclose(simple.stock.values, stock_driven_stock)
+
+    # recompute inflow-driven after converting, and without converting
+    converted = dsm.copy().to_stock_type(InflowDrivenDSM)
+    converted.compute()
+    dsm.compute_inflow_driven()
+    for attr in ("stock", "inflow", "outflow"):
+        np.testing.assert_allclose(getattr(converted, attr).values, getattr(dsm, attr).values)
+    if included_in_inflow:
+        np.testing.assert_allclose(converted.stock.values, stock_driven_stock)
+        np.testing.assert_allclose(
+            converted.get_stock_by_cohort().values[iiy], _initial_stock_for_cohort_tests().values
+        )
 
 
 def test_flodym_arrays_are_converted_to_stock_arrays():

@@ -249,10 +249,26 @@ class Stock(FlodymBaseModel):
     def to_stock_type(self, desired_stock_type: type[StockSubtype], **kwargs: Any) -> StockSubtype:
         """Return an object of a new stock type with the same values and dimensions.
 
-        `**kwargs` can be used to pass additional model attributes as required by the desired stock
-        type, if these are not contained in the original stock type.
+        The new stock gets those fields of this stock which the desired stock type has. Other
+        fields are dropped, e.g. the ``lifetime_model`` when converting a dynamic stock model to a
+        :py:class:`flodym.SimpleFlowDrivenStock`. The field values are shared, not copied: The new
+        stock has the same dimensions, process and stock arrays (with their set status) as this
+        stock. For independent arrays, convert a :py:meth:`copy` of this stock.
+
+        Args:
+            desired_stock_type: Stock class of the new stock.
+            **kwargs: Fields of the new stock which this stock does not have, e.g. the
+                ``lifetime_model`` when converting to a dynamic stock model.
+
+        Returns:
+            The new stock.
         """
-        return desired_stock_type(**self.__dict__, **kwargs)
+        fields = {
+            name: value
+            for name, value in self.__dict__.items()
+            if name in desired_stock_type.model_fields
+        }
+        return desired_stock_type(**fields, **kwargs)
 
     def copy(self) -> Self:
         """Return a copy of the Stock.
@@ -675,6 +691,20 @@ class DynamicStockModel(Stock):
         super().mark_all_unset()
         if self.inflow_by_cohort is not None:
             self.inflow_by_cohort.mark_unset()
+
+    def to_stock_type(self, desired_stock_type: type[StockSubtype], **kwargs: Any) -> StockSubtype:
+        """Return an object of a new stock type, as :py:meth:`flodym.Stock.to_stock_type`.
+
+        If the new stock is a dynamic stock model, too, it also gets the initial stock set by
+        :py:meth:`set_initial_stock`, so that it computes what this stock would compute. The
+        stock and outflow by cohort are zero until it is computed.
+        """
+        new_stock = super().to_stock_type(desired_stock_type, **kwargs)
+        if isinstance(new_stock, DynamicStockModel):
+            new_stock._initial_stock_by_cohort = self._initial_stock_by_cohort
+            new_stock._initial_stock_year = self._initial_stock_year
+            new_stock._initial_stock_included_in_inflow = self._initial_stock_included_in_inflow
+        return new_stock
 
     def copy(self) -> Self:
         """Return a copy of the Stock, as :py:meth:`flodym.Stock.copy`.
