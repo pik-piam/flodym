@@ -121,6 +121,20 @@ class ErrorBehaviors(FlodymBaseModel, validate_assignment=True):
     """What to do if a process has a dimension splitter, but it is not used when computing the
     flows of its side in :py:meth:`flodym.Process.compute`, since no dimensions have to be
     added."""
+    monte_carlo_rejection: ErrorBehavior = ErrorBehavior.WARN
+    """What to do if more than 1 % of the samples of :py:func:`flodym.run_monte_carlo` fail and
+    are left out with ``on_error="skip"``. The distribution of the remaining samples then differs
+    from the declared one. The message gives the number of failed samples. With ``"error"``, the
+    error is raised after all samples are run, and the result is discarded."""
+    monte_carlo_no_variation: ErrorBehavior = ErrorBehavior.WARN
+    """What to do if no output of :py:func:`flodym.run_monte_carlo` differs between the samples,
+    e.g. because the model does not use the uncertain parameters it is given."""
+    fixed_lifetime: ErrorBehavior = ErrorBehavior.WARN
+    """What to do if a model function made by :py:func:`flodym.make_model_function` computes a
+    dynamic stock with the lifetime model parameters it had before ``compute()``. Such parameters
+    do not follow the given parameters. A warning is logged once per stock and model function.
+    With ``"error"``, the model function raises an error, which stops a Monte Carlo run also with
+    ``on_error="skip"``, since it concerns the model, not a sample."""
 
 
 class Config(FlodymBaseModel, validate_assignment=True):

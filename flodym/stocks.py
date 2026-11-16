@@ -5,7 +5,6 @@ These include flow-driven stocks and dynamic (lifetime-based) stocks.
 
 import functools
 import logging
-import string
 import warnings
 from abc import abstractmethod
 from collections.abc import Callable
@@ -25,7 +24,7 @@ from ._base_model import FlodymBaseModel
 from ._checks import balance_failure, config_hint, report_balance_failures
 from ._config import ErrorBehavior, config, handle_error
 from ._process_compute import UnderdeterminedError
-from .dimensions import Dimension, DimensionSet
+from .dimensions import Dimension, DimensionSet, _free_letter
 from .flodym_arrays import FlodymArray, StockArray
 from .lifetime_models import LifetimeModel, _UnevenTimeDim
 from .processes import Process
@@ -85,17 +84,6 @@ def _to_stock_array(value: Any) -> Any:
     if isinstance(value, FlodymArray) and not isinstance(value, StockArray):
         return StockArray.from_array(value)
     return value
-
-
-def _free_cohort_letter(used_letters: tuple[str, ...]) -> str:
-    """First letter of "c", "C", "d", "D", ..., "z", "Z", "a", "A", ... not in ``used_letters``."""
-    lowercase = string.ascii_lowercase
-    start = lowercase.index("c")
-    for letter in lowercase[start:] + lowercase[:start]:
-        for candidate in (letter, letter.upper()):
-            if candidate not in used_letters:
-                return candidate
-    raise ValueError("No free letter for the cohort dimension.")
 
 
 class Stock(FlodymBaseModel):
@@ -578,7 +566,7 @@ class DynamicStockModel(Stock):
             time_dim = self.dims[self.time_letter]
             self.cohort_dim = Dimension(
                 name="cohort",
-                letter=_free_cohort_letter(self.dims.letters),
+                letter=_free_letter(self.dims.letters, "c"),
                 items=time_dim.items,
                 dtype=time_dim.dtype,
             )

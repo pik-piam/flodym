@@ -9,6 +9,7 @@ from flodym._config import Config as Config
 from flodym._config import ErrorBehavior as ErrorBehavior
 from flodym._config import ErrorBehaviors as ErrorBehaviors
 from flodym._config import config as config
+from flodym._model_function import make_model_function as make_model_function
 from flodym._process_compute import (
     UnderdeterminedError as UnderdeterminedError,
 )
@@ -38,6 +39,11 @@ from flodym.data_reader import (
 )
 from flodym.dimensions import Dimension as Dimension
 from flodym.dimensions import DimensionSet as DimensionSet
+from flodym.distributions import Distribution as Distribution
+from flodym.distributions import LogNormalDistribution as LogNormalDistribution
+from flodym.distributions import NormalDistribution as NormalDistribution
+from flodym.distributions import TriangularDistribution as TriangularDistribution
+from flodym.distributions import UniformDistribution as UniformDistribution
 from flodym.flodym_array_helper import flodym_array_stack as flodym_array_stack
 from flodym.flodym_arrays import (
     FlodymArray as FlodymArray,
@@ -113,6 +119,8 @@ from flodym.mfa_definition import (
     StockDefinition as StockDefinition,
 )
 from flodym.mfa_system import MFASystem as MFASystem
+from flodym.monte_carlo import MonteCarloResult as MonteCarloResult
+from flodym.monte_carlo import run_monte_carlo as run_monte_carlo
 from flodym.processes import (
     Process as Process,
 )
@@ -138,3 +146,6 @@ from flodym.stocks import (
 from flodym.stocks import (
     StockDrivenDSM as StockDrivenDSM,
 )
+from flodym.uncertainty import ParameterUncertainty as ParameterUncertainty
+from flodym.uncertainty import SampledArray as SampledArray
+from flodym.uncertainty import UncertaintyDefinition as UncertaintyDefinition

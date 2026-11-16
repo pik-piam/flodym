@@ -9,6 +9,9 @@ import numpy as np
 
 from .dimensions import Dimension
 
+MAX_LISTED_ITEMS = 10
+"""Number of items of a dimension listed in error messages."""
+
 if TYPE_CHECKING:
     from .flodym_arrays import FlodymArray
 
@@ -256,4 +259,13 @@ class _SubArrayHandler:
         self._ids_all_dims[self.flodym_array.dims.index(dim_letter)] = items_ids
 
     def _get_single_item_id(self, dim_letter: str, item_name: Hashable) -> int:
-        return self.flodym_array.dims[dim_letter].items.index(item_name)
+        dim = self.flodym_array.dims[dim_letter]
+        try:
+            return dim.items.index(item_name)
+        except ValueError:
+            listed = ", ".join(map(str, dim.items[:MAX_LISTED_ITEMS]))
+            if dim.len > MAX_LISTED_ITEMS:
+                listed += f", ... ({dim.len} items)"
+            raise ValueError(
+                f"{item_name!r} is not an item of {dim.name}; items: {listed}"
+            ) from None

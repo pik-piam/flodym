@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+import string
+from collections.abc import Iterable, Iterator
 from copy import copy
 from typing import Any, Literal, overload
 
@@ -1019,3 +1020,21 @@ class DimensionSet(FlodymBaseModel):
                 "New dimension can't have same letter as any of those already in DimensionSet, "
                 "as that would create ambiguity."
             )
+
+
+def _free_letter(used_letters: Iterable[str], first: str) -> str:
+    """First letter not in ``used_letters`` of ``first``, its upper case, the next letter, ...
+
+    After "z" and "Z", it continues with "a" and "A".
+
+    Raises:
+        ValueError: If all letters are used.
+    """
+    used = set(used_letters)
+    lowercase = string.ascii_lowercase
+    start = lowercase.index(first)
+    for letter in lowercase[start:] + lowercase[:start]:
+        for candidate in (letter, letter.upper()):
+            if candidate not in used:
+                return candidate
+    raise ValueError("No free dimension letter.")
