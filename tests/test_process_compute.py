@@ -27,6 +27,7 @@ from flodym import (
     UnderdeterminedError,
     config,
 )
+from flodym.example_objects import get_example_mfa
 
 TIME = [2000, 2001, 2002, 2003]
 REGIONS = ["north", "south"]
@@ -112,6 +113,19 @@ def test_forward_computation():
     np.testing.assert_allclose(mfa.flows["a => b"].values, [0.3, 0.6, 0.9, 1.2])
     np.testing.assert_allclose(mfa.flows["a => c"].values, [0.7, 1.4, 2.1, 2.8])
     assert mfa.processes["a"].is_computed
+
+
+def test_read_only_given_flow_next_to_an_underdetermined_process():
+    """Read-only values, e.g. from numpy.broadcast_to() or pandas, are kept on failure."""
+    mfa = get_example_mfa()
+    flow = mfa.flows["sysenv => shredder"]
+    read_only = np.broadcast_to(2.0, flow.shape)
+    flow.values = read_only
+    flow.mark_set()
+    # the shredder has two outflows without shares, so it cannot be computed
+    assert "shredder" in mfa.compute_all_possible()
+    assert flow.values is read_only
+    assert flow.is_set
 
 
 def test_compute_all_possible():

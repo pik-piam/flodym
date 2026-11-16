@@ -240,6 +240,14 @@ class LifetimeModel(FlodymBaseModel):
         """Names of all arrays of the lifetime model shape on which the survival depends."""
         return self._prm_names + self._modifier_names
 
+    def _parameter_objects(self) -> list[Any]:
+        """The lifetime model and the arrays on which its survival depends.
+
+        Assigning a parameter replaces all of these arrays, so comparing the objects by identity
+        shows whether parameters were assigned (see :py:func:`flodym.make_model_function`).
+        """
+        return [self] + [getattr(self, name) for name in self._array_names]
+
     @property
     def prms(self) -> Mapping[str, np.ndarray | None]:
         """Read-only mapping of lifetime parameter names to their values.
@@ -1022,6 +1030,10 @@ class TabulatedLifetime(LifetimeModel):
         """No reduction, as the cumulative survival is given with the full shape."""
         return (slice(None),) * len(self.shape)
 
+    def _parameter_objects(self) -> list[Any]:
+        """The lifetime model, its arrays and the cumulative survival table."""
+        return super()._parameter_objects() + [self.cumulative_survival_table]
+
     def _check_prms_set(self) -> None:
         if self.cumulative_survival_table is None:
             raise ValueError("Lifetime parameter cumulative_survival_table must be set before use.")
@@ -1146,6 +1158,13 @@ class CompetingRisksLifetime(LifetimeModel):
     def _reduce_index(self) -> tuple[slice, ...]:
         """No reduction, as the cumulative survival is computed from the arrays of the models."""
         return (slice(None),) * len(self.shape)
+
+    def _parameter_objects(self) -> list[Any]:
+        """The lifetime model, its arrays and the objects of the combined models."""
+        objects = super()._parameter_objects()
+        for model in self.models:
+            objects += model._parameter_objects()
+        return objects
 
     def _check_prms_set(self) -> None:
         for model in self.models:
