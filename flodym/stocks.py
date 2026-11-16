@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Concatenate, ParamSpec, TypeVar
 import numpy as np
 from pydantic import (
     Field,
+    ValidationError,
     ValidationInfo,
     ValidatorFunctionWrapHandler,
     field_validator,
@@ -96,6 +97,29 @@ def _free_cohort_letter(used_letters: tuple[str, ...]) -> str:
             if candidate not in used_letters:
                 return candidate
     raise ValueError("No free letter for the cohort dimension.")
+
+
+def _items_summary(items: list) -> str:
+    """Short description of the items of a dimension for error messages."""
+    if len(items) <= 3:
+        return f"items {items!r}"
+    return f"{len(items)} items [{items[0]!r}, ..., {items[-1]!r}]"
+
+
+def _items_difference(items: list, expected_items: list) -> str:
+    """Description of how dimension items differ from the expected items, for error messages.
+
+    Names the first differing item if both have the same length. ``items`` must differ from
+    ``expected_items``.
+    """
+    if len(items) != len(expected_items):
+        return f"{_items_summary(expected_items)}, but has {_items_summary(items)}"
+    index = next(
+        index
+        for index, (item, expected_item) in enumerate(zip(items, expected_items))
+        if item != expected_item
+    )
+    return f"but has {items[index]!r} instead of {expected_items[index]!r} at index {index}"
 
 
 class Stock(FlodymBaseModel):
@@ -520,8 +544,12 @@ class DynamicStockModel(Stock):
     cohort_dim: Dimension = Field(default=None)
     """Cohort (age-cohort or production year) dimension. Must have the same items as the time
     dimension, but a different letter and name. Used for :py:attr:`dims_cohort`.
+    Can also be given as the letter of one of the given ``dims``. That dimension is then the cohort
+    dimension and is removed from :py:attr:`dims`, so the stock, inflow and outflow arrays and the
+    lifetime model do not have it.
     If not given, it is created with a warning: its name is "cohort", its items are those of the
     time dimension, and its letter is the first of "c", "C", "d", "D", ... not in ``dims``.
+    It must be given if ``dims`` contain a dimension named "cohort".
     """
     inflow_by_cohort: StockArray = Field(default=None)
     """Annual inflow by year and age-cohort, which can also enter older cohorts.
@@ -536,6 +564,39 @@ class DynamicStockModel(Stock):
     _initial_stock_year: int | None = None
     _initial_stock_included_in_inflow: bool = False
     _n_equations: ClassVar[int] = 2
+
+    @model_validator(mode="before")
+    @classmethod
+    def _cohort_dim_from_letter(cls, data: Any) -> Any:
+        """Take the cohort dimension out of ``dims`` if ``cohort_dim`` is given as its letter.
+
+        This runs before the field validators, so that the stock arrays and the lifetime model are
+        checked against, or created with, the dimensions without the cohort dimension.
+
+        Raises:
+            ValueError: If the letter is not a letter of ``dims``, or is the time letter.
+        """
+        if not isinstance(data, dict) or not isinstance(data.get("cohort_dim"), str):
+            return data
+        try:
+            dims = DimensionSet.model_validate(data.get("dims"))
+        except ValidationError:
+            # reported by the validation of dims; without dims, the letter cannot be resolved
+            return data
+        letter = data["cohort_dim"]
+        name = data.get("name", cls.model_fields["name"].default)
+        time_letter = data.get("time_letter", cls.model_fields["time_letter"].default)
+        if letter not in dims.letters:
+            raise ValueError(
+                f"cohort_dim '{letter}' of stock '{name}' is not a letter of its dims "
+                f"{dims.letters}. Pass the letter of one of them, or a Dimension."
+            )
+        if letter == time_letter:
+            raise ValueError(
+                f"cohort_dim '{letter}' of stock '{name}' is the letter of the time dimension. "
+                "Pass the letter of another dimension with the items of the time dimension."
+            )
+        return {**data, "dims": dims.drop(letter), "cohort_dim": dims[letter]}
 
     @field_validator("inflow_by_cohort", mode="wrap")
     @classmethod
@@ -573,9 +634,29 @@ class DynamicStockModel(Stock):
 
     @model_validator(mode="after")
     def _init_cohort_dim(self) -> Self:
-        """Create the cohort dimension with a warning if it is not given."""
+        """Create the cohort dimension with a warning if it is not given.
+
+        Raises:
+            ValueError: If a stock dimension has the name of the cohort dimension to create.
+        """
         if self.cohort_dim is None:
             time_dim = self.dims[self.time_letter]
+            if "cohort" in self.dims.names:
+                letter = self.dims["cohort"].letter
+                if letter != self.time_letter and self.dims[letter].items == time_dim.items:
+                    remedy = (
+                        f"Pass cohort_dim='{letter}' if it is the cohort dimension, otherwise a "
+                        "cohort_dim with another letter and name."
+                    )
+                else:
+                    remedy = (
+                        "Pass a cohort_dim with the items of the time dimension and another letter "
+                        "and name."
+                    )
+                raise ValueError(
+                    f"Stock '{self.name}' has a dimension named 'cohort' (letter '{letter}'), the "
+                    f"name of the cohort dimension created if no cohort_dim is given. {remedy}"
+                )
             self.cohort_dim = Dimension(
                 name="cohort",
                 letter=_free_cohort_letter(self.dims.letters),
@@ -612,8 +693,17 @@ class DynamicStockModel(Stock):
     @model_validator(mode="after")
     def _check_lifetime_model_dims(self) -> Self:
         """Check that the lifetime model has the same dimensions as the stock."""
-        if self.lifetime_model.dims.letters != self.dims.letters:
-            raise ValueError("Lifetime model dimensions do not match stock dimensions.")
+        lifetime_letters = self.lifetime_model.dims.letters
+        if lifetime_letters != self.dims.letters:
+            if set(lifetime_letters) == set(self.dims.letters) | {self.cohort_dim.letter}:
+                remedy = f"without the cohort dimension '{self.cohort_dim.letter}'"
+            else:
+                remedy = "with the stock dimensions"
+            raise ValueError(
+                f"Lifetime model dimensions {lifetime_letters} do not match the dimensions "
+                f"{self.dims.letters} of stock '{self.name}'. Create the lifetime model {remedy}, "
+                "or pass its class."
+            )
         return self
 
     def __str__(self) -> str:
@@ -661,14 +751,26 @@ class DynamicStockModel(Stock):
         """
         t = self.dims[self.time_letter]
         c = self.cohort_dim
+        cohort = (
+            f"The cohort dimension (letter '{c.letter}', name '{c.name}') of stock '{self.name}'"
+        )
         if c.letter == t.letter or c.name == t.name:
             raise ValueError(
-                "Cohort dimension letter and name must be different from time dimension letter and name."
+                f"{cohort} must differ in letter and name from the time dimension (letter "
+                f"'{t.letter}', name '{t.name}'). Pass a cohort_dim with another letter and name."
             )
         if c.items != t.items:
-            raise ValueError("Cohort dimension size must be the same as time dimension size.")
+            raise ValueError(
+                f"{cohort} must have the items of the time dimension, "
+                f"{_items_difference(c.items, t.items)}. Pass a cohort_dim with the items of the "
+                "time dimension."
+            )
         if c.letter in self.dims.letters or c.name in self.dims.names:
-            raise ValueError("Cohort dimension must not be part of the stock dimensions.")
+            raise ValueError(
+                f"{cohort} has the letter or name of one of its dimensions {self.dims.letters}, "
+                f"named {self.dims.names}. If one of them is the cohort dimension, pass its letter "
+                "as cohort_dim; otherwise, pass a cohort_dim with another letter and name."
+            )
 
     def mark_all_unset(self) -> None:
         """Mark all StockArrays (inflow, outflow, stock, inflow_by_cohort if present) as unset."""
