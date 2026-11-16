@@ -10,7 +10,12 @@ from pydantic import PrivateAttr, model_validator
 from typing_extensions import Self
 
 from ._base_model import FlodymBaseModel
-from ._checks import balance_failure, config_hint, report_balance_failures
+from ._checks import (
+    balance_failure,
+    config_hint,
+    report_balance_failures,
+    summed_float_precision,
+)
 from ._config import ErrorBehavior, config
 from ._process_compute import (
     SPLITTER_SIDES,
@@ -40,8 +45,14 @@ class Process(FlodymBaseModel):
     The process with ID 0 necessarily contains everything outside the system boundary.
     It has to be named 'sysenv'.
 
-    When an :py:class:`flodym.MFASystem` is set up, the process is linked to its inflows,
-    outflows and stock (see :py:attr:`inflows`, :py:attr:`outflows`, :py:attr:`stock`).
+    An :py:class:`flodym.MFASystem` links the process to its inflows, outflows and stock (see
+    :py:attr:`inflows`, :py:attr:`outflows`, :py:attr:`stock`). The links are derived from the
+    flows and stocks of the MFA system: when it is set up, and again each time one of its methods
+    uses them (:py:meth:`flodym.MFASystem.check_mass_balance`,
+    :py:meth:`flodym.MFASystem.compute_all_possible` and
+    :py:meth:`flodym.MFASystem.link_parameters`). Flows and stocks which are added to, replaced in
+    or removed from the MFA system afterwards are therefore taken into account by these methods.
+    The methods of the process itself use the links as they were derived last.
 
     Optionally, shares of in- and outflows and dimension splitters can be given (see
     :py:meth:`set_inflow_share`, :py:meth:`set_outflow_share` and
@@ -94,63 +105,18 @@ class Process(FlodymBaseModel):
 
     @property
     def inflows(self) -> dict[str, "Flow"]:
-        """Inflows to the process, keyed by flow name."""
+        """Inflows to the process, keyed as in :py:attr:`flodym.MFASystem.flows`."""
         return self._inflows
 
     @property
     def outflows(self) -> dict[str, "Flow"]:
-        """Outflows from the process, keyed by flow name."""
+        """Outflows from the process, keyed as in :py:attr:`flodym.MFASystem.flows`."""
         return self._outflows
 
     @property
     def stock(self) -> Optional["Stock"]:
         """Stock connected to the process, if any."""
         return self._stock
-
-    def add_inflow(self, flow: "Flow") -> None:
-        """Link a flow as inflow to the process."""
-        if flow.to_process is not self:
-            raise ValueError(f"Flow '{flow.name}' does not go to process '{self.name}'.")
-        self._inflows[flow.name] = flow
-
-    def add_outflow(self, flow: "Flow") -> None:
-        """Link a flow as outflow from the process."""
-        if flow.from_process is not self:
-            raise ValueError(f"Flow '{flow.name}' does not come from process '{self.name}'.")
-        self._outflows[flow.name] = flow
-
-    def set_stock(self, stock: "Stock") -> None:
-        """Link a stock to the process. A process can have only one stock."""
-        if stock.process is not self:
-            raise ValueError(f"Stock '{stock.name}' is not connected to process '{self.name}'.")
-        if self._stock is not None and self._stock is not stock:
-            raise ValueError(
-                f"Process '{self.name}' already has the stock '{self._stock.name}'; "
-                f"it cannot also have the stock '{stock.name}'."
-            )
-        self._stock = stock
-
-    def remove_inflow(self, flow_name: str) -> None:
-        """Remove the link to an inflow, given by its name."""
-        if flow_name not in self._inflows:
-            raise ValueError(f"In process {self.name}: No inflow '{flow_name}' found.")
-        del self._inflows[flow_name]
-
-    def remove_outflow(self, flow_name: str) -> None:
-        """Remove the link to an outflow, given by its name."""
-        if flow_name not in self._outflows:
-            raise ValueError(f"In process {self.name}: No outflow '{flow_name}' found.")
-        del self._outflows[flow_name]
-
-    def remove_stock(self) -> None:
-        """Remove the link to the stock."""
-        self._stock = None
-
-    def clear_links(self) -> None:
-        """Remove the links to all inflows, outflows and the stock."""
-        self._inflows = {}
-        self._outflows = {}
-        self._stock = None
 
     def get_sum_inflows(self) -> Union["FlodymArray", float]:
         """Sum of all inflows to the process.
@@ -202,19 +168,21 @@ class Process(FlodymBaseModel):
 
     @property
     def _absolute_float_precision(self) -> float:
-        """Machine epsilon times the largest absolute value of the relevant arrays.
+        """Float precision of the mass balance of the process.
 
-        These are the in- and outflows of the process and the in- and outflow of its stock.
+        It is the machine epsilon times the sum of the absolute values of the arrays of the mass
+        balance (see :py:meth:`_balance_arrays`) which are summed in one entry of the balance,
+        for the entry where this sum is largest.
         """
-        arrays = list(self._inflows.values()) + list(self._outflows.values())
-        if self._stock is not None:
-            arrays += [self._stock.inflow, self._stock.outflow]
-        return max((a._absolute_float_precision for a in arrays), default=0.0)
+        return summed_float_precision(self._balance_arrays())
 
     @property
     def tolerance(self) -> float:
         """Absolute tolerance for the mass balance check of the process.
 
+        It is based on the in- and outflows of the process and the in- and outflow of its stock:
+        on the sum of their absolute values in one entry of the mass balance, where it is
+        largest, as the rounding errors of all values summed in an entry add up.
         See :py:attr:`flodym.Config.relative_tolerance`.
         """
         return config.get_tolerance(self._absolute_float_precision)
@@ -227,7 +195,8 @@ class Process(FlodymBaseModel):
     ) -> bool:
         """Check whether the mass balance of the process is satisfied within a tolerance.
 
-        See :py:meth:`get_mass_balance`.
+        See :py:meth:`get_mass_balance`. The check uses the links of the process as they were
+        last derived by its :py:class:`flodym.MFASystem` (see :py:class:`Process`).
 
         Args:
             tolerance: Absolute tolerance. If None, :py:attr:`tolerance` is used.
@@ -258,10 +227,10 @@ class Process(FlodymBaseModel):
         extended by the float precision of ``mass_change`` if given.
         """
         if tolerance is None:
-            precision = self._absolute_float_precision
+            arrays = self._balance_arrays()
             if mass_change is not None and hasattr(mass_change, "_absolute_float_precision"):
-                precision = max(precision, mass_change._absolute_float_precision)
-            tolerance = config.get_tolerance(precision)
+                arrays.append(mass_change)
+            tolerance = config.get_tolerance(summed_float_precision(arrays))
         balance = self.get_mass_balance(mass_change=mass_change)
         return balance_failure(f"process '{self.name}'", balance, tolerance)
 
@@ -270,7 +239,7 @@ class Process(FlodymBaseModel):
 
     @property
     def inflow_shares(self) -> dict[str, Union["FlodymArray", str]]:
-        """Shares of inflows in the total throughput of the process, keyed by flow name.
+        """Shares of inflows in the total throughput of the process, keyed as :py:attr:`inflows`.
 
         Set them with :py:meth:`set_inflow_share`, or by a :py:class:`flodym.ProcessDefinition`.
         Shares from a definition are parameter names, keyed as in the definition, until they are
@@ -280,7 +249,7 @@ class Process(FlodymBaseModel):
 
     @property
     def outflow_shares(self) -> dict[str, Union["FlodymArray", str]]:
-        """Shares of outflows in the total throughput of the process, keyed by flow name.
+        """Shares of outflows in the total throughput of the process, keyed as :py:attr:`outflows`.
 
         See :py:attr:`inflow_shares`.
         """
@@ -317,8 +286,8 @@ class Process(FlodymBaseModel):
 
         Args:
             flow: Name of the inflow, or name of the process it comes from, if only one flow
-                comes from there. The process must be linked to its flows, see
-                :py:meth:`flodym.MFASystem.relink`.
+                comes from there. The process must be linked to its flows by its
+                :py:class:`flodym.MFASystem`.
             share: The share. Its dimensions must be contained in those of the total throughput
                 of the process.
         """
@@ -389,7 +358,8 @@ class Process(FlodymBaseModel):
         raise ValueError(
             f"In process '{self.name}': No {side}flow named '{flow}' or connected to a process "
             f"named '{flow}' found. Existing {side}flows: {', '.join(flows) or 'none'}. "
-            "Are the flows linked to the process (see MFASystem.relink())?"
+            "Processes are linked to their flows when their MFASystem is set up, checked or "
+            "computed."
         )
 
     def _set_share(self, side: Side, flow: str, share: "FlodymArray") -> None:
@@ -407,19 +377,6 @@ class Process(FlodymBaseModel):
         if name not in shares:
             raise ValueError(f"In process '{self.name}': No share for {side}flow '{name}' found.")
         del shares[name]
-
-    def _rename_share_keys(self, new_keys: dict[str, str]) -> None:
-        """Rename the flow names under which shares are stored, keeping their order.
-
-        Used by :py:meth:`flodym.MFASystem.relink` when flows are renamed.
-
-        Args:
-            new_keys: New flow names, keyed by old flow names.
-        """
-        for shares in (self._inflow_shares, self._outflow_shares):
-            renamed = {new_keys.get(name, name): share for name, share in shares.items()}
-            shares.clear()
-            shares.update(renamed)
 
     def _set_parameter_names(self, definition: ProcessDefinition) -> None:
         """Store the names of the shares and dimension splitters given in a process definition.
@@ -449,7 +406,7 @@ class Process(FlodymBaseModel):
         """Replace the parameter names of shares and dimension splitters by the parameters.
 
         Share keys given as process names are resolved to flow names, so the process must be
-        linked to its flows (see :py:meth:`flodym.MFASystem.relink`). Linked entries are kept.
+        linked to its flows by its :py:class:`flodym.MFASystem`. Linked entries are kept.
         """
         for side in ("in", "out"):
             shares = ProcessSide(self, side).shares
@@ -538,7 +495,9 @@ class Process(FlodymBaseModel):
 
         Flows are known if they are set (see :py:attr:`flodym.FlodymArray.is_set`). This covers
         many, but not all MFA processes; others have to be computed manually, for example if two
-        processes depend on each other and form an equation system.
+        processes depend on each other and form an equation system. The in- and outflows and
+        the stock are those which the :py:class:`flodym.MFASystem` last linked to the process
+        (see :py:class:`Process`).
 
         The computation assumes the following structure of a process without stock: The inflows
         sum to a total throughput, which is split into the outflows. It proceeds as follows:
@@ -603,6 +562,27 @@ class Process(FlodymBaseModel):
         if compute_neighbors and is_computed:
             compute_processes(self._neighbors())
         return is_computed
+
+    def _set_links(
+        self, inflows: dict[str, "Flow"], outflows: dict[str, "Flow"], stock: Optional["Stock"]
+    ) -> None:
+        """Replace the links to the inflows, outflows and stock of the process.
+
+        Used by :py:class:`flodym.MFASystem`, which derives the links from its flows and stocks.
+        """
+        self._inflows = inflows
+        self._outflows = outflows
+        self._stock = stock
+
+    def _balance_arrays(self) -> list["FlodymArray"]:
+        """Arrays which enter the mass balance of the process.
+
+        These are its in- and outflows, and the in- and outflow of its stock.
+        """
+        arrays: list[FlodymArray] = [*self._inflows.values(), *self._outflows.values()]
+        if self._stock is not None:
+            arrays += [self._stock.inflow, self._stock.outflow]
+        return arrays
 
     def _neighbors(self) -> list["Process"]:
         """Processes connected to this one by a flow, without duplicates."""

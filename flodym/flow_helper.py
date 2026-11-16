@@ -96,7 +96,6 @@ def make_empty_flows(
             name = _make_unique_name(naming(from_process, to_process), flows)
         dim_subset = dims.get_subset(flow_definition.dim_letters)
         flow = Flow(from_process=from_process, to_process=to_process, name=name, dims=dim_subset)
-        flow._named_after_processes = flow_definition.name_override is None
         flow._set_prescribed(flow_definition.prescribed)
         flows[flow.name] = flow
     if as_attribute_dict:

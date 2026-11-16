@@ -37,6 +37,12 @@ objects instead.
 - **Setting up an** ``MFASystem`` raises an error if a flow or stock refers to a process object
   that is not in ``mfa.processes``, or if two stocks refer to the same process. A process can now
   have only one stock.
+- **A stock connected to the process** ``sysenv`` raises an error when the ``MFASystem`` is set
+  up. ``sysenv`` contains everything outside the system boundary and has no mass balance of its
+  own.
+
+  *Action:* Connect the stock to a process inside the system, with flows from or to ``sysenv``,
+  or set its process to ``None`` to leave it out of the mass balance of the processes.
 - **The process named** ``sysenv`` **must have ID 0.** v1 only checked that the process with ID 0
   is named ``sysenv``.
 - **Subclasses of** ``DataReader`` must implement both ``read_dimension()`` and
@@ -64,13 +70,18 @@ Changed behavior:
   stocks that are not connected to a process.
 - Each process and stock is checked with its own tolerance, relative to its own values. In v1,
   the tolerance was relative to the largest value of the whole system, so an error in a small
-  process could stay undetected.
+  process could stay undetected. The tolerance of a process is relative to the sum of the
+  absolute values in an entry of its balance, as their rounding errors add up.
 - NaN values now make the check fail. In v1, NaN values made the check pass, because
   ``nan > tolerance`` is ``False``.
 - The stock check raises a ``ValueError`` instead of a ``RuntimeError``. It uses the configured
   tolerance instead of the fixed thresholds 1 and 0.001.
 - The stock balance accounts for the length of the time steps. The v1 method
   ``get_stock_balance()`` ignored it, which gave wrong results for unequal time steps.
+  The check therefore raises an error for a stock whose time dimension has fewer than three
+  items, or items which are not numbers in strictly increasing order, as no time steps can be
+  derived from them. Computing such a stock raises the same error; in v1, it failed with an
+  ``IndexError`` or ``TypeError``, or gave wrong values for items which are not increasing.
 - ``check_mass_balance()`` and ``check_flows()`` return ``True`` or ``False`` if they do not
   raise an error.
 
@@ -329,9 +340,9 @@ New features
   ``StockDefinition.prescribed_stock``, ``prescribed_inflow``, ``prescribed_outflow`` and
   ``prescribed_inflow_by_cohort``; ``MFASystem.link_parameters()`` and
   ``MFASystem.set_arrays_from_prescribed()`` (HOWTO 05).
-- **Process links:** ``process.inflows``, ``process.outflows`` and ``process.stock``;
-  ``ProcessDefinition(id, name)`` to set process IDs explicitly; ``MFASystem.relink()``, which by
-  default also renames flows named after their processes (``update_names=True``).
+- **Process links:** ``process.inflows``, ``process.outflows`` and ``process.stock``, which
+  follow the flows and stocks of the ``MFASystem`` whenever it is checked or computed;
+  ``ProcessDefinition(id, name)`` to set process IDs explicitly.
 - **Flow naming:** the global option ``flodym.config.flow_naming`` sets the function that
   generates flow names from the connected processes.
 - **Mass balance per process and stock:** ``Process.get_mass_balance()``,

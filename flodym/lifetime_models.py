@@ -46,8 +46,31 @@ class _UnevenTimeDim(FlodymBaseModel):
         return np.diff(self.bounds)
 
     def _compute_t_bounds(self) -> None:
-        """Computes the bounds of the time steps from the items of the time dimension."""
-        middle = (np.array(self.dim.items[:-1]) + np.array(self.dim.items[1:])) / 2.0
+        """Computes the bounds of the time steps from the items of the time dimension.
+
+        Raises:
+            ValueError: If the dimension has fewer than three items, or if its items are not
+                numbers in strictly increasing order.
+        """
+        items = list(self.dim.items)
+        times = np.asarray(items)
+        is_valid = (
+            times.ndim == 1
+            and len(times) >= 3
+            and times.dtype.kind in "iuf"
+            and bool(np.all(times[1:] > times[:-1]))
+        )
+        if not is_valid:
+            if len(items) > 6:
+                shown = ", ".join(repr(item) for item in items[:3]) + f", ..., {items[-1]!r}"
+            else:
+                shown = ", ".join(repr(item) for item in items)
+            raise ValueError(
+                f"The time steps cannot be derived from the items of dimension '{self.dim.name}' "
+                f"({shown}). Stocks and lifetime models need a time dimension with at least "
+                "three items, which are numbers in strictly increasing order."
+            )
+        middle = (times[:-1] + times[1:]) / 2.0
         self._bounds = np.concatenate(
             (
                 [middle[0] - (middle[1] - middle[0])],
