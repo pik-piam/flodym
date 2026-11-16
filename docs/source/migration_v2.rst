@@ -180,6 +180,8 @@ Arrays: set and unset values
 or assigned with ``set_values()``, ``set_values_from_df()`` or ``array[...] = ...``.
 
 - ``FlodymArray(dims=d, values=None)`` is unset, the same as omitting ``values``.
+- Assigning to a part of an array, e.g. ``array[{"r": "EU"}] = 1``, marks the whole array as
+  set, including the values which were not assigned.
 - Writing to ``.values`` directly, e.g. ``array.values[0, ...] = 1``, does **not** mark the array
   as set.
 

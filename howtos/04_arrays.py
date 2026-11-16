@@ -328,6 +328,7 @@ print("extensive flag of extensive / extensive:", (mass / mass.sum_to(("r",))).e
 # An array is set if values are given at initialization, or if values are assigned through one of its methods,
 # e.g. `set_values()` or `foo[...] = bar`.
 # An array initialized without values contains zeros, but is not set.
+# The flag belongs to the array as a whole: assigning to a part of it, e.g. `foo[{"r": "EU"}] = bar`, marks the whole array as set, including the values which were not assigned, e.g. the zeros of a new array.
 #
 # Writing to the `values` attribute directly, e.g. `foo.values[0, ...] = 1`, does not mark the array as set.
 # In this case, or if the zeros are intended, call `mark_set()`. `mark_unset()` reverts this, but keeps the values.

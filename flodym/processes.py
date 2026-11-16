@@ -563,6 +563,10 @@ class Process(FlodymBaseModel):
         Dimensions of flows are thus only added by the dimension splitters. To add dimensions to
         single flows, insert a process with a dimension splitter.
 
+        A flow is known or unknown as a whole: if only a part of a flow was assigned, all its
+        values count as known. All values of an unknown flow are computed, also those which were
+        assigned before it was marked unset.
+
         For a process with stock, the inflows and the outflows each have their own total: the
         inflow and the outflow of the stock. The shares of each side refer to its total.
         The stock is computed along with the process, depending on its type:
