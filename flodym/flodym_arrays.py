@@ -1479,6 +1479,9 @@ class FlodymArray(FlodymBaseModel):
 
         Arrays are set if values are given at initialization, or if values are assigned through
         one of the methods of the class (e.g. ``set_values()``, ``foo[...] = bar``).
+        The flag belongs to the array as a whole: assigning to a part of the array (e.g.
+        ``foo[{"t": 2020}] = bar``) marks the whole array as set, including the values which were
+        not assigned.
         Writing to the ``values`` attribute directly (e.g. ``foo.values[0, ...] = bar``) does not
         mark the array as set; call :py:meth:`mark_set` afterwards in that case.
 
