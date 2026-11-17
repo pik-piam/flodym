@@ -340,7 +340,8 @@ New features
 - **Global configuration:** ``flodym.config`` for tolerances and error behavior.
 - **Dynamic stock models:** compute modes ``compute_inflow_driven()``, ``compute_stock_driven()``
   and ``compute_inflow_by_cohort_driven()``, which can be called repeatedly and in any order;
-  ``set_initial_stock()``; inflow by cohort (HOWTO 06).
+  ``set_initial_stock()``; inflow by cohort; ``negative_inflow_behavior`` to avoid negative
+  inflows in stock-driven computations (HOWTO 06).
 - **Lifetime models:** ``WeibullMeanStdLifetime``, ``ExponentialLifetime``, ``Leaching``,
   ``TabulatedLifetime``, ``CompetingRisksLifetime``; the option ``relative_std``; period effects
   (``hazard_factor_by_year``, ``removal_share_by_year``); ``get_mean_lifetime_by_cohort()``;

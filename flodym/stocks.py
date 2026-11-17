@@ -9,7 +9,7 @@ import string
 import warnings
 from abc import abstractmethod
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, ClassVar, Concatenate, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Concatenate, Literal, ParamSpec, TypeVar
 
 import numpy as np
 from pydantic import (
@@ -38,6 +38,13 @@ logger = logging.getLogger(__name__)
 StockSubtype = TypeVar("StockSubtype", bound="Stock")
 _ComputeParams = ParamSpec("_ComputeParams")
 _ComputeReturn = TypeVar("_ComputeReturn")
+
+_ADJUSTED_PERIOD_EFFECT = {
+    "remove_flat": ("removal_share_by_year", 0.0),
+    "remove_by_hazard": ("hazard_factor_by_year", 1.0),
+}
+"""Period effect of the lifetime model increased by a ``negative_inflow_behavior``, and its
+neutral value."""
 
 
 def _wrap_compute(
@@ -528,6 +535,32 @@ class DynamicStockModel(Stock):
     Only used by :py:meth:`compute_inflow_by_cohort_driven`. Other FlodymArrays are converted to a
     StockArray. If not given or None, an unset StockArray of zeros is created.
     """
+    negative_inflow_behavior: Literal[
+        "allow_negative", "increase_stock", "remove_flat", "remove_by_hazard", "remove_oldest"
+    ] = "allow_negative"
+    """Treatment of negative inflows in :py:meth:`compute_stock_driven`, which occur if the
+    prescribed stock is smaller than the surviving stock of the older cohorts:
+
+    - ``"allow_negative"``: keep the negative inflow.
+    - ``"increase_stock"``: set the inflow to zero, so the stock exceeds the prescribed stock.
+    - ``"remove_flat"``: remove the same share of all cohorts, by increasing
+      ``removal_share_by_year`` of the lifetime model, so that the inflow is zero and the stock
+      equals the prescribed stock.
+    - ``"remove_by_hazard"``: remove more of the cohorts with a higher hazard, by increasing
+      ``hazard_factor_by_year`` of the lifetime model, so that the inflow is zero and the stock
+      equals the prescribed stock. If a prescribed stock of zero
+      requires it, the hazard factor is infinite. Raises an error if the hazard factor cannot
+      remove enough, e.g. for :py:class:`flodym.FixedLifetime`.
+    - ``"remove_oldest"``: remove the excess stock from the oldest cohorts first, so that the
+      inflow is zero and the stock equals the prescribed stock. This is not stored in the lifetime
+      model, so recomputing inflow-driven does not reproduce the result.
+
+    For ``"remove_flat"`` and ``"remove_by_hazard"``, the lifetime model is modified, with a
+    warning. It then reproduces the result when recomputing inflow-driven or stock-driven.
+    Except for ``"allow_negative"``, the inflow is never negative, and a
+    negative prescribed stock is treated as zero. The initial stock year (see
+    :py:meth:`set_initial_stock`) is not affected.
+    """
 
     _outflow_by_cohort: np.ndarray
     _stock_by_cohort: np.ndarray
@@ -847,6 +880,7 @@ class DynamicStockModel(Stock):
         self._check_array_known(
             self.inflow, "Inflow", "This will lead to a zero stock and outflow."
         )
+        self._warn_negative_inflow_behavior_unused()
         if self._initial_stock_by_cohort is None:
             self._compute_inflow_driven_vectorized()
             return
@@ -884,7 +918,24 @@ class DynamicStockModel(Stock):
         self._check_array_known(self.stock, "Stock", "This will lead to a zero inflow and outflow.")
         if self._initial_stock_by_cohort is not None:
             self._check_stock_at_initial_year(self._initial_stock_by_cohort)
-        self._compute_cohorts(self._newest_cohort_inflow_from_stock)
+        name, default = _ADJUSTED_PERIOD_EFFECT.get(self.negative_inflow_behavior, (None, None))
+        if name is None:
+            self._compute_cohorts(self._newest_cohort_inflow_from_stock)
+            return
+        # adjusted copy of the period effect, written to the lifetime model after the time stepping
+        original = getattr(self.lifetime_model, name)
+        before = np.full(self.shape, default) if original is None else original
+        period_effect = before.copy()
+        self._compute_cohorts(
+            functools.partial(self._newest_cohort_inflow_from_stock, period_effect=period_effect)
+        )
+        changed = (period_effect != before).reshape(self._n_t, -1).any(axis=1)
+        if np.any(changed):
+            setattr(self.lifetime_model, name, period_effect)
+            logger.warning(
+                f"Modified the lifetime model of stock '{self.name}': increased {name} in "
+                f"{np.sum(changed)} time step(s) to avoid negative inflow."
+            )
 
     @_wrap_compute
     def compute_inflow_by_cohort_driven(self) -> None:
@@ -894,6 +945,7 @@ class DynamicStockModel(Stock):
         ``config.error_behaviors.unset_array_used``).
         """
         self._check_inflow_by_cohort_known()
+        self._warn_negative_inflow_behavior_unused()
         self._check_consistent_with_survival(
             self.inflow_by_cohort.values,
             self.lifetime_model.cumulative_survival,
@@ -903,7 +955,9 @@ class DynamicStockModel(Stock):
 
     def _compute_cohorts(
         self,
-        get_newest_cohort_inflow: Callable[[int, np.ndarray], np.ndarray],
+        get_newest_cohort_inflow: Callable[
+            [int, np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]
+        ],
         use_inflow_by_cohort: bool = False,
     ) -> None:
         """Step through time with the stock by cohort as state, and set stock, inflow and outflow.
@@ -925,9 +979,11 @@ class DynamicStockModel(Stock):
         All amounts within this routine are over the whole period of a time step, not annual.
 
         Args:
-            get_newest_cohort_inflow: Returns the newest cohort inflow of year index i_t, given
-                i_t and the amount present by cohort in year i_t before adding this inflow, for
-                the cohorts 0 to i_t.
+            get_newest_cohort_inflow: Given the year index i_t, and the amount present by cohort
+                in year i_t before adding the newest cohort inflow and the conditional survival
+                in year i_t, both for the cohorts 0 to i_t, returns the newest cohort inflow and
+                the conditional survival to use in year i_t. The latter is either the given one,
+                or a modified copy.
             use_inflow_by_cohort: Whether ``inflow_by_cohort`` is part of the older inflow by
                 cohort.
         """
@@ -948,12 +1004,12 @@ class DynamicStockModel(Stock):
             existing = slice(None, i_t + 1)
             if i_t > 0:
                 present_by_cohort[i_t, :i_t, ...] += self._stock_by_cohort[i_t - 1, :i_t, ...]
-            newest_cohort_inflow[i_t, ...] = get_newest_cohort_inflow(
-                i_t, present_by_cohort[i_t, existing, ...]
+            newest_cohort_inflow[i_t, ...], cond_surv_t = get_newest_cohort_inflow(
+                i_t, present_by_cohort[i_t, existing, ...], cond_surv[i_t, existing, ...]
             )
             present_by_cohort[i_t, i_t, ...] += newest_cohort_inflow[i_t, ...]
             self._stock_by_cohort[i_t, existing, ...] = (
-                present_by_cohort[i_t, existing, ...] * cond_surv[i_t, existing, ...]
+                present_by_cohort[i_t, existing, ...] * cond_surv_t
             )
         inflow_whole_period = newest_cohort_inflow + older_inflow_by_cohort.sum(axis=1)
         # what is present during year t, but not left at its end, leaves during year t
@@ -1005,17 +1061,19 @@ class DynamicStockModel(Stock):
     def _is_initial_year(self, i_t: int) -> bool:
         return self._initial_stock_by_cohort is not None and i_t == self._initial_year_index
 
-    def _no_newest_cohort_inflow(self, i_t: int, present_by_cohort: np.ndarray) -> np.ndarray:
+    def _no_newest_cohort_inflow(
+        self, i_t: int, present_by_cohort: np.ndarray, cond_surv: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
         """All inflow is part of the inflow by cohort, including that of the newest cohort."""
-        return np.zeros(self._shape_no_t)
+        return np.zeros(self._shape_no_t), cond_surv
 
     def _newest_cohort_inflow_from_inflow(
-        self, i_t: int, present_by_cohort: np.ndarray
-    ) -> np.ndarray:
+        self, i_t: int, present_by_cohort: np.ndarray, cond_surv: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Prescribed inflow of the newest cohort over the whole period."""
         newest_cohort_inflow = self.inflow.values[i_t, ...] * self._t.interval_lengths[i_t]
         if not self._is_initial_year(i_t):
-            return newest_cohort_inflow
+            return newest_cohort_inflow, cond_surv
         # So far, all cohorts are only present through the inflow of the initial stock.
         if self._initial_stock_included_in_inflow:
             # The prescribed inflow contains the inflow of the initial stock of all cohorts
@@ -1033,14 +1091,20 @@ class DynamicStockModel(Stock):
         # then subtract initial stock contribution:
         # max(pi, isi) - isi = pi - min(pi, isi)
         newest_cohort_inflow -= np.minimum(newest_cohort_inflow, initial_stock_inflow)
-        return newest_cohort_inflow
+        return newest_cohort_inflow, cond_surv
 
     def _newest_cohort_inflow_from_stock(
-        self, i_t: int, present_by_cohort: np.ndarray
-    ) -> np.ndarray:
+        self,
+        i_t: int,
+        present_by_cohort: np.ndarray,
+        cond_surv: np.ndarray,
+        period_effect: np.ndarray | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Inflow of the newest cohort over the whole period from the prescribed stock.
 
-        It is chosen such that the total stock equals the prescribed stock.
+        It is chosen such that the total stock equals the prescribed stock. If it is negative,
+        it is treated according to :py:attr:`negative_inflow_behavior`. ``period_effect`` is the
+        removal share or hazard factor by year to increase, which is modified in place.
         """
         # Maths behind implementation:
         # Solve square linear equation system
@@ -1051,16 +1115,131 @@ class DynamicStockModel(Stock):
         # solve for inflow_i:
         #   inflow_i = ( stock_i - sum_{j=1...i-1}(cum_surv_i,j * inflow_j) ) / cum_surv_ii
         # where the sum is the surviving stock of the older cohorts.
-        cond_surv = self.lifetime_model.conditional_survival[i_t, : i_t + 1, ...]
-        surviving_stock = (present_by_cohort * cond_surv).sum(axis=0)
-        newest_cohort_inflow = (self.stock.values[i_t, ...] - surviving_stock) / cond_surv[i_t, ...]
+        stock = self.stock.values[i_t, ...]
+
+        def inflow_for_stock(cond_surv: np.ndarray) -> np.ndarray:
+            missing_stock = stock - (present_by_cohort * cond_surv).sum(axis=0)
+            # if nothing is missing and nothing survives, e.g. for an infinite hazard factor
+            # needed for a zero stock, any inflow fits; choose zero
+            return np.divide(
+                missing_stock,
+                cond_surv[i_t, ...],
+                out=np.zeros_like(missing_stock),
+                where=(missing_stock != 0) | (cond_surv[i_t, ...] != 0),
+            )
+
+        newest_cohort_inflow = inflow_for_stock(cond_surv)
         if self._is_initial_year(i_t):
             # use the maximum of prescribed and initial stock
-            newest_cohort_inflow = np.maximum(newest_cohort_inflow, 0.0)
-        return newest_cohort_inflow
+            return np.maximum(newest_cohort_inflow, 0.0), cond_surv
+        behavior = self.negative_inflow_behavior
+        if behavior == "allow_negative" or not np.any(newest_cohort_inflow < 0):
+            return newest_cohort_inflow, cond_surv
+        if behavior == "increase_stock":
+            # the stock exceeds the prescribed stock
+            return np.maximum(newest_cohort_inflow, 0.0), cond_surv
+        survival_reducing_behaviors = (
+            "remove_flat",
+            "remove_by_hazard",
+            "remove_oldest",
+        )
+        if behavior in survival_reducing_behaviors:
+            # Outside the initial year, only the older cohorts c < t are present before the
+            # newest cohort inflow. Reduce their survival such that the prescribed stock is met.
+            older = slice(None, i_t)
+            cond_surv = cond_surv.copy()
+            survivors = present_by_cohort[older, ...] * cond_surv[older, ...]
+            target = np.maximum(stock, 0.0)
+            cond_surv[older, ...] *= self._survival_reduction(i_t, survivors, target, period_effect)
+            newest_cohort_inflow = inflow_for_stock(cond_surv)
+            # zero up to rounding errors, except for a negative prescribed stock
+            return np.maximum(newest_cohort_inflow, 0.0), cond_surv
+
+    def _survival_reduction(
+        self,
+        i_t: int,
+        survivors: np.ndarray,
+        target: np.ndarray,
+        period_effect: np.ndarray | None,
+    ) -> np.ndarray:
+        """Factor on the conditional survival of the older cohorts in year i_t.
+
+        After applying it, the survivors (shape (c, ...)) sum to at most ``target`` (shape (...)),
+        exactly if possible. ``period_effect`` is updated in place.
+        """
+        total = survivors.sum(axis=0)
+        excess = total > target
+        if self.negative_inflow_behavior == "remove_flat":
+            keep = np.divide(target, total, out=np.ones_like(total), where=excess)
+            period_effect[i_t, ...] = 1.0 - (1.0 - period_effect[i_t, ...]) * keep
+            return keep
+        if self.negative_inflow_behavior == "remove_by_hazard":
+            base_cond_surv = self.lifetime_model._base_conditional_survival[i_t, :i_t, ...]
+            increase = self._hazard_factor_increase(i_t, survivors, base_cond_surv, target, excess)
+            period_effect[i_t, ...] += increase
+            return np.power(base_cond_surv, increase)
+        if self.negative_inflow_behavior == "remove_oldest":
+            # remove the excess, starting from the oldest cohort
+            survivors_of_older = np.cumsum(survivors, axis=0) - survivors
+            removed = np.clip(total - target - survivors_of_older, 0.0, survivors)
+            return 1.0 - np.divide(
+                removed, survivors, out=np.zeros_like(survivors), where=survivors > 0
+            )
+
+    def _hazard_factor_increase(
+        self,
+        i_t: int,
+        survivors: np.ndarray,
+        base_cond_surv: np.ndarray,
+        target: np.ndarray,
+        excess: np.ndarray,
+    ) -> np.ndarray:
+        """Increase d >= 0 of the hazard factor such that the survivors meet the target.
+
+        Where ``excess``, sum_c survivors_c * base_cond_surv_c ** d equals target. Solved by
+        Newton's method for log(sum_c ...) as function of d. As it is convex and decreasing, the
+        method converges monotonically from d = 0. For a target of zero, d is infinite, i.e.
+        everything leaves the stock which can leave by hazard.
+        """
+        log_base = np.log(np.where(survivors > 0, base_cond_surv, 1.0))
+        # survivors which do not change with the hazard factor
+        remaining = np.where(log_base == 0, survivors, 0.0).sum(axis=0)
+        if np.any(excess & (remaining > 0) & (remaining >= target)):
+            year = self.dims[self.time_letter].items[i_t]
+            raise ValueError(
+                f"Cannot avoid negative inflow of stock '{self.name}' in year {year} by increasing "
+                "hazard_factor_by_year: the conditional survival without period effects is 1 for "
+                "too much of the stock (e.g. for FixedLifetime). Use negative_inflow_behavior "
+                "'remove_flat' or 'remove_oldest' instead."
+            )
+        positive_target = excess & (target > 0)
+        log_target = np.log(np.where(positive_target, target, 1.0))
+        increase = np.where(excess & ~positive_target, np.inf, 0.0)
+        for _ in range(100):
+            weighted = survivors * np.exp(np.where(positive_target, increase, 0.0) * log_base)
+            total = weighted.sum(axis=0)
+            residual = np.log(np.where(positive_target, total, 1.0)) - log_target
+            active = positive_target & (residual > 1e-12)
+            if not np.any(active):
+                return increase
+            slope = (weighted * log_base).sum(axis=0) / np.where(active, total, 1.0)
+            increase = np.where(
+                active, increase - residual / np.where(active, slope, -1.0), increase
+            )
+        raise RuntimeError(
+            f"Increase of hazard_factor_by_year of stock '{self.name}' did not converge."
+        )
 
     def _check_needed_arrays(self) -> None:
         self.lifetime_model._check_prms_set()
+
+    def _warn_negative_inflow_behavior_unused(self) -> None:
+        if self.negative_inflow_behavior != "allow_negative":
+            logger.warning(
+                f"negative_inflow_behavior of stock '{self.name}' is "
+                f"'{self.negative_inflow_behavior}', but has no effect, as the stock is not "
+                "computed stock-driven."
+            )
 
     def _check_inflow_by_cohort_known(self) -> None:
         self._check_array_known(
