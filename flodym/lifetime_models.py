@@ -119,6 +119,7 @@ class LifetimeModel(FlodymBaseModel):
     _cumulative_survival: np.ndarray | None = PrivateAttr(default=None)
     _outflow_pmf: np.ndarray | None = PrivateAttr(default=None)
     _conditional_survival: np.ndarray | None = PrivateAttr(default=None)
+    _base_conditional_survival_cache: np.ndarray | None = PrivateAttr(default=None)
     _t: _UnevenTimeDim = PrivateAttr()
     _quad_points: list[float] | None = PrivateAttr(default=None)
     """Intra-time step quadrature points for numerical integration of the cumulative survival."""
@@ -359,9 +360,7 @@ class LifetimeModel(FlodymBaseModel):
     def _get_reduced_conditional_survival(self) -> np.ndarray:
         if self._conditional_survival is None:
             if self._has_period_effects:
-                cond_surv = self._conditional_from_cumulative_survival(
-                    self._compute_base_cumulative_survival()
-                )
+                cond_surv = self._get_reduced_base_conditional_survival().copy()
                 self._apply_period_effects(cond_surv)
                 self._conditional_survival = cond_surv
             else:
@@ -369,6 +368,20 @@ class LifetimeModel(FlodymBaseModel):
                     self._get_reduced_cumulative_survival()
                 )
         return self._conditional_survival
+
+    @property
+    def _base_conditional_survival(self) -> np.ndarray:
+        """Conditional survival without period effects, broadcast to the full shape. Read-only."""
+        return self._broadcast(self._get_reduced_base_conditional_survival())
+
+    def _get_reduced_base_conditional_survival(self) -> np.ndarray:
+        if not self._has_period_effects:
+            return self._get_reduced_conditional_survival()
+        if self._base_conditional_survival_cache is None:
+            self._base_conditional_survival_cache = self._conditional_from_cumulative_survival(
+                self._compute_base_cumulative_survival()
+            )
+        return self._base_conditional_survival_cache
 
     def _conditional_from_cumulative_survival(self, cum_surv: np.ndarray) -> np.ndarray:
         cond_surv = np.zeros_like(cum_surv)
@@ -569,6 +582,7 @@ class LifetimeModel(FlodymBaseModel):
         self._cumulative_survival = None
         self._outflow_pmf = None
         self._conditional_survival = None
+        self._base_conditional_survival_cache = None
         self._reduce_index_cache = None
 
     def _tile(self, a: np.ndarray) -> np.ndarray:

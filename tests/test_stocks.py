@@ -670,6 +670,119 @@ def test_stock_driven_then_inflow_driven_with_initial_stock(included_in_inflow):
     dsm.check_mass_balance()
 
 
+NEGATIVE_INFLOW_BEHAVIORS = ["increase_stock", "remove_flat", "remove_by_hazard", "remove_oldest"]
+
+
+def _decreasing_stock_values():
+    """Stock growing until index 10, then falling faster than the lifetime, then zero."""
+    values = _driving_array_for_cohort_tests("stock").values
+    n_after = len(TIME_ITEMS_COHORT_TESTS) - 11
+    values[11:] = values[10] * 0.6 ** np.arange(1, n_after + 1)[:, np.newaxis]
+    values[-2:] = 0.0
+    return values
+
+
+def _decreasing_stock_dsm(behavior, **kwargs):
+    stock = StockArray(dims=DIMS_COHORT_TESTS, values=_decreasing_stock_values())
+    return _dsm_for_cohort_tests(
+        DynamicStockModel, stock=stock, negative_inflow_behavior=behavior, **kwargs
+    )
+
+
+@pytest.mark.parametrize("behavior", NEGATIVE_INFLOW_BEHAVIORS)
+def test_negative_inflow_behavior(behavior):
+    reference = _decreasing_stock_dsm("allow_negative")
+    reference.compute_stock_driven()
+    assert np.any(reference.inflow.values < 0)
+
+    dsm = _decreasing_stock_dsm(behavior)
+    dsm.compute_stock_driven()
+    assert np.all(dsm.inflow.values >= 0)
+    assert np.all(dsm.get_outflow_by_cohort().values >= -1e-12)
+    dsm.check_mass_balance()
+    if behavior == "increase_stock":
+        assert np.all(dsm.stock.values >= _decreasing_stock_values() - 1e-12)
+        assert np.any(dsm.stock.values > _decreasing_stock_values() + 1e-6)
+    else:
+        np.testing.assert_allclose(dsm.stock.values, _decreasing_stock_values(), atol=1e-10)
+
+
+@pytest.mark.parametrize("behavior", ["remove_flat", "remove_by_hazard"])
+def test_negative_inflow_behavior_modifies_lifetime_model(behavior, caplog):
+    dsm = _decreasing_stock_dsm(behavior)
+    with caplog.at_level(logging.WARNING):
+        dsm.compute_stock_driven()
+    assert "Modified the lifetime model" in caplog.text
+    name = {"remove_flat": "removal_share_by_year", "remove_by_hazard": "hazard_factor_by_year"}
+    assert getattr(dsm.lifetime_model, name[behavior]) is not None
+    result = {attr: getattr(dsm, attr).values.copy() for attr in ("stock", "inflow", "outflow")}
+
+    # the modified lifetime model reproduces the result, without further modification
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        dsm.compute_stock_driven()
+    assert "Modified the lifetime model" not in caplog.text
+    dsm.compute_inflow_driven()
+    for attr, values in result.items():
+        np.testing.assert_allclose(getattr(dsm, attr).values, values, atol=1e-10)
+
+
+@pytest.mark.parametrize(
+    "behavior, name, value",
+    [
+        ("remove_flat", "removal_share_by_year", 0.1),
+        ("remove_by_hazard", "hazard_factor_by_year", 2.0),
+    ],
+)
+def test_negative_inflow_behavior_increases_given_period_effect(behavior, name, value):
+    dsm = _decreasing_stock_dsm(behavior)
+    setattr(dsm.lifetime_model, name, value)
+    dsm.compute_stock_driven()
+    period_effect = getattr(dsm.lifetime_model, name)
+    assert np.all(period_effect >= value)
+    assert np.any(period_effect > value)
+    np.testing.assert_allclose(dsm.stock.values, _decreasing_stock_values(), atol=1e-10)
+
+
+def test_remove_oldest_removes_oldest_cohorts_first():
+    reference = _decreasing_stock_dsm("allow_negative")
+    reference.compute_stock_driven()
+    dsm = _decreasing_stock_dsm("remove_oldest")
+    dsm.compute_stock_driven()
+    # first year with negative inflow: same cohorts before, oldest removed first
+    i_t = np.argmax(np.any(reference.inflow.values < 0, axis=1))
+    unadjusted = reference.get_stock_by_cohort().values[i_t, :i_t]
+    removed = unadjusted - dsm.get_stock_by_cohort().values[i_t, :i_t]
+    for i_p in range(removed.shape[1]):
+        n_removed = np.sum(removed[:, i_p] > 1e-12)
+        assert np.all(removed[n_removed:, i_p] <= 1e-12)
+        np.testing.assert_allclose(removed[: n_removed - 1, i_p], unadjusted[: n_removed - 1, i_p])
+
+
+def test_remove_by_hazard_raises_for_fixed_lifetime():
+    lifetime_model = FixedLifetime(dims=DIMS_COHORT_TESTS, mean=8)
+    dsm = _decreasing_stock_dsm("remove_by_hazard")
+    dsm.lifetime_model = lifetime_model
+    with pytest.raises(ValueError, match="remove_flat"):
+        dsm.compute_stock_driven()
+
+
+def test_negative_inflow_behavior_with_initial_stock():
+    dsm = _dsm_for_cohort_tests(DynamicStockModel, negative_inflow_behavior="remove_flat")
+    initial_stock = _initial_stock_for_cohort_tests()
+    dsm.set_initial_stock(initial_stock, INITIAL_YEAR_TESTS)
+    iiy = INITIAL_YEAR_INDEX_TESTS
+    n_after = len(TIME_ITEMS_COHORT_TESTS) - iiy - 1
+    dsm.stock.values[iiy + 1 :, :] = 60.0 * 0.7 ** np.arange(1, n_after + 1)[:, np.newaxis]
+    prescribed_stock = dsm.stock.values.copy()
+    dsm.compute_stock_driven()
+
+    np.testing.assert_allclose(dsm.get_stock_by_cohort().values[iiy], initial_stock.values)
+    np.testing.assert_allclose(dsm.stock.values[iiy + 1 :], prescribed_stock[iiy + 1 :])
+    assert np.all(dsm.inflow.values >= 0)
+    dsm.check_mass_balance()
+
+
 def test_user_subclass_of_dynamic_stock_model_marks_set():
     class MyDSM(DynamicStockModel):
         def compute(self):

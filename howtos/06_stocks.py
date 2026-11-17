@@ -164,6 +164,29 @@ print("Smallest inflow, corrected:", my_dsm.inflow.values.min())
 print("Stock values for Vehicles:", my_dsm.stock["Vehicles"].values)
 
 # %% [markdown]
+# Alternatively, `negative_inflow_behavior` treats negative inflows during the stock-driven computation:
+# - `"allow_negative"` (default): keep them.
+# - `"increase_stock"`: set the inflow to zero, so the stock exceeds the prescribed stock.
+# - `"remove_flat"`, `"remove_by_hazard"`: remove the excess stock by increasing `removal_share_by_year` or `hazard_factor_by_year` of the lifetime model, which is modified with a warning.
+# - `"remove_oldest"`: remove the excess stock from the oldest cohorts first.
+#
+# With the last three, the inflow is zero and the stock equals the prescribed stock:
+
+# %%
+my_dsm = fd.DynamicStockModel(
+    dims=dims,
+    name="in-use-dsm",
+    lifetime_model=fd.NormalLifetime(dims=dims, mean=lifetime_mean, std=0.3 * lifetime_mean),
+    stock=fd.StockArray(dims=dims, values=stock_values * np.ones(dims.shape)),
+    negative_inflow_behavior="remove_flat",
+)
+my_dsm.compute_stock_driven()
+print("Smallest inflow:", my_dsm.inflow.values.min())
+print("Stock values for Vehicles:", my_dsm.stock["Vehicles"].values)
+removal_share = my_dsm.lifetime_model.removal_share_by_year
+print("Removal share for Vehicles:", removal_share[:, dims["p"].items.index("Vehicles")])
+
+# %% [markdown]
 # `DynamicStockModel.compute()` chooses the mode itself: it uses whichever of stock, inflow and `inflow_by_cohort` is set (see `is_set` in the how-to on arrays).
 # After a computation, stock, inflow and outflow are all set, so a second call to `compute()` raises an error.
 # To recompute, use the explicit methods above.
