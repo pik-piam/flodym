@@ -6,6 +6,4 @@ Processes
 
 .. autofunction:: flodym.make_processes
 
-.. autofunction:: flodym.compute_processes
-
 .. autoexception:: flodym.UnderdeterminedError

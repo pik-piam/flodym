@@ -15,6 +15,7 @@
 #
 # flodym has implemented the MFASystem class as a parent class, of which you can write your own subclass.
 # We recommend implementing your own `compute` function, where the array operations are performed.
+# If you do not override it, `compute()` computes all processes which can be computed automatically (see below), and logs a warning if some processes remain uncomputed.
 #
 # Of course, this requires knowledge about the flows, stocks and parameters you intend to put in, which are described later.
 
@@ -287,6 +288,41 @@ print("Not computed:", my_mfa_system.compute_all_possible())
 # For parameters that are not part of the definition, such as `"c"`, set `check_parameter_names=False` in the `MFADefinition`.
 #
 # The values of prescribing parameters are copied into the flows and stock arrays by `MFASystem.set_arrays_from_prescribed()`, which `compute_all_possible()` calls first. Example 2 shows the use of definitions.
+
+# %% [markdown]
+# ### Custom computations of processes
+#
+# Some processes cannot be computed automatically, for example if two processes exchange flows in both directions and thus form an equation system.
+# For such processes, you can add a custom computation with `MFASystem.add_custom_computation()`. It takes the names of the processes and a function, which receives the MFA system as its only argument, and must set all flows of these processes (and the arrays of their stocks).
+# `compute_all_possible()` then uses this function instead of the automatic computation for these processes, and continues with the neighboring processes afterwards.
+#
+# The function is called once the required arrays are set. By default, these are the inflows which enter the processes from other processes. Other required arrays can be given with the `requires` argument, as flow names or as `"<stock name>.<array name>"`.
+# If the function finds that it cannot compute the processes yet, it can raise an `UnderdeterminedError`.
+#
+# As a simple example, we compute `process_b` with a custom function:
+
+
+# %%
+def compute_process_b(mfa: fd.MFASystem) -> None:
+    mfa.flows["process_b => sysenv"][...] = mfa.flows["process_a => process_b"]
+
+
+my_mfa_system.add_custom_computation("process_b", compute_process_b)
+
+my_mfa_system.mark_all_unset()
+my_mfa_system.flows["sysenv => process_a"][...] = my_mfa_system.parameters["extraction"]
+print("Not computed:", my_mfa_system.compute_all_possible())
+
+# %% [markdown]
+# A custom computation of several processes computes them together. Several custom computations may be given for the same processes, e.g. to solve an equation system either from the flows entering or from the flows leaving the processes. The first one whose required arrays are set is used:
+#
+# ```python
+# mfa.add_custom_computation(["a", "b"], solve_from_inflows)
+# mfa.add_custom_computation(["a", "b"], solve_from_outflows, requires=["b => c"])
+# ```
+#
+# The custom computations are stored in `MFASystem.custom_computations`, which you can also edit directly.
+# `Process.compute()` only uses the automatic computation, not custom computations.
 
 # %% [markdown]
 # ## Generate attributes from Definition objects

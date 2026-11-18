@@ -452,13 +452,11 @@ def test_long_chain_without_recursion_limit():
     np.testing.assert_allclose(mfa.flows["p2999 => sysenv"].values, 1.0)
 
 
-def test_compute_neighbors():
+def test_process_compute_does_not_compute_neighbors():
     mfa = chain_mfa(3)
     mfa.flows["sysenv => p0"][...] = 1.0
     assert mfa.processes["p0"].compute()
     assert not mfa.processes["p1"].is_computed
-    assert mfa.processes["p1"].compute(compute_neighbors=True)
-    assert all(p.is_computed for name, p in mfa.processes.items() if name != "sysenv")
 
 
 # Regression tests for reviewed edge cases

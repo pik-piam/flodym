@@ -234,6 +234,9 @@ This is a new feature and does not change existing models. If you use it, note:
 - Parameters used in definitions (shares, dimension splitters, prescribed flows and stock arrays)
   are linked by ``MFASystem.link_parameters()``, which ``from_data_reader()``, ``from_csv()`` and
   ``from_excel()`` call unless ``link=False`` is given. The parameters are stored by reference.
+- ``MFASystem.compute()`` no longer raises a ``NotImplementedError`` if it is not overridden.
+  It calls ``compute_all_possible()`` and logs a warning which lists the processes that could
+  not be computed. Subclasses which override ``compute()`` are not affected.
 - The values of prescribed flows and stock arrays are copied only by
   ``MFASystem.set_arrays_from_prescribed()``, which ``compute_all_possible()`` calls first. It
   overwrites the values of these arrays. If you compute single processes with
@@ -329,6 +332,10 @@ New features
   ``StockDefinition.prescribed_stock``, ``prescribed_inflow``, ``prescribed_outflow`` and
   ``prescribed_inflow_by_cohort``; ``MFASystem.link_parameters()`` and
   ``MFASystem.set_arrays_from_prescribed()`` (HOWTO 05).
+- **Custom computations of processes:** ``MFASystem.add_custom_computation()`` and
+  ``MFASystem.custom_computations`` (``CustomComputation``) let ``compute_all_possible()`` compute
+  processes with user-defined functions, e.g. processes which form an equation system. Several
+  functions may be given for the same processes, e.g. for different directions (HOWTO 05).
 - **Process links:** ``process.inflows``, ``process.outflows`` and ``process.stock``;
   ``ProcessDefinition(id, name)`` to set process IDs explicitly; ``MFASystem.relink()``, which by
   default also renames flows named after their processes (``update_names=True``).
