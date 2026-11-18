@@ -78,7 +78,14 @@ class ErrorBehaviors(FlodymBaseModel, validate_assignment=True):
 
     unset_array_used: ErrorBehavior = ErrorBehavior.IGNORE
     """What to do if a FlodymArray which is not set (see :py:attr:`flodym.FlodymArray.is_set`)
-    is used in an operation or a stock computation.
+    is used in an operation or a stock computation. For parameters,
+    :py:attr:`unset_parameter` is used instead.
+    """
+    unset_parameter: ErrorBehavior = ErrorBehavior.ERROR
+    """What to do if a :py:class:`flodym.Parameter` which is not set is used in an operation,
+    e.g. a parameter created by :py:meth:`flodym.MFASystem.from_definition` whose values were
+    not given with :py:meth:`flodym.MFASystem.set_parameter_values`. This includes its use as a
+    share, dimension splitter or prescribed array.
     """
     mass_balance: ErrorBehavior = ErrorBehavior.ERROR
     """What to do if a mass balance check fails
