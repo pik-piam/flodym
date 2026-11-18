@@ -17,7 +17,7 @@ from ._attribute_dict import AttributeDict
 from ._base_model import FlodymBaseModel
 from ._checks import config_hint, report_balance_failures
 from ._config import ErrorBehavior, config, handle_error
-from ._process_compute import CustomRun, compute_processes
+from ._process_compute import ResolvedCustomComputation, compute_processes
 from .data_reader import (
     CompoundDataReader,
     CSVDimensionReader,
@@ -78,15 +78,6 @@ class MFASystem(FlodymBaseModel):
     :py:meth:`add_custom_computation`). For other computations, implement a subclass of
     MFASystem which overrides :py:meth:`compute`.
 
-    **Example**
-    Define your MFA System:
-
-        >>> import flodym as fd
-        >>> class CustomMFA(fd.MFASystem):
-        ...     def compute(self):
-        ...         # do some computations on the CustomMFA attributes: stocks and flows
-        ...         self.compute_all_possible()
-
     MFA flows, stocks and parameters are defined as instances of subclasses of
     :py:class:`flodym.FlodymArray`. Dimensions are managed with the :py:class:`flodym.Dimension`
     and :py:class:`flodym.DimensionSet`.
@@ -136,7 +127,7 @@ class MFASystem(FlodymBaseModel):
     @model_validator(mode="after")
     def _check_custom_computations(self) -> Self:
         """Check that the custom computations refer to processes and arrays of the system."""
-        self._custom_runs()
+        self._resolve_custom_computations()
         return self
 
     @classmethod
@@ -663,7 +654,7 @@ class MFASystem(FlodymBaseModel):
             The names of the processes (except 'sysenv') which could not be computed.
         """
         self.set_arrays_from_prescribed()
-        compute_processes(self.processes.values(), self._custom_runs())
+        compute_processes(self.processes.values(), self._resolve_custom_computations())
         not_computed = [p.name for p in self.processes.values() if p.id != 0 and not p.is_computed]
         if not_computed:
             logger.info(
@@ -714,19 +705,19 @@ class MFASystem(FlodymBaseModel):
         if isinstance(processes, str):
             processes = [processes]
         computation = CustomComputation(processes=processes, function=function, requires=requires)
-        self._custom_runs([*self.custom_computations, computation])
+        self._resolve_custom_computations([*self.custom_computations, computation])
         self.custom_computations.append(computation)
 
-    def _custom_runs(
+    def _resolve_custom_computations(
         self, computations: list[CustomComputation] | None = None
-    ) -> dict[str, list[CustomRun]]:
-        """Prepare custom computations for the computation of processes.
+    ) -> dict[str, list[ResolvedCustomComputation]]:
+        """Validate custom computations and resolve their names to objects of the system.
 
         Args:
             computations: The custom computations. If None, :py:attr:`custom_computations`.
 
         Returns:
-            The prepared computations, keyed by the names of the processes they compute.
+            The resolved computations, keyed by the names of the processes they compute.
 
         Raises:
             ValueError: If a process or a required array does not exist in the system, if a
@@ -735,7 +726,7 @@ class MFASystem(FlodymBaseModel):
         """
         if computations is None:
             computations = self.custom_computations
-        runs: dict[str, list[CustomRun]] = {}
+        resolved: dict[str, list[ResolvedCustomComputation]] = {}
         seen: set[tuple[frozenset[str], frozenset[str]]] = set()
         for computation in computations:
             if not computation.processes:
@@ -758,10 +749,12 @@ class MFASystem(FlodymBaseModel):
                     f"{', '.join(computation.processes)} with the same required arrays."
                 )
             seen.add(key)
-            run = CustomRun(processes, required, self._bind_custom_function(computation))
+            resolved_computation = ResolvedCustomComputation(
+                processes, required, self._bind_custom_function(computation)
+            )
             for process in processes:
-                runs.setdefault(process.name, []).append(run)
-        return runs
+                resolved.setdefault(process.name, []).append(resolved_computation)
+        return resolved
 
     def _bind_custom_function(self, computation: CustomComputation) -> Callable[[], None]:
         """The function of a custom computation, with the MFA system as its argument."""

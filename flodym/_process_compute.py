@@ -12,8 +12,8 @@ The computation is split into these parts:
 - :py:class:`Snapshot` stores the arrays a computation may change, so that they are restored
   if the computation fails.
 - :py:func:`compute_process` runs one computation with the checks before and after it.
-- :py:class:`CustomRun` and :py:func:`run_custom_computation` run a custom computation of one or
-  several processes, see :py:meth:`flodym.MFASystem.add_custom_computation`.
+- :py:class:`ResolvedCustomComputation` is a :py:class:`flodym.CustomComputation` whose names are
+  resolved to the objects of the MFA system. :py:func:`run_custom_computation` runs it.
 - :py:func:`compute_processes` computes as many processes as possible, which is used by
   :py:meth:`flodym.MFASystem.compute_all_possible`.
 """
@@ -21,6 +21,7 @@ The computation is split into these parts:
 import logging
 from collections import deque
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Optional
 
 import numpy as np
@@ -754,25 +755,20 @@ def compute_process(
     return True
 
 
-class CustomRun:
-    """A custom computation of one or several processes, prepared for :py:func:`compute_processes`.
+@dataclass
+class ResolvedCustomComputation:
+    """A :py:class:`flodym.CustomComputation`, with names resolved to the objects of the system.
 
-    Created from a :py:class:`flodym.CustomComputation` by
-    :py:meth:`flodym.MFASystem.compute_all_possible`.
+    Created and validated by ``MFASystem._resolve_custom_computations``, such that
+    :py:func:`compute_processes` needs no access to the MFA system.
     """
 
-    def __init__(
-        self,
-        processes: list["Process"],
-        required: list[tuple[str, "FlodymArray"]],
-        function: Callable[[], None],
-    ) -> None:
-        self.processes = processes
-        """The processes which the function computes."""
-        self.required = required
-        """Arrays which must be set before the function is called, with their names."""
-        self.function = function
-        """Computes the processes. Takes no arguments, the MFA system is bound already."""
+    processes: list["Process"]
+    """The processes which the function computes."""
+    required: list[tuple[str, "FlodymArray"]]
+    """Arrays which must be set before the function is called, with their names."""
+    function: Callable[[], None]
+    """Computes the processes. Takes no arguments, the MFA system is bound already."""
 
     @property
     def label(self) -> str:
@@ -780,7 +776,7 @@ class CustomRun:
         return ", ".join(f"'{p.name}'" for p in self.processes)
 
 
-def run_custom_computation(run: CustomRun) -> bool:
+def run_custom_computation(computation: ResolvedCustomComputation) -> bool:
     """Run a custom computation of one or several processes.
 
     The function is only called if all required arrays are set. If it raises an error, all arrays
@@ -789,7 +785,7 @@ def run_custom_computation(run: CustomRun) -> bool:
     this computation are checked (see :py:func:`check_completed_process`).
 
     Args:
-        run: The custom computation.
+        computation: The custom computation.
 
     Returns:
         Whether the processes are computed afterwards. False if a required array is not set or
@@ -798,45 +794,45 @@ def run_custom_computation(run: CustomRun) -> bool:
     Raises:
         ValueError: If a process is not computed after the function was called.
     """
-    if all(p.is_computed for p in run.processes):
-        logger.debug(f"Processes {run.label} are already computed.")
+    if all(p.is_computed for p in computation.processes):
+        logger.debug(f"Processes {computation.label} are already computed.")
         return True
-    unset = [name for name, array in run.required if not array.is_set]
+    unset = [name for name, array in computation.required if not array.is_set]
     if unset:
         logger.debug(
-            f"Custom computation of processes {run.label} skipped, since these required arrays "
-            f"are not set: {', '.join(unset)}."
+            f"Custom computation of processes {computation.label} skipped, since these required "
+            f"arrays are not set: {', '.join(unset)}."
         )
         return False
 
-    group_ids = {id(p) for p in run.processes}
+    group_ids = {id(p) for p in computation.processes}
     incomplete_neighbors = {
         id(n): n
-        for p in run.processes
+        for p in computation.processes
         for n in p._neighbors()
         if n.id != 0 and id(n) not in group_ids and not n.is_computed
     }
-    snapshots = [Snapshot(p) for p in run.processes]
+    snapshots = [Snapshot(p) for p in computation.processes]
 
     def restore() -> None:
         for snapshot in snapshots:
             snapshot.restore()
 
     try:
-        run.function()
-        not_computed = [p.name for p in run.processes if not p.is_computed]
+        computation.function()
+        not_computed = [p.name for p in computation.processes if not p.is_computed]
         if not_computed:
             raise ValueError(
-                f"The custom computation of processes {run.label} did not set all flows and stock "
-                f"arrays of processes {', '.join(not_computed)}. Assign flows with "
+                f"The custom computation of processes {computation.label} did not set all flows "
+                f"and stock arrays of processes {', '.join(not_computed)}. Assign flows with "
                 "`flow[...] = values`, or call mark_set() on them, to mark them as set."
             )
         if config.checks.mass_balance_after_compute:
-            for process in run.processes:
+            for process in computation.processes:
                 check_process_mass_balance(process)
     except UnderdeterminedError as error:
         restore()
-        logger.info(f"Custom computation of processes {run.label} skipped: {error}")
+        logger.info(f"Custom computation of processes {computation.label} skipped: {error}")
         return False
     except BaseException:
         restore()
@@ -849,13 +845,15 @@ def run_custom_computation(run: CustomRun) -> bool:
 
 
 def compute_processes(
-    processes: Iterable["Process"], custom_runs: Mapping[str, Sequence[CustomRun]]
+    processes: Iterable["Process"],
+    custom_computations: Mapping[str, Sequence[ResolvedCustomComputation]],
 ) -> None:
     """Compute the given processes, and all processes which become computable as a consequence.
 
     This continues until no further process can be computed. Processes with an entry in
-    ``custom_runs`` are computed by the first of their custom computations which succeeds (see
-    :py:func:`run_custom_computation`), all others by :py:meth:`flodym.Process.compute`.
+    ``custom_computations`` are computed by the first of their custom computations which
+    succeeds (see :py:func:`run_custom_computation`), all others by
+    :py:meth:`flodym.Process.compute`.
     Underdetermined processes are skipped with an info log message.
 
     The processes to try are kept in a queue, which initially contains the given processes. When
@@ -864,8 +862,8 @@ def compute_processes(
 
     Args:
         processes: The processes to start with.
-        custom_runs: Custom computations, keyed by the names of the processes they compute. A
-            computation of several processes is listed under each of their names.
+        custom_computations: Custom computations, keyed by the names of the processes they
+            compute. A computation of several processes is listed under each of their names.
     """
     queue = deque(processes)
     queued = {id(p) for p in queue}
@@ -874,13 +872,13 @@ def compute_processes(
         queued.discard(id(process))
         if process.id == 0 or process.is_computed:
             continue
-        if process.name in custom_runs:
-            successful_run = next(
-                (run for run in custom_runs[process.name] if run_custom_computation(run)), None
+        if process.name in custom_computations:
+            successful = next(
+                (c for c in custom_computations[process.name] if run_custom_computation(c)), None
             )
-            if successful_run is None:
+            if successful is None:
                 continue
-            computed = successful_run.processes
+            computed = successful.processes
         elif compute_process(process, on_underdetermined=ErrorBehavior.INFO, short_message=True):
             computed = [process]
         else:
