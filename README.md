@@ -104,6 +104,6 @@ We gratefully acknowledge funding from the TRANSIENCE project, grant number 1011
  <!-- stop parsing here on readthedocs -->
 # Documentation
 
-See our [readthedocs](https://flodym.readthedocs.io/en/latest/) page for documentation!
+See our [readthedocs](https://flodym.readthedocs.io/latest/) page for documentation!
 
 The notebooks in the [examples](examples) folder provide usage examples of the code.
