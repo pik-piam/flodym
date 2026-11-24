@@ -135,8 +135,8 @@ class Config(FlodymBaseModel, validate_assignment=True):
     flow_naming: Callable[..., str] = process_names_with_arrow
     """Function which generates the name of a flow from the process it starts from and the process
     it ends in, as ``flow_naming(from_process, to_process)``. Used by
-    :py:func:`flodym.make_empty_flows` and :py:meth:`flodym.MFASystem.relink`, but not for flows
-    with a ``name_override``. Predefined functions are :py:func:`flodym.process_ids`,
+    :py:func:`flodym.make_empty_flows`, but not for flows with a ``name_override``. Predefined
+    functions are :py:func:`flodym.process_ids`,
     :py:func:`flodym.process_names_no_spaces` and :py:func:`flodym.process_names_with_arrow`
     (default).
     """
@@ -144,7 +144,9 @@ class Config(FlodymBaseModel, validate_assignment=True):
     relative_tolerance: Annotated[float, Field(ge=0)] = 100.0
     """Tolerance for mass balance and other checks, relative to the float precision of the checked
     values: The absolute tolerance is ``relative_tolerance`` times the machine epsilon of the
-    data type, times the largest absolute value of the arrays involved in the check.
+    data type, times the largest absolute value of the arrays involved in the check. For the mass
+    balance of a process, which sums several values in each of its entries, the largest sum of
+    their absolute values is used instead, as their rounding errors add up.
     Increase if checks fail due to rounding errors.
     Not used if :py:attr:`absolute_tolerance` is set.
     """

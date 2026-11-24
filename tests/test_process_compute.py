@@ -794,16 +794,3 @@ def test_set_arrays_from_prescribed_overwrites_and_uses_parameter_changes():
     mfa.set_arrays_from_prescribed()
     np.testing.assert_allclose(flow.values, 7.0)
     assert flow.is_set
-
-
-def test_prescribed_flow_is_kept_when_relink_renames_it():
-    from flodym.flow_naming import process_ids
-
-    mfa = split_mfa()
-    mfa.mark_all_unset()
-    with config.override(flow_naming=process_ids):
-        mfa.relink()
-    assert "F0_1" in mfa.flows
-    assert list(mfa.processes["a"].outflow_shares) == ["F1_2"]
-    assert mfa.compute_all_possible() == []
-    np.testing.assert_allclose(mfa.flows["F1_2"].values, [0.3, 0.6, 0.9, 1.2])

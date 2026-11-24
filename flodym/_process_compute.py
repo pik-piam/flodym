@@ -125,11 +125,11 @@ class ProcessSide:
         self.process = process
         self.side = side
         self.flows: dict[str, Flow] = process._inflows if side == "in" else process._outflows
-        """Flows of this side, keyed by flow name."""
+        """Flows of this side, keyed as in :py:attr:`flodym.MFASystem.flows`."""
         self.shares: dict[str, FlodymArray] = (
             process._inflow_shares if side == "in" else process._outflow_shares
         )
-        """Shares of flows of this side, keyed by flow name."""
+        """Shares of flows of this side, keyed as the flows."""
 
     @property
     def label(self) -> str:

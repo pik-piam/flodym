@@ -1722,10 +1722,6 @@ class Flow(_PrescribableArray):
     """Process to which the flow goes."""
     extensive: bool | None = True
     """Whether the flow is extensive, see :py:attr:`FlodymArray.extensive`. True by default."""
-    _named_after_processes: bool = False
-    """Whether the name was generated from the connected processes (see
-    :py:attr:`flodym.Config.flow_naming`), and is thus updated by
-    :py:meth:`flodym.MFASystem.relink`."""
 
     @classmethod
     def from_array(

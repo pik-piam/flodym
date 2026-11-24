@@ -1,7 +1,7 @@
 """Private helpers shared by the mass balance checks of processes, stocks and MFA systems."""
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING, Union
 
 import numpy as np
@@ -28,6 +28,39 @@ def max_abs(array: Union["FlodymArray", np.ndarray, float]) -> float:
     """Largest absolute value of a FlodymArray, numpy array or scalar. NaN if any value is NaN."""
     values = np.asarray(getattr(array, "values", array))
     return float(np.max(np.abs(values), initial=0.0))
+
+
+def summed_float_precision(arrays: Iterable["FlodymArray"]) -> float:
+    """Float precision of the sum of several arrays, as it is computed for a mass balance.
+
+    The arrays are summed to their common dimensions. The rounding error of each entry of the sum
+    grows with the absolute values which are summed in it. The precision is therefore the machine
+    epsilon times the sum of these absolute values, for the entry where it is largest. For a
+    single array, this is the machine epsilon times its largest absolute value. NaN values are
+    ignored. Zero if there are no arrays.
+    """
+    arrays = list(arrays)
+    if not arrays:
+        return 0.0
+    common_letters = [
+        letter
+        for letter in arrays[0].dims.letters
+        if all(letter in array.dims.letters for array in arrays)
+    ]
+    precision: np.ndarray | float = 0.0
+    for array in arrays:
+        letters = array.dims.letters
+        summed_axes = tuple(i for i, letter in enumerate(letters) if letter not in common_letters)
+        abs_values = np.abs(array.values)
+        is_nan = np.isnan(abs_values)
+        if is_nan.any():
+            abs_values = np.where(is_nan, 0.0, abs_values)
+        summed = abs_values.sum(axis=summed_axes)
+        kept_letters = [letter for letter in letters if letter in common_letters]
+        summed = np.transpose(summed, [kept_letters.index(letter) for letter in common_letters])
+        dtype = array.values.dtype if np.issubdtype(array.values.dtype, np.inexact) else np.float64
+        precision = precision + float(np.finfo(dtype).eps) * summed
+    return float(np.max(precision, initial=0.0))
 
 
 def balance_failure(

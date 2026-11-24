@@ -73,7 +73,7 @@ files. Both are tracked in git, but the `.py` file is the source of truth.
   Names inside private modules need no leading underscore.
 - In public modules, names that are only used inside flodym start with `_`. This includes pydantic
   validators. Such names may still be used across flodym modules: they are package-internal, not
-  module-private. Examples are `Flow._set_prescribed`, `Flow._named_after_processes`,
+  module-private. Examples are `Flow._set_prescribed`,
   `MFASystem._absolute_float_precision` and `Process._inflows`. Users should not need them.
 - Assign into an existing `FlodymArray` with the ellipsis slice, `foo[...] = bar`, not `foo = bar`.
   The slice keeps the declared dimensionality of `foo` and validates the right-hand side against it.
