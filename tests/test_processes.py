@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import pytest
 
 from flodym import (
@@ -55,6 +57,50 @@ def test_mfa_system_links_processes():
     assert len(linked_flows) == len(mfa.flows)
     for stock in mfa.stocks.values():
         assert stock.process is not None and stock.process.stock is stock
+
+
+@pytest.mark.parametrize(
+    "copy_process",
+    [deepcopy, lambda process: process.model_copy(deep=True)],
+    ids=["deepcopy", "model_copy"],
+)
+def test_deep_copy_of_process_loop_has_one_copy_per_process(copy_process):
+    dims = DimensionSet(dim_list=[Dimension(name="time", letter="t", items=[2000, 2001])])
+    process_a = Process(name="a", id=1)
+    process_b = Process(name="b", id=2)
+    a_to_b = Flow(from_process=process_a, to_process=process_b, dims=dims, name="a_to_b")
+    b_to_a = Flow(from_process=process_b, to_process=process_a, dims=dims, name="b_to_a")
+    process_a.add_outflow(a_to_b)
+    process_b.add_inflow(a_to_b)
+    process_b.add_outflow(b_to_a)
+    process_a.add_inflow(b_to_a)
+
+    copied_a = copy_process(process_a)
+
+    assert copied_a is not process_a
+    copied_a_to_b = copied_a.outflows["a_to_b"]
+    copied_b = copied_a_to_b.to_process
+    copied_b_to_a = copied_b.outflows["b_to_a"]
+    assert copied_b is not process_b
+    assert copied_a_to_b.from_process is copied_a
+    assert copied_b.inflows["a_to_b"] is copied_a_to_b
+    assert copied_b_to_a.to_process is copied_a
+    assert copied_a.inflows["b_to_a"] is copied_b_to_a
+
+
+def test_deep_copy_of_mfa_system_keeps_links():
+    mfa = get_example_mfa()
+    copied = deepcopy(mfa)
+    for name, process in copied.processes.items():
+        assert process is not mfa.processes[name]
+        for flow_name, flow in process.inflows.items():
+            assert copied.flows[flow_name] is flow and flow.to_process is process
+        for flow_name, flow in process.outflows.items():
+            assert copied.flows[flow_name] is flow and flow.from_process is process
+    for stock in copied.stocks.values():
+        assert stock.process is not None
+        assert stock.process is copied.processes[stock.process.name]
+        assert stock.process.stock is stock
 
 
 def test_new_flow_does_not_replace_link():
