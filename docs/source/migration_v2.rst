@@ -241,6 +241,34 @@ This is a new feature and does not change existing models. If you use it, note:
 - To use parameters that are not part of the definition, e.g. computed from read parameters, set
   ``MFADefinition.check_parameter_names`` to False, create the system with ``link=False``, add the
   parameters to ``mfa.parameters``, and call ``mfa.link_parameters()``.
+- ``compute_all_possible()`` also computes processes which depend on each other, e.g. in a
+  recycling loop, by solving their equations as one system. ``compute_processes()`` and
+  ``Process.compute(compute_neighbors=True)`` do the same.
+
+  *Action:* If your model computes such processes by hand after ``compute_all_possible()``, for
+  example a recycling loop, pass ``simultaneous=False`` to keep the old behavior. Otherwise,
+  ``compute_all_possible()`` computes them first, and the processes downstream of them are
+  computed already, with the values of the solution, when your code sets their flows.
+
+  For processes which these functions skipped before, the following can now happen:
+
+  - They are computed. Flows are only computed if they are not set (see
+    ``FlodymArray.is_set``).
+  - The checks after a computation run for them, as for a single process: by default, a
+    ``ValueError`` if their given values are inconsistent (``process_overdetermined``,
+    ``mass_balance``), and warnings for invalid shares or dimension splitters
+    (``process_shares``) and unused dimension splitters (``unused_dimension_splitter``).
+  - The warnings of a dynamic stock model which is computed on its own for the simultaneous
+    computation.
+
+  Errors while the equations of a process are written or its stock is prepared, e.g. since
+  lifetime parameters are not set yet, are not raised; the process is left out instead.
+- The processes which ``compute_all_possible()`` cannot compute are reported once at the end,
+  with the reasons, according to its argument ``on_underdetermined`` (default: ``"info"``; a
+  loop without exit is reported as a warning). ``compute_processes()`` and
+  ``Process.compute(compute_neighbors=True)`` report them in the same way, at info level. This
+  also holds with ``simultaneous=False``: the messages differ from before, and the lines
+  "Process ... is underdetermined. Skip computation." for each process are no longer logged.
 
 See HOWTO 05 for details.
 
@@ -328,7 +356,11 @@ New features
   arrays can be prescribed by parameters with ``FlowDefinition.prescribed`` and
   ``StockDefinition.prescribed_stock``, ``prescribed_inflow``, ``prescribed_outflow`` and
   ``prescribed_inflow_by_cohort``; ``MFASystem.link_parameters()`` and
-  ``MFASystem.set_arrays_from_prescribed()`` (HOWTO 05).
+  ``MFASystem.set_arrays_from_prescribed()`` (HOWTO 05). Processes which depend on each other,
+  e.g. in a recycling loop within a time step, are computed simultaneously
+  (``compute_all_possible(simultaneous=True)``, the default). ``compute_all_possible()`` reports
+  the processes it could not compute according to its argument ``on_underdetermined``, e.g. as an
+  ``UnderdeterminedError`` with ``on_underdetermined="error"``.
 - **Process links:** ``process.inflows``, ``process.outflows`` and ``process.stock``;
   ``ProcessDefinition(id, name)`` to set process IDs explicitly; ``MFASystem.relink()``, which by
   default also renames flows named after their processes (``update_names=True``).
