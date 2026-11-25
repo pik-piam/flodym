@@ -170,7 +170,44 @@ Only relevant for user-defined subclasses:
   removed. All compute modes use ``DynamicStockModel._compute_cohorts()``.
 - ``Stock._check_needed_arrays()`` now runs automatically before ``compute()`` in every subclass.
 - The private methods of lifetime models that compute the cumulative survival have changed
-  names and signatures. Subclasses that only implement ``_survival_by_cohort()`` are not affected.
+  names and signatures.
+- **Lifetime models** that implement ``_survival_by_cohort()`` must read their parameters as
+  ``self._scaled_prms[name][i_c, ...]``. The survival is now computed only along the dimensions
+  along which the parameters, lifetime factors or period effects vary (see above); ``ages`` and
+  the arrays in ``self._scaled_prms`` have length 1 along the others. A subclass that reads the
+  parameter fields (``self.mean[i_c, ...]``) or ``self.prms``, or creates arrays of the full
+  shape, e.g. from ``self._shape_no_t``, raises ``ValueError: non-broadcastable output operand
+  with shape ... doesn't match the broadcast shape ...`` as soon as there is such a dimension,
+  e.g. with scalar parameters. The same applies to v1 overrides of ``_scale_prms()``,
+  ``_tile()`` or ``_remaining_ages()``. Subclasses that run without this error give the same
+  results as in v1.
+
+  *Action:* List all parameters in ``_prm_names``, those proportional to the lifetime in
+  ``_prm_names_to_scale``, and read them from ``self._scaled_prms``, as the built-in models do
+  (see :py:class:`flodym.LifetimeModel`). Reading ``self._scaled_prms`` works in v1 as well.
+  Unlike the fields, it includes the lifetime factors, so results with ``lt_factor_by_year`` or
+  ``lt_factor_by_cohort`` change. In overrides of the methods above, use
+  ``self._reduced_shape_no_t`` instead of ``self._shape_no_t``, and ``self._reduced(array)`` for
+  arrays of the full shape. For example:
+
+  .. code-block:: python
+
+     from typing import ClassVar
+
+     import numpy as np
+     import flodym as fd
+
+
+     class LogLogisticLifetime(fd.LifetimeModel):
+         alpha: fd.LifetimeArrayType | None = None  # scale, proportional to the lifetime
+         beta: fd.LifetimeArrayType | None = None  # shape
+         _prm_names: ClassVar[list[str]] = ["alpha", "beta"]
+         _prm_names_to_scale: ClassVar[list[str]] = ["alpha"]
+
+         def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
+             alpha = self._scaled_prms["alpha"][i_c, ...]  # not self.alpha[i_c, ...]
+             beta = self._scaled_prms["beta"][i_c, ...]
+             return 1.0 / (1.0 + (np.maximum(ages, 0.0) / alpha) ** beta)
 
 
 Arrays: set and unset values

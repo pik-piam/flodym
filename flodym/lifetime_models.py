@@ -58,7 +58,30 @@ class _UnevenTimeDim(FlodymBaseModel):
 
 
 class LifetimeModel(FlodymBaseModel):
-    """Contains shared functionality across the various lifetime models."""
+    """Contains shared functionality across the various lifetime models.
+
+    A custom lifetime model is a subclass which implements the survival function in the method
+    ``_survival_by_cohort(ages, i_c)``; the built-in models, e.g. :py:class:`WeibullLifetime`,
+    are examples. The survival is computed only along the dimensions other than time along which
+    a parameter, lifetime factor or period effect varies; along the others, all arrays have
+    length 1, and the result is broadcast afterwards. Therefore, a subclass must:
+
+    - declare each parameter as a field of type :py:data:`flodym.LifetimeArrayType` with default
+      ``None`` and list its name in the class variable ``_prm_names``; a subclass of a built-in
+      model must list the inherited names as well. Other fields on which the survival depends
+      must be parameters too, unless they hold a single number.
+    - list the parameters which lifetime factors change in ``_prm_names_to_scale``, including
+      inherited ones if it is redefined. The factors multiply them; for parameters which are not
+      proportional to the lifetime, override ``_scale_prm()``, which is applied to all of them,
+      as :py:class:`Leaching` does.
+    - read the parameters in ``_survival_by_cohort()`` only as
+      ``self._scaled_prms[name][i_c, ...]``. ``_scaled_prms`` is private, but subclasses must use
+      it: it holds the parameters with lifetime factors applied and with length 1 along the
+      dimensions described above. The parameter fields, ``prms`` and arrays created from
+      ``shape`` or ``dims`` have the full shape; using them raises
+      ``ValueError: non-broadcastable output operand`` as soon as there is such a dimension,
+      e.g. if all parameters are scalars.
+    """
 
     model_config = ConfigDict(validate_assignment=True)
 
@@ -672,14 +695,26 @@ class LifetimeModel(FlodymBaseModel):
 
     @abstractmethod
     def _survival_by_cohort(self, ages: np.ndarray, i_c: int | slice) -> np.ndarray:
-        """Survival function.
+        """Survival function, i.e. the share of an age-cohort still present at the given ages.
+
+        Custom lifetime models implement this method (see :py:class:`LifetimeModel`). Read the
+        parameters as ``self._scaled_prms[name][i_c, ...]``: unlike the parameter fields and
+        ``prms``, it broadcasts against ``ages`` in both cases below.
 
         Args:
-            ages: array of ages, i.e. difference of a time vector to the inflow time of cohort i_c.
-                  If i_c is a slice, ages must have a cohort axis that
-                  lines up with the parameters indexed by i_c, so implementations must broadcast
-                  against it rather than assume a single cohort.
-            i_c: cohort index or a slice of cohorts.
+            ages: Differences between time points and the inflow time of cohort(s) i_c.
+                If i_c is an int, the shape is (number of ages, ``*self._reduced_shape_no_t``).
+                If i_c is a slice, it is (number of time points, number of cohorts,
+                ``*self._reduced_shape_no_t``), and ages can be negative; the results for negative
+                ages are not used, but should not cause errors or warnings, so clip the ages at 0
+                where needed. ``self._reduced_shape_no_t`` is the shape of the dimensions
+                other than time, with length 1 where no parameter, lifetime factor or period
+                effect varies, as in ``self._scaled_prms``.
+            i_c: Index of the cohort, or a slice of cohorts. A slice is passed if
+                ``lt_factor_by_year`` is set.
+
+        Returns:
+            The survival, with the shape of ages.
         """
 
     def _compute_outflow_pmf(self, cum_surv: np.ndarray) -> np.ndarray:
@@ -1043,10 +1078,25 @@ class CompetingRisksLifetime(LifetimeModel):
 
     dims and time_letter are taken from the first model if not given.
     Lifetime factors, inflow_at and n_pts_per_interval cannot be set here; set them in the
-    individual models instead. Period effects (hazard_factor_by_year, removal_share_by_year)
-    can be set here, and then apply to all causes together, or in the individual models.
+    individual models instead, with the same inflow_at and n_pts_per_interval in all models, as
+    all causes act on the same inflow. This is not checked; removal_share_by_year and
+    :py:meth:`get_mean_lifetime_by_cohort` use those of the first model.
+    Period effects (hazard_factor_by_year, removal_share_by_year) can be set here, and then
+    apply to all causes together, or in the individual models.
     Changes to the parameters of the individual models are taken into account in the next
     access of cumulative_survival, conditional_survival or outflow_pmf.
+
+    Warning:
+        With ``n_pts_per_interval > 1``, the stock is lower than with a single lifetime model
+        whose survival function is the product: the cumulative survival of each model is an
+        average over the inflow points, and the product of these averages is smaller than the
+        average of the product. For two equal exponential risks with a combined mean lifetime of
+        one time step and ``n_pts_per_interval >= 3``, the difference is about 2 %; it is roughly
+        inversely proportional to the square of the lifetime, e.g. 8 % for half a time step and
+        0.02 % for ten. With ``n_pts_per_interval=1`` (the default), the product is exact, but
+        the single inflow point has an error of its own, in this example 4 %. If this matters,
+        use shorter time steps, or a single lifetime model whose survival function is the
+        product (see :py:class:`LifetimeModel`).
     """
 
     models: list[LifetimeModel]
