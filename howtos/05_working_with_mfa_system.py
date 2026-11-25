@@ -233,6 +233,11 @@ for name, f in my_mfa_system.flows.items():
 
 # %% [markdown]
 # Only flows which are not set (see `FlodymArray.is_set`) are computed, which is why we marked all flows as unset first.
+# A flow is known or unknown as a whole.
+# Assigning to a part of a flow, e.g. to one region, marks the whole flow as set, so its other values are used as known as well, even if they were never assigned (a new flow contains zeros).
+# Conversely, all values of a flow which is not set are computed, also those which were assigned before it was marked unset.
+# So assign known flows completely, and leave the flows to be computed unassigned, or mark them unset.
+# A flow cannot be given for some items and computed for the others; compute such a process manually.
 #
 # The rules for a process without stock are:
 # - The inflows sum to a total throughput, which is split into the outflows. The shares of flows refer to this total.
