@@ -1,7 +1,7 @@
 """Slicing of `FlodymArray` objects along their dimensions."""
 
 from collections import defaultdict
-from collections.abc import Hashable, Iterable
+from collections.abc import Hashable, Iterable, Iterator
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any
 
@@ -102,7 +102,12 @@ class _SubArrayHandler:
         if isinstance(definition, type(Ellipsis)):
             self.def_dict = {}
         elif isinstance(definition, dict):
-            self.def_dict = definition
+            # the items of a dimension are read several times, which would leave one-shot
+            # iterators (generators, filter(), map(), ...) empty after the first time
+            self.def_dict = {
+                letter: list(value) if isinstance(value, Iterator) else value
+                for letter, value in definition.items()
+            }
         elif isinstance(definition, tuple):
             self.def_dict = self._to_dict_tuple(definition)
         else:

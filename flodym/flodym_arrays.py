@@ -529,6 +529,7 @@ class FlodymArray(FlodymBaseModel):
         Returns:
             The partially summed values of the FlodymArray.
         """
+        result_dims = tuple(result_dims)
         array = self._aggregated_to_ancestors(result_dims)
         result_letters = array._tuple_to_letters(result_dims)
         return np.einsum(f"{array.dims.string}->{''.join(result_letters)}", array.values)
@@ -556,6 +557,7 @@ class FlodymArray(FlodymBaseModel):
             FlodymArray object with the summed values and the reduced dimensions.
         """
         self._check_is_set("sum_to()")
+        result_dims = tuple(result_dims)
         array = self._aggregated_to_ancestors(
             result_dims, "sum_to()" if check_extensivity else None
         )
@@ -1444,8 +1446,7 @@ class FlodymArray(FlodymBaseModel):
         Returns:
             The FlodymArray divided by its sum over the given dimensions.
         """
-        if isinstance(dim_letters, str):
-            dim_letters = (dim_letters,)
+        dim_letters = (dim_letters,) if isinstance(dim_letters, str) else tuple(dim_letters)
         assert all(d in self.dims.letters for d in dim_letters), (
             "Dimensions to get share of must be in the object"
         )

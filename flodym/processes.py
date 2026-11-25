@@ -633,6 +633,7 @@ def make_processes(definitions: list[str | ProcessDefinition]) -> dict[str, Proc
     Raises:
         ValueError: If explicit IDs are negative or not unique, or if a name is given twice.
     """
+    definitions = list(definitions)
     explicit_ids = [
         d.id for d in definitions if isinstance(d, ProcessDefinition) and d.id is not None
     ]

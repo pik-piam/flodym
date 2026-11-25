@@ -169,6 +169,10 @@ def test_get_shares_over():
     wanted_values = np.einsum("pta,t->pta", ANIMAL_VALUES, 1 / np.sum(ANIMAL_VALUES, axis=(0, 2)))
     assert_array_almost_equal(shares.values, wanted_values)
 
+    # the dimensions can also be given as an iterator, which can be read only once
+    shares_from_iterator = SPACE_ANIMALS.get_shares_over(dim_letters=iter(("p", "a")))
+    assert_array_almost_equal(shares_from_iterator.values, wanted_values)
+
     # example of getting shares over all dimensions
     shares = SPACE_ANIMALS.get_shares_over(dim_letters=("p", "t", "a"))
     assert_array_almost_equal(shares.values, ANIMAL_VALUES / np.sum(ANIMAL_VALUES))
@@ -230,6 +234,51 @@ def test_sub_array_handler():
 
     with pytest.raises(ValueError):
         SPACE_ANIMALS[{"a": "dog"}]  # there isn't a dog in space_animals
+
+
+def _identity(item):
+    return item
+
+
+def _reversed_twice(items):
+    backwards = list(items)
+    backwards.reverse()
+    return reversed(backwards)
+
+
+ONE_SHOT_ITERATORS = {
+    "generator": lambda items: (item for item in items),
+    "filter": lambda items: filter(None, items),
+    "map": lambda items: map(_identity, items),
+    "reversed": _reversed_twice,
+    "iter": iter,
+}
+
+
+@pytest.mark.parametrize("make_iterator", ONE_SHOT_ITERATORS.values(), ids=ONE_SHOT_ITERATORS)
+def test_slice_with_one_shot_iterator(make_iterator):
+    """Items given as an iterator which can be read only once select the same as a list."""
+    years, animals = [1990, 2010], ["mouse"]
+    expected = FlodymArray(dims=DIMS_INCL_ANIMALS)
+    expected[{"t": years}] = 1.0
+    assert expected.values.sum() == 4 * 2 * 2
+
+    array = FlodymArray(dims=DIMS_INCL_ANIMALS)
+    array[{"t": make_iterator(years)}] = 1.0
+    assert_array_equal(array.values, expected.values)
+
+    # values of the shape of the slice, with a second sliced dimension
+    values = np.random.rand(4, 2, 1)
+    expected[{"t": years, "a": animals}] = values
+    array[{"t": make_iterator(years), "a": make_iterator(animals)}] = values
+    assert_array_equal(array.values, expected.values)
+    assert_array_equal(array.values[:, [0, 2], 1:], values)
+
+    with pytest.raises(ValueError):
+        array[{"t": make_iterator([1990, 2099])}] = 1.0  # 2099 is not an item of the dimension
+    # as for a list, several items cannot be selected without a new dimension
+    with pytest.raises(ValueError, match="several items"):
+        array[{"t": make_iterator(years)}]
 
 
 def test_dimension_subsets():

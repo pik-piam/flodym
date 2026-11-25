@@ -101,6 +101,14 @@ def test_sum_to_ancestor(production_s, building):
     np.testing.assert_allclose(production_s.sum_values_to(("b",)), [3.0, 20.0])
 
 
+def test_sum_to_ancestor_given_in_iterator(production_s):
+    """The result dimensions can be given as an iterator, which can be read only once."""
+    aggregated = production_s.sum_to(key for key in ("b", "t"))
+    assert aggregated.dims.letters == ("b", "t")
+    np.testing.assert_allclose(aggregated.values, [[1.0, 2.0], [10.0, 10.0]])
+    np.testing.assert_allclose(production_s.sum_values_to(iter(("b",))), [3.0, 20.0])
+
+
 def test_disaggregate_with_shares_and_aggregate_round_trip(production_s, sub_type, building):
     production_b = production_s.aggregate_to(building)
     shares = fd.FlodymArray(dims=sub_type.as_dimset(), values=np.array([1.0, 0.8, 0.2]))
@@ -270,6 +278,11 @@ def test_setitem_by_parent_item(production_s):
     np.testing.assert_allclose(production_s[{"t": 2030}].values, [2.0, 3.0, 4.0])
     production_s[{"s": ["Com", "Res"], "t": 2020}] = 7.0
     np.testing.assert_allclose(production_s[{"t": 2020}].values, [7.0, 7.0, 7.0])
+    # the items can also be given as an iterator, which can be read only once
+    production_s[{"s": (item for item in ["Com", "Res"]), "t": 2020}] = 9.0
+    np.testing.assert_allclose(production_s[{"t": 2020}].values, [9.0, 9.0, 9.0])
+    production_s[{"s": iter(["Res|Sin", "Com"]), "t": 2020}] = 5.0
+    np.testing.assert_allclose(production_s[{"t": 2020}].values, [5.0, 5.0, 9.0])
 
 
 def test_setitem_by_higher_ancestor_item(building, residential):
