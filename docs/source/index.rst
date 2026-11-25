@@ -27,6 +27,7 @@
    howto6.nblink
    howto7.nblink
    howto8.nblink
+   howto9.nblink
 
 .. toctree::
    :hidden:
@@ -50,5 +51,6 @@
    api.flodym_arrays
    api.stocks
    api.processes
+   api.uncertainty
    api.export_and_plotting
    api.config

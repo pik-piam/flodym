@@ -352,3 +352,11 @@ New features
   it to a ``StockArray``.
 - **Attribute access:** ``mfa.flows.my_flow`` in addition to ``mfa.flows["my_flow"]``, also for
   stocks, processes and parameters (``flodym.AttributeDict``).
+- **Uncertainty propagation:** ``UncertaintyDefinition`` declares distributions of parameters
+  relative to their nominal values (``NormalDistribution``, ``LogNormalDistribution``,
+  ``UniformDistribution``, ``TriangularDistribution``, or an own subclass of ``Distribution``);
+  ``run_monte_carlo()`` propagates them through any function of the parameters, reproducibly
+  from a seed; ``make_model_function()`` turns an ``MFASystem`` into such a function; means,
+  standard deviations and quantiles of all outputs (HOWTO 09). New options in
+  ``flodym.config.error_behaviors`` control its checks: ``monte_carlo_rejection``,
+  ``monte_carlo_no_variation`` and ``fixed_lifetime``.

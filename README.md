@@ -11,6 +11,7 @@ The flodym (Flexibe Open Dynamic Material Systems Model) library provides key fu
 - the class `FlodymArray` handling mathematical operations between multi-dimensional arrays
 - different classes representing stocks accumulation, in- and outflows based on age cohort tracking and lifetime distributions. Those can be integrated in the `MFASystem`.
 - different options for data input and export, as well as visualization
+- Monte Carlo propagation of parameter uncertainty through any model, with reproducible sampling and percentiles of all flows, stocks and derived quantities
 
 flodym is based on the concepts of the Open Dynamic Material Systems Model [ODYM](https://doi.org/10.1111/jiec.12952)
 (Pauliuk & Heeren, 2020). It is a re-implementation with a fundamentally overhauled API, internal dimension management, dynamic stock model integration, and other added features. As a result, flodym enables users to write customized, flexible MFAs, designed for maintainability and future extension.

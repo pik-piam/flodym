@@ -10,7 +10,8 @@ The computation is split into these parts:
   dimension splitters. Processes with a stock are computed by the stock
   (``Stock._compute_process``), using the methods of :py:class:`ProcessComputation`.
 - :py:class:`Snapshot` stores the arrays a computation may change, so that they are restored
-  if the computation fails.
+  if the computation fails. It uses :py:func:`save_arrays` and :py:func:`restore_arrays`, which
+  :py:func:`flodym.make_model_function` uses as well.
 - :py:func:`compute_process` runs one computation with the checks before and after it, and
   :py:func:`compute_processes` computes as many processes as possible.
 """
@@ -18,7 +19,7 @@ The computation is split into these parts:
 import logging
 from collections import deque
 from collections.abc import Iterable, Sequence
-from typing import TYPE_CHECKING, Literal, Optional
+from typing import TYPE_CHECKING, Literal, NamedTuple, Optional
 
 import numpy as np
 
@@ -656,6 +657,63 @@ def stock_arrays(stock: "Stock") -> list["FlodymArray"]:
     return arrays
 
 
+COHORT_ARRAYS = ("_stock_by_cohort", "_outflow_by_cohort")
+"""Private arrays of dynamic stock models, which their computation replaces, not modifies."""
+
+
+class ArrayState(NamedTuple):
+    """The state of a FlodymArray, see :py:func:`save_arrays`."""
+
+    array: "FlodymArray"
+    dims: DimensionSet
+    values: np.ndarray
+    """The values object of the array, which is restored as well."""
+    saved_values: np.ndarray
+    """A copy of the values."""
+    is_set: bool
+
+
+def save_arrays(arrays: Iterable["FlodymArray"]) -> list[ArrayState]:
+    """Save the dimensions, values and ``is_set`` flags of arrays, each array once."""
+    states: dict[int, ArrayState] = {}
+    for array in arrays:
+        if id(array) not in states:
+            values = array.values
+            states[id(array)] = ArrayState(array, array.dims, values, values.copy(), array.is_set)
+    return list(states.values())
+
+
+def restore_arrays(states: Iterable[ArrayState]) -> None:
+    """Restore saved arrays, including the identity of their values objects.
+
+    Values are written back in place. Read-only values, e.g. from ``numpy.broadcast_to()`` or
+    pandas, cannot have been changed in place, so re-attaching them restores them.
+    """
+    for state in states:
+        state.array.dims = state.dims
+        state.array.values = state.values
+        if state.values.flags.writeable:
+            state.values[...] = state.saved_values
+        if state.is_set:
+            state.array.mark_set()
+        else:
+            state.array.mark_unset()
+
+
+def save_cohort_arrays(stock: Optional["Stock"]) -> dict[str, np.ndarray]:
+    """The cohort arrays of a dynamic stock model, by attribute name; empty for other stocks.
+
+    They are replaced, not modified, by computations, so references suffice.
+    """
+    return {name: getattr(stock, name) for name in COHORT_ARRAYS if hasattr(stock, name)}
+
+
+def restore_cohort_arrays(stock: Optional["Stock"], saved: dict[str, np.ndarray]) -> None:
+    """Restore cohort arrays saved by :py:func:`save_cohort_arrays`."""
+    for name, values in saved.items():
+        setattr(stock, name, values)
+
+
 class Snapshot:
     """Values and ``is_set`` flags of all arrays which a computation of a process may change.
 
@@ -663,38 +721,26 @@ class Snapshot:
     computation fails.
     """
 
-    _stock_private_arrays = ("_stock_by_cohort", "_outflow_by_cohort")
-
     def __init__(self, process: "Process") -> None:
         stock = process.stock
         self.stock = stock
         arrays_of_stock: list[FlodymArray] = [] if stock is None else stock_arrays(stock)
         flows = list(process.inflows.values()) + list(process.outflows.values())
-        self.arrays: list[tuple[FlodymArray, np.ndarray, bool]] = [
-            (a, a.values.copy(), a.is_set) for a in flows + arrays_of_stock
-        ]
+        self.arrays = save_arrays(flows + arrays_of_stock)
         """Arrays with their values and ``is_set`` flags."""
+        stock_array_ids = {id(array) for array in arrays_of_stock}
         self.given_stock_arrays: list[tuple[FlodymArray, np.ndarray]] = [
-            (a, v) for a, v, was_set in self.arrays[len(flows) :] if was_set
+            (state.array, state.saved_values)
+            for state in self.arrays
+            if state.is_set and id(state.array) in stock_array_ids
         ]
         """Stock arrays which were set, with their values."""
-        # cohort arrays of dynamic stock models are replaced, not modified, so references suffice
-        self.stock_private: dict[str, np.ndarray] = {
-            name: getattr(stock, name)
-            for name in self._stock_private_arrays
-            if hasattr(stock, name)
-        }
+        self.stock_private = save_cohort_arrays(stock)
 
     def restore(self) -> None:
         """Restore the stored values and ``is_set`` flags."""
-        for array, values, was_set in self.arrays:
-            array.values = values
-            if was_set:
-                array.mark_set()
-            else:
-                array.mark_unset()
-        for name, value in self.stock_private.items():
-            setattr(self.stock, name, value)
+        restore_arrays(self.arrays)
+        restore_cohort_arrays(self.stock, self.stock_private)
 
 
 def compute_process(
