@@ -9,9 +9,17 @@ from numpy.testing import (
     assert_array_almost_equal,
     assert_array_equal,
 )
-from pydantic_core import ValidationError
 
-from flodym import Dimension, DimensionSet, FlodymArray, Flow, Parameter, Process, StockArray
+from flodym import (
+    Dimension,
+    DimensionSet,
+    FlodymArray,
+    FlodymValidationError,
+    Flow,
+    Parameter,
+    Process,
+    StockArray,
+)
 from flodym._df_to_flodym_array import DataFrameToFlodymDataConverter
 
 PLACES = Dimension(name="place", letter="p", items=["Earth", "Sun", "Moon", "Venus"])
@@ -65,21 +73,21 @@ class TestFlodymArrayInit:
 
     def test_scalar_number_with_multidim_dims_raises(self):
         # a scalar for a multi-dimensional array is a shape mismatch
-        with pytest.raises(ValidationError):
+        with pytest.raises(FlodymValidationError):
             FlodymArray(dims=DIMS, values=5)
 
     def test_transposed_shape_raises(self):
         # right number of elements, wrong axis order
-        with pytest.raises(ValidationError):
+        with pytest.raises(FlodymValidationError):
             FlodymArray(dims=DIMS, values=VALUES.T)
 
     def test_too_many_values_raises(self):
-        with pytest.raises(ValidationError):
+        with pytest.raises(FlodymValidationError):
             FlodymArray(dims=DIMS, values=np.zeros((4, 4)))
 
     def test_non_array_value_raises(self):
         # a list is neither an ndarray nor a Number and is not coerced
-        with pytest.raises(ValidationError):
+        with pytest.raises(FlodymValidationError):
             FlodymArray(dims=DIMS, values=[[1, 2, 3]] * 4)
 
     def test_name_defaults_to_unnamed(self):
@@ -87,7 +95,7 @@ class TestFlodymArrayInit:
 
     def test_dims_required(self):
         # dims must be provided; omitting it raises a clean validation error
-        with pytest.raises(ValidationError):
+        with pytest.raises(FlodymValidationError):
             FlodymArray()
 
 

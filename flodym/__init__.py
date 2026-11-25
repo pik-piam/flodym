@@ -4,6 +4,7 @@ The public API is re-exported here; see the API section of the documentation.
 """
 
 from flodym._attribute_dict import AttributeDict as AttributeDict
+from flodym._base_model import FlodymValidationError as FlodymValidationError
 from flodym._config import Checks as Checks
 from flodym._config import Config as Config
 from flodym._config import ErrorBehavior as ErrorBehavior

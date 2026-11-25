@@ -1,8 +1,7 @@
 import pandas as pd
 import pytest
-from pydantic_core import ValidationError
 
-from flodym import Dimension, DimensionDefinition, DimensionSet
+from flodym import Dimension, DimensionDefinition, DimensionSet, FlodymValidationError
 
 
 def test_validate_dimension_set():
@@ -15,7 +14,7 @@ def test_validate_dimension_set():
 
     # example with repeated dimension letters in DimensionSet
     dimensions.append({"name": "another_time", "letter": "t", "items": [2020, 2030]})
-    with pytest.raises(ValidationError) as error_msg:
+    with pytest.raises(FlodymValidationError) as error_msg:
         DimensionSet(dim_list=dimensions)
     assert "letter" in str(error_msg.value)
 

@@ -10,10 +10,10 @@ from typing import Any, ClassVar, Literal, SupportsFloat, TypeAlias
 import numpy as np
 import scipy.special
 import scipy.stats
-from pydantic import ConfigDict, PrivateAttr, model_validator
+from pydantic import PrivateAttr, model_validator
 from typing_extensions import Self
 
-from ._base_model import FlodymBaseModel
+from ._base_model import FlodymBaseModel, ValidatedAssignmentModel
 from ._gauss_lobatto import GL_NODES, GL_WEIGHTS
 from .dimensions import Dimension, DimensionSet
 from .flodym_arrays import FlodymArray
@@ -57,10 +57,8 @@ class _UnevenTimeDim(FlodymBaseModel):
         )
 
 
-class LifetimeModel(FlodymBaseModel):
+class LifetimeModel(ValidatedAssignmentModel):
     """Contains shared functionality across the various lifetime models."""
-
-    model_config = ConfigDict(validate_assignment=True)
 
     dims: DimensionSet
     time_letter: str = "t"

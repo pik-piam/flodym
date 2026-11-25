@@ -8,7 +8,7 @@ from typing import Annotated, Any
 
 from pydantic import Field
 
-from ._base_model import FlodymBaseModel
+from ._base_model import ValidatedAssignmentModel
 from .flow_naming import process_names_with_arrow
 
 logger = logging.getLogger(__name__)
@@ -60,7 +60,7 @@ def handle_error(
         pass
 
 
-class Checks(FlodymBaseModel, validate_assignment=True):
+class Checks(ValidatedAssignmentModel):
     """Which checks to perform automatically during computation."""
 
     mass_balance_after_compute: bool = False
@@ -73,7 +73,7 @@ class Checks(FlodymBaseModel, validate_assignment=True):
     violated."""
 
 
-class ErrorBehaviors(FlodymBaseModel, validate_assignment=True):
+class ErrorBehaviors(ValidatedAssignmentModel):
     """What to do if a check fails."""
 
     unset_array_used: ErrorBehavior = ErrorBehavior.IGNORE
@@ -123,7 +123,7 @@ class ErrorBehaviors(FlodymBaseModel, validate_assignment=True):
     added."""
 
 
-class Config(FlodymBaseModel, validate_assignment=True):
+class Config(ValidatedAssignmentModel):
     """Configuration class for Flodym."""
 
     checks: Checks = Checks()
