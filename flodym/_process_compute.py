@@ -11,13 +11,17 @@ The computation is split into these parts:
   (``Stock._compute_process``), using the methods of :py:class:`ProcessComputation`.
 - :py:class:`Snapshot` stores the arrays a computation may change, so that they are restored
   if the computation fails.
-- :py:func:`compute_process` runs one computation with the checks before and after it, and
-  :py:func:`compute_processes` computes as many processes as possible.
+- :py:func:`compute_process` runs one computation with the checks before and after it.
+- :py:class:`ResolvedCustomComputation` is a :py:class:`flodym.CustomComputation` whose names are
+  resolved to the objects of the MFA system. :py:func:`run_custom_computation` runs it.
+- :py:func:`compute_processes` computes as many processes as possible, which is used by
+  :py:meth:`flodym.MFASystem.compute_all_possible`.
 """
 
 import logging
 from collections import deque
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Optional
 
 import numpy as np
@@ -751,16 +755,115 @@ def compute_process(
     return True
 
 
-def compute_processes(processes: Iterable["Process"]) -> None:
+@dataclass
+class ResolvedCustomComputation:
+    """A :py:class:`flodym.CustomComputation`, with names resolved to the objects of the system.
+
+    Created and validated by ``MFASystem._resolve_custom_computations``, such that
+    :py:func:`compute_processes` needs no access to the MFA system.
+    """
+
+    processes: list["Process"]
+    """The processes which the function computes."""
+    required: list[tuple[str, "FlodymArray"]]
+    """Arrays which must be set before the function is called, with their names."""
+    function: Callable[[], None]
+    """Computes the processes. Takes no arguments, the MFA system is bound already."""
+
+    @property
+    def label(self) -> str:
+        """Names of the processes, for messages."""
+        return ", ".join(f"'{p.name}'" for p in self.processes)
+
+
+def run_custom_computation(computation: ResolvedCustomComputation) -> bool:
+    """Run a custom computation of one or several processes.
+
+    The function is only called if all required arrays are set. If it raises an error, all arrays
+    of the processes and their stocks are restored. Afterwards, all processes must be computed
+    (see :py:attr:`flodym.Process.is_computed`). Neighboring processes whose flows were all set by
+    this computation are checked (see :py:func:`check_completed_process`).
+
+    Args:
+        computation: The custom computation.
+
+    Returns:
+        Whether the processes are computed afterwards. False if a required array is not set or
+        if the function raises an :py:class:`UnderdeterminedError`.
+
+    Raises:
+        ValueError: If a process is not computed after the function was called.
+    """
+    if all(p.is_computed for p in computation.processes):
+        logger.debug(f"Processes {computation.label} are already computed.")
+        return True
+    unset = [name for name, array in computation.required if not array.is_set]
+    if unset:
+        logger.debug(
+            f"Custom computation of processes {computation.label} skipped, since these required "
+            f"arrays are not set: {', '.join(unset)}."
+        )
+        return False
+
+    group_ids = {id(p) for p in computation.processes}
+    incomplete_neighbors = {
+        id(n): n
+        for p in computation.processes
+        for n in p._neighbors()
+        if n.id != 0 and id(n) not in group_ids and not n.is_computed
+    }
+    snapshots = [Snapshot(p) for p in computation.processes]
+
+    def restore() -> None:
+        for snapshot in snapshots:
+            snapshot.restore()
+
+    try:
+        computation.function()
+        not_computed = [p.name for p in computation.processes if not p.is_computed]
+        if not_computed:
+            raise ValueError(
+                f"The custom computation of processes {computation.label} did not set all flows "
+                f"and stock arrays of processes {', '.join(not_computed)}. Assign flows with "
+                "`flow[...] = values`, or call mark_set() on them, to mark them as set."
+            )
+        if config.checks.mass_balance_after_compute:
+            for process in computation.processes:
+                check_process_mass_balance(process)
+    except UnderdeterminedError as error:
+        restore()
+        logger.info(f"Custom computation of processes {computation.label} skipped: {error}")
+        return False
+    except BaseException:
+        restore()
+        raise
+
+    for neighbor in incomplete_neighbors.values():
+        if neighbor.is_computed:
+            check_completed_process(neighbor)
+    return True
+
+
+def compute_processes(
+    processes: Iterable["Process"],
+    custom_computations: Mapping[str, Sequence[ResolvedCustomComputation]],
+) -> None:
     """Compute the given processes, and all processes which become computable as a consequence.
 
-    This continues until no further process can be computed (see
-    :py:meth:`flodym.Process.compute`). Underdetermined processes are skipped with an info log
-    message.
+    This continues until no further process can be computed. Processes with an entry in
+    ``custom_computations`` are computed by the first of their custom computations which
+    succeeds (see :py:func:`run_custom_computation`), all others by
+    :py:meth:`flodym.Process.compute`.
+    Underdetermined processes are skipped with an info log message.
 
     The processes to try are kept in a queue, which initially contains the given processes. When
     a process is computed, its neighbors which are not computed yet are added to the queue, since
     their flows have changed. As each process can be computed only once, this terminates.
+
+    Args:
+        processes: The processes to start with.
+        custom_computations: Custom computations, keyed by the names of the processes they
+            compute. A computation of several processes is listed under each of their names.
     """
     queue = deque(processes)
     queued = {id(p) for p in queue}
@@ -769,9 +872,18 @@ def compute_processes(processes: Iterable["Process"]) -> None:
         queued.discard(id(process))
         if process.id == 0 or process.is_computed:
             continue
-        if not compute_process(process, on_underdetermined=ErrorBehavior.INFO, short_message=True):
+        if process.name in custom_computations:
+            successful = next(
+                (c for c in custom_computations[process.name] if run_custom_computation(c)), None
+            )
+            if successful is None:
+                continue
+            computed = successful.processes
+        elif compute_process(process, on_underdetermined=ErrorBehavior.INFO, short_message=True):
+            computed = [process]
+        else:
             continue
-        for neighbor in process._neighbors():
+        for neighbor in (n for p in computed for n in p._neighbors()):
             if neighbor.id != 0 and not neighbor.is_computed and id(neighbor) not in queued:
                 queue.append(neighbor)
                 queued.add(id(neighbor))

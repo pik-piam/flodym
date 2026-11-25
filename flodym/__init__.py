@@ -112,12 +112,10 @@ from flodym.mfa_definition import (
 from flodym.mfa_definition import (
     StockDefinition as StockDefinition,
 )
+from flodym.mfa_system import CustomComputation as CustomComputation
 from flodym.mfa_system import MFASystem as MFASystem
 from flodym.processes import (
     Process as Process,
-)
-from flodym.processes import (
-    compute_processes as compute_processes,
 )
 from flodym.processes import (
     make_processes as make_processes,

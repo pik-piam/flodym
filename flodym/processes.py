@@ -19,7 +19,6 @@ from ._process_compute import (
     Side,
     check_share_values,
     compute_process,
-    compute_processes,
     is_overdetermined,
 )
 from .mfa_definition import ProcessDefinition
@@ -530,15 +529,18 @@ class Process(FlodymBaseModel):
     def compute(
         self,
         on_underdetermined: ErrorBehavior | str | None = None,
-        compute_neighbors: bool = False,
     ) -> bool:
         """Compute the unknown in- and outflows of the process (and its stock, if any).
 
         They are computed from the known ones, the shares and the dimension splitters.
 
         Flows are known if they are set (see :py:attr:`flodym.FlodymArray.is_set`). This covers
-        many, but not all MFA processes; others have to be computed manually, for example if two
-        processes depend on each other and form an equation system.
+        many, but not all MFA processes; others need a custom computation, for example if two
+        processes depend on each other and form an equation system (see
+        :py:meth:`flodym.MFASystem.add_custom_computation`). This method only uses the automatic
+        computation described below, not custom computations. To compute all processes which can
+        be computed, including custom computations, use
+        :py:meth:`flodym.MFASystem.compute_all_possible`.
 
         The computation assumes the following structure of a process without stock: The inflows
         sum to a total throughput, which is split into the outflows. It proceeds as follows:
@@ -591,18 +593,11 @@ class Process(FlodymBaseModel):
             on_underdetermined: What to do if the process cannot be computed from the given
                 values. If None, ``flodym.config.error_behaviors.process_underdetermined`` is used
                 (default: raise an :py:class:`flodym.UnderdeterminedError`).
-            compute_neighbors: If True, after a successful computation, the neighboring
-                processes are computed as well, and so on, until no further process can be
-                computed (see :py:func:`compute_processes`). Underdetermined neighbors are skipped
-                with an info log message. See also :py:meth:`flodym.MFASystem.compute_all_possible`.
 
         Returns:
             Whether the process is computed afterwards.
         """
-        is_computed = compute_process(self, on_underdetermined, short_message=False)
-        if compute_neighbors and is_computed:
-            compute_processes(self._neighbors())
-        return is_computed
+        return compute_process(self, on_underdetermined, short_message=False)
 
     def _neighbors(self) -> list["Process"]:
         """Processes connected to this one by a flow, without duplicates."""

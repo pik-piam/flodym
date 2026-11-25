@@ -5,6 +5,7 @@ Specific MFA models can be built that inherit from this class.
 
 import logging
 import warnings
+from collections.abc import Callable
 from os import PathLike
 from typing import Any, SupportsFloat
 
@@ -16,6 +17,7 @@ from ._attribute_dict import AttributeDict
 from ._base_model import FlodymBaseModel
 from ._checks import config_hint, report_balance_failures
 from ._config import ErrorBehavior, config, handle_error
+from ._process_compute import ResolvedCustomComputation, compute_processes
 from .data_reader import (
     CompoundDataReader,
     CSVDimensionReader,
@@ -28,27 +30,53 @@ from .dimensions import DimensionSet
 from .flodym_arrays import FlodymArray, Flow, Parameter
 from .flow_helper import _make_unique_name, make_empty_flows
 from .mfa_definition import MFADefinition
-from .processes import Process, compute_processes, make_processes
+from .processes import Process, make_processes
 from .stock_helper import make_empty_stocks
 from .stocks import Stock
 
 logger = logging.getLogger(__name__)
 
 
+class CustomComputation(FlodymBaseModel):
+    """A user-defined computation of one or several processes of an MFA system.
+
+    Custom computations are used by :py:meth:`MFASystem.compute_all_possible` for processes which
+    the automatic computation (see :py:meth:`flodym.Process.compute`) cannot compute, for example
+    two processes which depend on each other and form an equation system. They are stored in
+    :py:attr:`MFASystem.custom_computations`, usually added with
+    :py:meth:`MFASystem.add_custom_computation`.
+
+    The function is called once all :py:attr:`requires` arrays are set. It may raise a
+    :py:class:`flodym.UnderdeterminedError` to signal that it cannot compute the processes yet.
+    Otherwise, it must set all in- and outflows of the processes and the arrays of their stocks
+    (see :py:attr:`flodym.Process.is_computed`), e.g. with ``flow[...] = values``.
+
+    Several custom computations may compute the same processes, e.g. to solve an equation system
+    in different directions. They are alternatives: the first one in
+    :py:attr:`MFASystem.custom_computations` whose required arrays are set, and which does not
+    raise an :py:class:`flodym.UnderdeterminedError`, computes the processes. Processes with a
+    custom computation are not computed automatically.
+    """
+
+    processes: list[str]
+    """Names of the processes which the function computes."""
+    function: Callable[["MFASystem"], None]
+    """Computes the processes. Takes the MFA system as its only argument."""
+    requires: list[str] | None = None
+    """Names of the arrays which must be set before the function is called: flow names, or a
+    stock name and the name of one of its arrays, separated by a dot, e.g. ``"in use.inflow"``.
+    If None, these are the inflows of the processes which come from other processes than the
+    given ones."""
+
+
 class MFASystem(FlodymBaseModel):
     """Base class for the calculation of a Material Flow Analysis (MFA) system.
 
     An MFA system consists of a set of processes, flows, stocks defined over a set of dimensions.
-    For the concrete definition of the system, a subclass of MFASystem must be implemented.
-
-    **Example**
-    Define your MFA System:
-
-        >>> import flodym as fd
-        >>> class CustomMFA(fd.MFASystem):
-        ...     def compute(self):
-        ...         # do some computations on the CustomMFA attributes: stocks and flows
-        ...         pass
+    By default, :py:meth:`compute` computes all processes which can be computed from the given
+    values (see :py:meth:`compute_all_possible`), using custom computations where given (see
+    :py:meth:`add_custom_computation`). For other computations, implement a subclass of
+    MFASystem which overrides :py:meth:`compute`.
 
     MFA flows, stocks and parameters are defined as instances of subclasses of
     :py:class:`flodym.FlodymArray`. Dimensions are managed with the :py:class:`flodym.Dimension`
@@ -83,6 +111,9 @@ class MFASystem(FlodymBaseModel):
     as a dictionary mapping the names of the MFA system stocks to the stocks themselves.
     Also accessible as attributes, see :py:class:`flodym.AttributeDict`.
     """
+    custom_computations: list[CustomComputation] = []
+    """User-defined computations of processes, used by :py:meth:`compute_all_possible`.
+    See :py:class:`flodym.CustomComputation` and :py:meth:`add_custom_computation`."""
 
     @model_validator(mode="after")
     def _link_processes(self) -> Self:
@@ -91,6 +122,12 @@ class MFASystem(FlodymBaseModel):
         Flow names are not changed.
         """
         self.relink(update_names=False)
+        return self
+
+    @model_validator(mode="after")
+    def _check_custom_computations(self) -> Self:
+        """Check that the custom computations refer to processes and arrays of the system."""
+        self._resolve_custom_computations()
         return self
 
     @classmethod
@@ -353,14 +390,20 @@ class MFASystem(FlodymBaseModel):
     def compute(self) -> None:
         """Perform all computations for the MFA system.
 
-        This method must be implemented in a subclass of MFASystem.
-
-        Raises:
-            NotImplementedError: If it is not overridden in a subclass.
+        By default, computes all processes which can be computed (see
+        :py:meth:`compute_all_possible`), and logs a warning which lists the processes which could
+        not be computed. Override this method in a subclass for other computations.
         """
-        raise NotImplementedError(
-            "The compute method must be implemented in a subclass of MFASystem if it is to be used."
-        )
+        not_computed = self.compute_all_possible()
+        if not_computed:
+            handle_error(
+                ErrorBehavior.WARN,
+                message=(
+                    f"compute(): Processes {', '.join(not_computed)} could not be computed. Give "
+                    "more flow values, shares or stock values, add custom computations (see "
+                    "MFASystem.add_custom_computation()), or override MFASystem.compute()."
+                ),
+            )
 
     def get_new_array(
         self, dim_letters: tuple[str, ...] | None = None, **kwargs: Any
@@ -596,25 +639,152 @@ class MFASystem(FlodymBaseModel):
         """Compute all processes which can be computed from the known values.
 
         Known values are the known flows, shares and stock values, see
-        :py:meth:`flodym.Process.compute`.
+        :py:meth:`flodym.Process.compute`. Processes with custom computations (see
+        :py:attr:`custom_computations`) are computed by them instead.
 
         Prescribed flows and stock arrays are set to the values of their parameters first (see
         :py:meth:`set_arrays_from_prescribed`), overwriting their values. Then, all processes are
         tried, and each computed process triggers a new try of its neighbors, until no further
-        process can be computed (see :py:func:`flodym.compute_processes`).
-        Underdetermined processes are skipped.
+        process can be computed. Underdetermined processes are skipped, as well as custom
+        computations whose required arrays are not set.
+        Processes which are computed already (see :py:attr:`flodym.Process.is_computed`) are not
+        computed again. To recompute the system, call :py:meth:`mark_all_unset` first.
 
         Returns:
             The names of the processes (except 'sysenv') which could not be computed.
         """
         self.set_arrays_from_prescribed()
-        compute_processes(self.processes.values())
+        compute_processes(self.processes.values(), self._resolve_custom_computations())
         not_computed = [p.name for p in self.processes.values() if p.id != 0 and not p.is_computed]
         if not_computed:
             logger.info(
                 f"compute_all_possible(): Could not compute processes {', '.join(not_computed)}."
             )
         return not_computed
+
+    def add_custom_computation(
+        self,
+        processes: str | list[str],
+        function: Callable[["MFASystem"], None],
+        requires: list[str] | None = None,
+    ) -> None:
+        """Add a user-defined computation of one or several processes.
+
+        It is used by :py:meth:`compute_all_possible` (and thus by the default :py:meth:`compute`)
+        instead of the automatic computation of these processes. See
+        :py:class:`flodym.CustomComputation` for details.
+
+        **Example**
+        Two processes ``a`` and ``b`` which exchange flows in both directions are solved either
+        from the flows entering or from the flows leaving them:
+
+            >>> def solve_forward(mfa):
+            ...     # compute all flows of a and b from the flows entering them
+            ...     pass
+            >>> def solve_backward(mfa):
+            ...     # compute all flows of a and b from the flows leaving them
+            ...     pass
+            >>> mfa.add_custom_computation(["a", "b"], solve_forward)  # doctest: +SKIP
+            >>> mfa.add_custom_computation(
+            ...     ["a", "b"], solve_backward, requires=["a => sysenv", "b => sysenv"]
+            ... )  # doctest: +SKIP
+
+        Args:
+            processes: Name or names of the processes which the function computes.
+            function: Computes the processes. Takes the MFA system as its only argument, and sets
+                all in- and outflows of the processes and the arrays of their stocks.
+            requires: Names of the arrays which must be set before the function is called (see
+                :py:attr:`flodym.CustomComputation.requires`). If None, these are the inflows of
+                the processes which come from other processes than the given ones.
+
+        Raises:
+            ValueError: If a process or a required array does not exist in the system, if a
+                process is 'sysenv', or if a custom computation of the same processes with the
+                same required arrays exists already.
+        """
+        if isinstance(processes, str):
+            processes = [processes]
+        computation = CustomComputation(processes=processes, function=function, requires=requires)
+        self._resolve_custom_computations([*self.custom_computations, computation])
+        self.custom_computations.append(computation)
+
+    def _resolve_custom_computations(
+        self, computations: list[CustomComputation] | None = None
+    ) -> dict[str, list[ResolvedCustomComputation]]:
+        """Validate custom computations and resolve their names to objects of the system.
+
+        Args:
+            computations: The custom computations. If None, :py:attr:`custom_computations`.
+
+        Returns:
+            The resolved computations, keyed by the names of the processes they compute.
+
+        Raises:
+            ValueError: If a process or a required array does not exist in the system, if a
+                process is 'sysenv', or if there are two custom computations of the same
+                processes with the same required arrays.
+        """
+        if computations is None:
+            computations = self.custom_computations
+        resolved: dict[str, list[ResolvedCustomComputation]] = {}
+        seen: set[tuple[frozenset[str], frozenset[str]]] = set()
+        for computation in computations:
+            if not computation.processes:
+                raise ValueError("A custom computation must compute at least one process.")
+            processes = [self._custom_computation_process(n) for n in computation.processes]
+            if computation.requires is None:
+                group_ids = {id(p) for p in processes}
+                required = [
+                    (name, flow)
+                    for process in processes
+                    for name, flow in process.inflows.items()
+                    if id(flow.from_process) not in group_ids
+                ]
+            else:
+                required = [(n, self._custom_computation_array(n)) for n in computation.requires]
+            key = (frozenset(computation.processes), frozenset(name for name, _ in required))
+            if key in seen:
+                raise ValueError(
+                    "There are two custom computations of processes "
+                    f"{', '.join(computation.processes)} with the same required arrays."
+                )
+            seen.add(key)
+            resolved_computation = ResolvedCustomComputation(
+                processes, required, self._bind_custom_function(computation)
+            )
+            for process in processes:
+                resolved.setdefault(process.name, []).append(resolved_computation)
+        return resolved
+
+    def _bind_custom_function(self, computation: CustomComputation) -> Callable[[], None]:
+        """The function of a custom computation, with the MFA system as its argument."""
+        return lambda: computation.function(self)
+
+    def _custom_computation_process(self, name: str) -> Process:
+        """The process of the given name, for a custom computation."""
+        if name not in self.processes:
+            raise ValueError(f"Process '{name}' of a custom computation does not exist.")
+        process = self.processes[name]
+        if process.id == 0:
+            raise ValueError("The system boundary 'sysenv' cannot have a custom computation.")
+        return process
+
+    def _custom_computation_array(self, name: str) -> FlodymArray:
+        """The flow or stock array of the given name, for the requires of a custom computation.
+
+        Stock arrays are named by the stock name and the array name, separated by a dot.
+        """
+        if name in self.flows:
+            return self.flows[name]
+        stock_name, _, array_name = name.rpartition(".")
+        stock = self.stocks.get(stock_name)
+        array = getattr(stock, array_name, None) if stock is not None else None
+        if isinstance(array, FlodymArray):
+            return array
+        raise ValueError(
+            f"Required array '{name}' of a custom computation is neither a flow nor an array of a "
+            "stock (given as '<stock name>.<array name>', e.g. 'in use.inflow')."
+        )
 
     def _prescribable_arrays(self) -> list[tuple[str, FlodymArray]]:
         """Flows and stock arrays, as tuples of a label for messages and the array."""

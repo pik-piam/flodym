@@ -93,9 +93,8 @@ class ErrorBehaviors(FlodymBaseModel, validate_assignment=True):
     """
     process_underdetermined: ErrorBehavior = ErrorBehavior.ERROR
     """What to do if :py:meth:`flodym.Process.compute` is called on a process which cannot be
-    computed from the given values. Not used for the neighbors computed with
-    ``compute_neighbors=True``, by :py:func:`flodym.compute_processes` and by
-    :py:meth:`flodym.MFASystem.compute_all_possible`, where underdetermined processes are skipped.
+    computed from the given values. Not used by :py:meth:`flodym.MFASystem.compute_all_possible`,
+    where underdetermined processes are skipped.
     """
     process_shares: ErrorBehavior = ErrorBehavior.WARN
     """What to do if the shares or the dimension splitters of a process are invalid in
