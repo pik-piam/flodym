@@ -341,8 +341,8 @@ flow_c[...] = flow_b
 print("After assignment via flow_c[...]:", flow_c.is_set)
 
 # %% [markdown]
-# By default, using an unset array in an operation has no consequences.
-# Optionally, flodym can log a warning or raise an error instead, e.g. to detect arrays that were forgotten to be computed.
+# By default, using an unset array in an operation logs a warning, e.g. to detect arrays that were forgotten to be computed.
+# Optionally, flodym can raise an error or ignore it instead.
 # Accessing the `values` attribute directly, methods returning numpy arrays (such as `sum_values_to()`) and export
 # functions are not checked.
 
@@ -354,6 +354,6 @@ with fd.config.override(error_behaviors={"unset_array_used": "error"}):
         print(error)
 
 # %% [markdown]
-# The setting can also be changed permanently, with `flodym.config.error_behaviors.unset_array_used = "warn"`.
-# Possible values are `"ignore"` (default), `"info"`, `"warn"`, and `"error"`.
+# The setting can also be changed permanently, with `flodym.config.error_behaviors.unset_array_used = "error"`.
+# Possible values are `"ignore"`, `"info"`, `"warn"` (default), and `"error"`.
 #

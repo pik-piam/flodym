@@ -58,8 +58,8 @@ print(f"Array names: {my_stock.stock.name}, {my_stock.inflow.name}, {my_stock.ou
 # What happens if it fails, and the tolerance it uses, are controlled by `flodym.config` as well (see the HOWTO on working with the MFA system):
 
 # %%
-my_stock.inflow.values[...] = 0.1
-my_stock.outflow.values[...] = 0.01
+my_stock.inflow[...] = 0.1
+my_stock.outflow[...] = 0.01
 my_stock.compute()
 
 print("Stock values for Vehicles:", my_stock.stock["Vehicles"].values)
@@ -84,7 +84,7 @@ my_dsm = fd.InflowDrivenDSM(
     lifetime_model=fd.NormalLifetime,
 )
 lifetime_mean = fd.Parameter(dims=dims[("p",)], values=np.array([10, 20, 5]))
-my_dsm.inflow.values[...] = 0.1
+my_dsm.inflow[...] = 0.1
 my_dsm.lifetime_model.set_prms(mean=lifetime_mean, std=0.3 * lifetime_mean)
 my_dsm.compute()
 
@@ -127,7 +127,9 @@ processes = fd.make_processes(["sysenv", "use_phase"])
 
 stocks = fd.make_empty_stocks(stock_definitions=stock_defs, processes=processes, dims=dims)
 
-# still zero, as not yet computed
+# still zero and not set, as not yet computed.
+# Slicing the unset stock for printing logs a warning (see `unset_array_used`).
+print("Stock is set:", stocks["in-use"].stock.is_set)
 print("Stock values for Vehicles:", stocks["in-use"].stock["Vehicles"].values)
 
 

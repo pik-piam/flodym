@@ -76,7 +76,7 @@ class Checks(FlodymBaseModel, validate_assignment=True):
 class ErrorBehaviors(FlodymBaseModel, validate_assignment=True):
     """What to do if a check fails."""
 
-    unset_array_used: ErrorBehavior = ErrorBehavior.IGNORE
+    unset_array_used: ErrorBehavior = ErrorBehavior.WARN
     """What to do if a FlodymArray which is not set (see :py:attr:`flodym.FlodymArray.is_set`)
     is used in an operation or a stock computation.
     """
