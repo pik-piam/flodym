@@ -188,6 +188,12 @@ nothing. It matters if you enable this check, or if you use the automatic proces
 which treats unset flows as unknown. Use ``array.mark_set()``, or assign with ``array[...] = ...``,
 to mark values written directly to ``.values``.
 
+For ``Parameter`` objects, a separate option ``flodym.config.error_behaviors.unset_parameter``
+applies, which raises an error by default. Parameters created by readers, by ``from_df()`` or with
+``values`` are set, so this only matters if you create a ``Parameter`` without values and use it
+before assigning values. Assign with ``parameter[...] = ...`` or call ``parameter.mark_set()``, or
+set ``unset_parameter = "ignore"``.
+
 
 Arrays: extensive and intensive
 -------------------------------
@@ -347,6 +353,10 @@ New features
   the conditional one-step survival ``conditional_survival``; ``get_cumulative_survival()``,
   ``get_conditional_survival()`` and ``get_outflow_pmf()``, which return ``FlodymArray`` objects.
 - **Set and unset arrays:** ``FlodymArray.is_set``, ``mark_set()`` and ``mark_unset()``.
+- **Setup without a data reader:** ``MFASystem.from_definition()`` takes dimension items from
+  ``DimensionDefinition.items`` and ``parent_items``, or from a dictionary or function, and creates
+  unset parameters; ``MFASystem.set_parameter_values()`` gives their values (HOWTO 07). Readers
+  also take items given in a ``DimensionDefinition`` instead of reading them.
 - **Input conversion:** ``FlodymArray`` accepts a single ``Dimension`` as ``dims``. Stocks accept
   any ``FlodymArray`` for ``stock``, ``inflow``, ``outflow`` and ``inflow_by_cohort`` and convert
   it to a ``StockArray``.

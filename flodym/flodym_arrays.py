@@ -23,6 +23,7 @@ from typing_extensions import Self
 
 from ._aggregation_weights import _group_sums, _normalized_weights
 from ._base_model import FlodymBaseModel
+from ._checks import config_hint
 from ._config import config, handle_error
 from ._df_to_flodym_array import DataFrameToFlodymDataConverter
 from ._sub_array_handler import _SubArrayHandler
@@ -1538,14 +1539,22 @@ class FlodymArray(FlodymBaseModel):
         return self
 
     def _check_is_set(self, operation: str) -> None:
-        if not self._is_set:
-            handle_error(
-                config.error_behaviors.unset_array_used,
-                message=(
-                    f"{self.__class__.__name__} '{self.name}' is used in {operation}, but is not set "
-                    "(is_set=False). If its values are intended, call mark_set() on it."
-                ),
+        if self._is_set:
+            return
+        message = (
+            f"{self.__class__.__name__} '{self.name}' is used in {operation}, but is not set "
+            "(is_set=False)."
+        )
+        if isinstance(self, Parameter):
+            behavior = config.error_behaviors.unset_parameter
+            message += (
+                " Give its values, e.g. with MFASystem.set_parameter_values(), or call mark_set() "
+                "on it if its values are intended." + config_hint("unset_parameter")
             )
+        else:
+            behavior = config.error_behaviors.unset_array_used
+            message += " If its values are intended, call mark_set() on it."
+        handle_error(behavior, message=message)
 
     def _check_reduction(
         self, removed_dims: DimensionSet, operation: str, degree: int | None = None

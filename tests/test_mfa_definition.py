@@ -61,3 +61,28 @@ def test_validate_mfa_definition():
             ],
             parameters=[],
         )
+
+
+def test_dimension_definition_items():
+    definition = DimensionDefinition(name="Time", letter="t", dtype=int, items=[2020, 2030])
+    assert definition.items == [2020, 2030]
+    DimensionDefinition(
+        name="Country", letter="c", dtype=str, parent="w", items=["DEU"], parent_items=["EUR"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"items": ["2020"]}, "datatype int"),
+        ({"parent_items": [1]}, "parent_items, but no items"),
+        ({"items": [1], "parent": "w"}, "if and only if it has a parent"),
+        ({"items": [1], "parent_items": [1]}, "if and only if it has a parent"),
+        ({"items": [1, 2], "parent": "w", "parent_items": [1]}, "same length"),
+        ({"items": [1], "parent": "w", "splitting": {1: "x"}}, "splitting or combine_splits"),
+        ({"items": [1], "combine_splits": ("x", "y")}, "splitting or combine_splits"),
+    ],
+)
+def test_invalid_dimension_definition_items(kwargs, match):
+    with pytest.raises(ValidationError, match=match):
+        DimensionDefinition(name="Something", letter="s", dtype=int, **kwargs)
