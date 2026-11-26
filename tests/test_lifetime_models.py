@@ -15,6 +15,7 @@ from flodym import (
     LogNormalLifetime,
     NormalLifetime,
     StockArray,
+    StockDrivenDSM,
     TabulatedLifetime,
     WeibullLifetime,
     WeibullMeanStdLifetime,
@@ -147,6 +148,57 @@ def test_competing_risks_in_stock():
         )
         stocks[loss_rate] = dsm.stock.values
     assert np.all(stocks[0.1][1:] < stocks[0.0][1:])
+
+
+def test_competing_risks_computed_once_in_stock_driven_dsm(monkeypatch):
+    compute = CompetingRisksLifetime._compute_base_cumulative_survival
+    n_computed = 0
+
+    def counting_compute(self):
+        nonlocal n_computed
+        n_computed += 1
+        return compute(self)
+
+    monkeypatch.setattr(
+        CompetingRisksLifetime, "_compute_base_cumulative_survival", counting_compute
+    )
+    stock = StockArray(dims=DIMS, values=np.linspace(1.0, 2.0, DIMS["t"].len)[:, None] * [1, 1])
+    inflows = []
+    for lifetime_model in [
+        NormalLifetime(dims=DIMS, mean=MEAN, std=3.0),
+        CompetingRisksLifetime(
+            models=[
+                NormalLifetime(dims=DIMS, mean=MEAN, std=3.0),
+                Leaching(dims=DIMS, loss_rate=0.0),
+            ]
+        ),
+    ]:
+        dsm = StockDrivenDSM(dims=DIMS, stock=stock, lifetime_model=lifetime_model)
+        dsm.compute()
+        inflows.append(dsm.inflow.values)
+    # the survival is read in every time step, but only computed once
+    assert n_computed == 1
+    np.testing.assert_allclose(inflows[1], inflows[0])
+
+
+def test_nested_competing_risks():
+    product = NormalLifetime(dims=DIMS, mean=MEAN, std=3.0)
+    leach = Leaching(dims=DIMS, loss_rate=0.02)
+    other_leach = Leaching(dims=DIMS, loss_rate=0.01)
+    combined = CompetingRisksLifetime(
+        models=[CompetingRisksLifetime(models=[product, leach]), other_leach]
+    )
+    # read twice, so that the second read comes from the cached arrays
+    combined.cumulative_survival
+    cumulative_survival_before = combined.cumulative_survival.copy()
+
+    # changing a parameter of a model in the inner competing risks updates the outer one
+    product.mean = 20.0
+    expected = (
+        product.cumulative_survival * leach.cumulative_survival * other_leach.cumulative_survival
+    )
+    assert not np.allclose(cumulative_survival_before, expected)
+    np.testing.assert_allclose(combined.cumulative_survival, expected)
 
 
 def test_competing_risks_invalid_input():

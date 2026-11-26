@@ -1053,7 +1053,8 @@ class CompetingRisksLifetime(LifetimeModel):
     """Lifetime models to combine. All must have the same dimensions."""
 
     _model_cumulative_survivals: tuple[np.ndarray, ...] | None = PrivateAttr(default=None)
-    """Survival factors of the individual models used in the cached arrays, to detect changes."""
+    """Reduced cumulative survivals of the models used in the cached arrays, compared by identity
+    to detect changes: a model creates a new array whenever it recomputes."""
 
     _fields_of_models: ClassVar[list[str]] = [
         "lt_factor_by_year",
@@ -1132,7 +1133,7 @@ class CompetingRisksLifetime(LifetimeModel):
         Changes are detected relative to the time the cached arrays were computed, e.g. because
         the parameters of a model were changed.
         """
-        model_cum_survs = tuple(model.cumulative_survival for model in self.models)
+        model_cum_survs = tuple(model._get_reduced_cumulative_survival() for model in self.models)
         previous = self._model_cumulative_survivals
         if previous is None or len(model_cum_survs) != len(previous):
             changed = True
@@ -1141,6 +1142,11 @@ class CompetingRisksLifetime(LifetimeModel):
         if changed:
             self.reset_cached_arrays()
             self._model_cumulative_survivals = model_cum_survs
+
+    def _get_reduced_cumulative_survival(self) -> np.ndarray:
+        # Also called by an enclosing CompetingRisksLifetime, which must see changes in this one.
+        self._reset_if_models_changed()
+        return super()._get_reduced_cumulative_survival()
 
     @property
     def _reduce_index(self) -> tuple[slice, ...]:
@@ -1152,9 +1158,9 @@ class CompetingRisksLifetime(LifetimeModel):
             model._check_prms_set()
 
     def _compute_base_cumulative_survival(self) -> np.ndarray:
-        cum_surv = self._model_cumulative_survivals[0].copy()
-        for model_cum_surv in self._model_cumulative_survivals[1:]:
-            cum_surv *= model_cum_surv
+        cum_surv = self.models[0].cumulative_survival.copy()
+        for model in self.models[1:]:
+            cum_surv *= model.cumulative_survival
         return cum_surv
 
     def _get_quad_points_and_weights(self) -> tuple[list[float], list[float]]:
